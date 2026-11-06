@@ -6,6 +6,7 @@ import { likersOf } from '$lib/server/likes';
 import { people } from '$lib/server/feed';
 import { clip } from '$lib/server/validate';
 import { mediaUrl } from '$lib/server/r2';
+import { deleteObject } from '$lib/server/images';
 import type { Actions, PageServerLoad } from './$types';
 
 async function getCheckin(id: string) {
@@ -22,7 +23,7 @@ async function getCheckin(id: string) {
 export const load: PageServerLoad = async ({ params }) => {
 	const { c, name, color, avatarKey } = await getCheckin(params.id);
 	return {
-		item: { id: c.id, userId: c.userId, name, color, photo: await mediaUrl(avatarKey), lat: c.lat, lng: c.lng, note: c.note, at: c.createdAt.toISOString() },
+		item: { id: c.id, userId: c.userId, name, color, photo: await mediaUrl(avatarKey), snapshot: await mediaUrl(c.snapshotKey), lat: c.lat, lng: c.lng, note: c.note, at: c.createdAt.toISOString() },
 		comments: await listComments({ checkinId: c.id }),
 		likers: await likersOf({ checkinId: c.id }),
 		persons: await people()
@@ -41,7 +42,11 @@ export const actions: Actions = {
 		return { saved: true };
 	},
 	apagar: async ({ params, locals }) => {
-		await db().delete(checkins).where(and(eq(checkins.id, params.id), eq(checkins.userId, locals.user!.id)));
+		const [c] = await db()
+			.delete(checkins)
+			.where(and(eq(checkins.id, params.id), eq(checkins.userId, locals.user!.id)))
+			.returning({ snapshotKey: checkins.snapshotKey });
+		await deleteObject(c?.snapshotKey);
 		redirect(303, '/');
 	}
 };

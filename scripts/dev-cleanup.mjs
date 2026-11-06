@@ -6,7 +6,8 @@ const PATTERN = 'claude-local%@example.test';
 const sql = postgres(e.DATABASE_URL, { max: 1, onnotice: () => {} });
 const s3 = new S3Client({ region: 'auto', endpoint: `https://${e.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`, credentials: { accessKeyId: e.R2_ACCESS_KEY_ID, secretAccessKey: e.R2_SECRET_ACCESS_KEY } });
 const rows = await sql`select m.original_key, m.display_key, m.medium_key, m.thumb_key, m.poster_key, m.video_key from media m join users u on u.id = m.user_id where u.email like ${PATTERN}`;
-const avatars = await sql`select avatar_key from users where email like ${PATTERN} and avatar_key is not null`;
+const avatars = await sql`select avatar_key from users where email like ${PATTERN} and avatar_key is not null
+	union all select c.snapshot_key from checkins c join users u on u.id = c.user_id where u.email like ${PATTERN} and c.snapshot_key is not null`;
 const keys = [...rows.flatMap((r) => Object.values(r)), ...avatars.map((a) => a.avatar_key)].filter(Boolean);
 if (keys.length) {
 	const r = await s3.send(new DeleteObjectsCommand({ Bucket: e.R2_BUCKET, Delete: { Objects: keys.map((Key) => ({ Key })) } }));

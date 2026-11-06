@@ -99,6 +99,7 @@ export const checkins = pgTable(
 		lng: doublePrecision('lng').notNull(),
 		accuracyM: real('accuracy_m'),
 		note: text('note').notNull().default(''),
+		snapshotKey: text('snapshot_key'), // R2 key of the map picture made in the browser at check-in time
 		createdAt: createdAt()
 	},
 	(t) => [index('checkins_created_idx').on(t.createdAt)]

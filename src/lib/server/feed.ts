@@ -66,7 +66,7 @@ export async function feed(): Promise<FeedItem[]> {
 			};
 		})
 	);
-	const cItems: FeedCheckin[] = cRows.map(({ c, n }) => ({
+	const cItems: FeedCheckin[] = await Promise.all(cRows.map(async ({ c, n }) => ({
 		type: 'checkin',
 		id: c.id,
 		userId: c.userId,
@@ -75,8 +75,9 @@ export async function feed(): Promise<FeedItem[]> {
 		lat: c.lat,
 		lng: c.lng,
 		note: c.note,
+		snapshot: await mediaUrl(c.snapshotKey),
 		comments: n ?? 0,
 		likers: likers.get(c.id) ?? []
-	}));
+	})));
 	return [...mItems, ...cItems].sort((a, b) => a.at.localeCompare(b.at));
 }

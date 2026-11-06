@@ -164,6 +164,13 @@
 				body: JSON.stringify({ lat: p.lat, lng: p.lng, accuracy: p.accuracy, note })
 			});
 			if (!r.ok) throw new Error('Não foi possível salvar o check-in.');
+			const { id } = await r.json();
+			// picture of the map for the diary; runs in the background, the feed falls back to a banner meanwhile
+			import('$lib/map-snapshot').then(({ attachSnapshot }) =>
+				attachSnapshot(id, { lat: p.lat, lng: p.lng, color: data.me.color, name: data.me.name, photo: data.me.photo, at: Date.now() }).then(
+					() => invalidate('app:feed')
+				)
+			);
 			note = '';
 			dialog.close();
 			if (day !== 'all' && day !== today) day = today;

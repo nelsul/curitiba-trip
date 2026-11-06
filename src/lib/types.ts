@@ -31,6 +31,8 @@ export type FeedCheckin = {
 	lat: number;
 	lng: number;
 	note: string;
+	/** map picture made at check-in time (null until generated) */
+	snapshot: string | null;
 	comments: number;
 	likers: string[];
 };

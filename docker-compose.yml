@@ -27,6 +27,8 @@ services:
       <<: *env
       PORT: "3000"
       ORIGIN: ${ORIGIN:-https://viagem.nelsul.com}
+      # profile photos (<=1 MB) and check-in map pictures (<=1.5 MB) are sent through the app
+      BODY_SIZE_LIMIT: 2M
       ADDRESS_HEADER: X-Forwarded-For
       XFF_DEPTH: "1"
     ports: ["127.0.0.1:3100:3000"]

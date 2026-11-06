@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import Avatar from '$lib/components/Avatar.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Filters from '$lib/components/Filters.svelte';
-	import LikeButton from '$lib/components/LikeButton.svelte';
-	import LikedBy from '$lib/components/LikedBy.svelte';
+	import CheckinPost from '$lib/components/CheckinPost.svelte';
 	import Post from '$lib/components/Post.svelte';
-	import { dayKey, fmtLongDay, fmtTime } from '$lib/format';
+	import { dayKey, fmtLongDay } from '$lib/format';
 	import { TRIP_DAYS } from '$lib/trip';
 	import type { FeedCheckin, FeedItem, FeedMedia } from '$lib/types';
 
@@ -50,10 +48,25 @@
 		return [...out.entries()].reverse().map(([d, list]) => [d, list.reverse()] as const);
 	});
 
-	// check-in likes live here (media likes live inside each Post)
-	let checkinLikes = $state<Record<string, string[]>>({});
+	// Check-ins made before map pictures existed (or whose picture failed) get one the first time
+	// someone sees them: generated in this browser, one at a time, then shared with everyone.
+	let snaps = $state<Record<string, string | null>>({});
+	const tried = new Set<string>();
+	let backfilling = false;
 	$effect(() => {
-		checkinLikes = Object.fromEntries(data.items.filter((i) => i.type === 'checkin').map((c) => [c.id, c.likers]));
+		const missing = data.items.filter((i): i is FeedCheckin => i.type === 'checkin' && !i.snapshot && !tried.has(i.id));
+		if (!missing.length || backfilling) return;
+		backfilling = true;
+		(async () => {
+			const { attachSnapshot } = await import('$lib/map-snapshot');
+			for (const c of missing) {
+				tried.add(c.id);
+				const p = byId.get(c.userId);
+				const url = await attachSnapshot(c.id, { lat: c.lat, lng: c.lng, color: p?.color ?? '#2F5A40', name: p?.name ?? '?', photo: p?.photo, at: c.at });
+				if (url) snaps[c.id] = url;
+			}
+			backfilling = false;
+		})();
 	});
 
 	const processing = $derived(data.items.some((i) => i.type === 'media' && i.status === 'processing'));
@@ -88,30 +101,7 @@
 					{#if e.type === 'media'}
 						<Post items={e.items} persons={byId} meId={data.me.id} />
 					{:else}
-						{@const c = e.item}
-						{@const p = byId.get(c.userId)}
-						<article class="card checkin">
-							<header class="head">
-								<Avatar name={p?.name ?? '?'} color={p?.color ?? '#888'} photo={p?.photo} size={40} />
-								<div class="who">
-									<strong>{p?.name ?? 'Alguém'}</strong>
-									<span class="small muted">fez check-in · {fmtTime(c.at)}</span>
-								</div>
-							</header>
-							<a class="banner" href="/mapa?foco={c.lat},{c.lng}" style:--c={p?.color}>
-								<span class="pin"><Icon name="pin" size={34} stroke={2} /></span>
-								{#if c.note}<span class="note">{c.note}</span>{:else}<span class="note muted-note">Esteve aqui</span>{/if}
-								<span class="go small">Ver no mapa ›</span>
-							</a>
-							<div class="actions">
-								<LikeButton target={{ checkinId: c.id }} likers={checkinLikes[c.id] ?? []} meId={data.me.id} onchange={(l) => (checkinLikes[c.id] = l)} />
-								<a class="act" href="/c/{c.id}" aria-label="Comentários"><Icon name="chat" size={26} /></a>
-							</div>
-							<div class="text">
-								<LikedBy likers={checkinLikes[c.id] ?? []} persons={byId} meId={data.me.id} />
-								{#if c.comments}<a class="small muted more" href="/c/{c.id}">Ver {c.comments === 1 ? '1 comentário' : `os ${c.comments} comentários`}</a>{/if}
-							</div>
-						</article>
+						<CheckinPost c={e.item} persons={byId} meId={data.me.id} snapshot={snaps[e.item.id]} />
 					{/if}
 				{/each}
 			</div>
@@ -138,21 +128,4 @@
 		.posts { margin: 0 -16px; }
 		.posts > :global(.card) { border-radius: 0; border-left: 0; border-right: 0; }
 	}
-	.checkin { padding: 0; overflow: hidden; animation: pop-in 0.45s var(--bounce) both; }
-	.head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
-	.who { display: grid; line-height: 1.25; }
-	.who strong { font: 600 1.05rem var(--font-display); }
-	.banner {
-		display: grid; justify-items: center; gap: 8px; padding: 30px 20px; text-align: center; text-decoration: none; color: #fff;
-		background: var(--sea); border-top: 2.5px solid var(--line); border-bottom: 2.5px solid var(--line);
-		background-image: radial-gradient(rgb(255 255 255 / 0.18) 2px, transparent 2.5px); background-size: 18px 18px;
-	}
-	.pin { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--c, var(--coral)); border: 4px solid #fff; box-shadow: 0 4px 0 rgb(0 0 0 / 0.2); animation: bob 2.6s ease-in-out infinite; }
-	.note { font: 600 1.25rem/1.3 var(--font-display); max-width: 28ch; overflow-wrap: anywhere; white-space: pre-wrap; text-shadow: 0 1px 0 rgb(0 0 0 / 0.2); }
-	.muted-note { opacity: 0.9; }
-	.go { font-weight: 800; opacity: 0.95; }
-	.actions { display: flex; align-items: center; gap: 2px; padding: 4px 6px 0; }
-	.act { display: grid; place-items: center; min-width: 44px; min-height: 44px; color: var(--ink); }
-	.text { display: grid; gap: 4px; padding: 0 14px 14px; }
-	.more { text-decoration: none; font-weight: 700; }
 </style>
