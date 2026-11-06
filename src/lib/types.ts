@@ -9,6 +9,12 @@ export type FeedMedia = {
 	kind: 'photo' | 'video';
 	status: 'processing' | 'ready' | 'failed';
 	thumb: string | null;
+	/** big feed image: medium (1080px) → display → video poster */
+	image: string | null;
+	video: string | null;
+	width: number | null;
+	height: number | null;
+	likers: string[];
 	lat: number | null;
 	lng: number | null;
 	caption: string;
@@ -26,6 +32,7 @@ export type FeedCheckin = {
 	lng: number;
 	note: string;
 	comments: number;
+	likers: string[];
 };
 
 export type FeedItem = FeedMedia | FeedCheckin;

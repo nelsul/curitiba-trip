@@ -17,7 +17,8 @@
 		heart: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z',
 		download: 'M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14',
 		play: 'M8 5v14l11-7z',
-		leaf: 'M5 19C5 10 11 4 20 4c0 9-6 15-15 15zm0 0 8-8'
+		leaf: 'M5 19C5 10 11 4 20 4c0 9-6 15-15 15zm0 0 8-8',
+		expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'
 	} as const;
 	export type IconName = keyof typeof ICONS;
 </script>

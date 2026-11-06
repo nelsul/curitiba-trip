@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import Avatar from './Avatar.svelte';
 	import Icon from './Icon.svelte';
+	import AvatarCropper from './AvatarCropper.svelte';
 
 	let {
 		userId,
@@ -16,28 +17,6 @@
 	let error = $state('');
 	let bump = $state(0); // re-triggers the pop animation after each change
 	let input: HTMLInputElement;
-
-	/** Center-crop to a square and scale to 512px (EXIF rotation is applied by the browser). */
-	async function toSquare(file: File): Promise<Blob> {
-		const url = URL.createObjectURL(file);
-		try {
-			const img = new Image();
-			img.src = url;
-			await img.decode();
-			const side = Math.min(img.naturalWidth, img.naturalHeight);
-			const out = Math.min(512, side);
-			const canvas = document.createElement('canvas');
-			canvas.width = canvas.height = out;
-			const ctx = canvas.getContext('2d')!;
-			ctx.imageSmoothingQuality = 'high';
-			ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, out, out);
-			const webp = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/webp', 0.86));
-			if (webp && webp.type === 'image/webp') return webp;
-			return (await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.88)))!;
-		} finally {
-			URL.revokeObjectURL(url);
-		}
-	}
 
 	async function send(method: 'PUT' | 'DELETE', body?: Blob) {
 		busy = true;
@@ -54,16 +33,17 @@
 		}
 	}
 
-	async function picked(e: Event) {
+	let pending = $state<File | null>(null);
+
+	function picked(e: Event) {
 		const file = (e.currentTarget as HTMLInputElement).files?.[0];
 		(e.currentTarget as HTMLInputElement).value = '';
-		if (!file) return;
-		try {
-			await send('PUT', await toSquare(file));
-		} catch {
-			error = 'Não foi possível abrir essa imagem. Tente outra (JPG ou PNG).';
-			busy = false;
-		}
+		if (file) pending = file; // opens the circular framer
+	}
+
+	async function framed(blob: Blob) {
+		pending = null;
+		await send('PUT', blob);
 	}
 </script>
 
@@ -87,6 +67,10 @@
 	{/if}
 	{#if error}<p class="error small" role="alert">{error}</p>{/if}
 </div>
+
+{#if pending}
+	<AvatarCropper file={pending} oncancel={() => (pending = null)} ondone={framed} />
+{/if}
 
 <style>
 	.editor { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }

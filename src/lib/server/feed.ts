@@ -1,5 +1,5 @@
 import { asc, ne, sql } from 'drizzle-orm';
-import { checkins, comments, db, media, users } from './db';
+import { checkins, comments, db, likes, media, users } from './db';
 import { mediaUrl } from './r2';
 import { dayKey } from '$lib/format';
 import type { FeedCheckin, FeedItem, FeedMedia, Person } from '$lib/types';
@@ -23,7 +23,7 @@ export async function feed(): Promise<FeedItem[]> {
 		.groupBy(comments.mediaId, comments.checkinId)
 		.as('counts');
 
-	const [mRows, cRows] = await Promise.all([
+	const [mRows, cRows, likeRows] = await Promise.all([
 		db()
 			.select({ m: media, n: counts.n })
 			.from(media)
@@ -32,8 +32,14 @@ export async function feed(): Promise<FeedItem[]> {
 		db()
 			.select({ c: checkins, n: counts.n })
 			.from(checkins)
-			.leftJoin(counts, sql`${counts.checkinId} = ${checkins.id}`)
+			.leftJoin(counts, sql`${counts.checkinId} = ${checkins.id}`),
+		db().select({ userId: likes.userId, mediaId: likes.mediaId, checkinId: likes.checkinId }).from(likes).orderBy(asc(likes.createdAt))
 	]);
+	const likers = new Map<string, string[]>();
+	for (const l of likeRows) {
+		const k = (l.mediaId ?? l.checkinId)!;
+		(likers.get(k) ?? likers.set(k, []).get(k)!).push(l.userId);
+	}
 
 	const mItems: FeedMedia[] = await Promise.all(
 		mRows.map(async ({ m, n }) => {
@@ -47,6 +53,11 @@ export async function feed(): Promise<FeedItem[]> {
 				kind: m.kind,
 				status: m.status as FeedMedia['status'],
 				thumb: await mediaUrl(m.thumbKey),
+				image: await mediaUrl(m.mediumKey ?? m.displayKey ?? m.posterKey),
+				video: m.kind === 'video' ? await mediaUrl(m.videoKey) : null,
+				width: m.width,
+				height: m.height,
+				likers: likers.get(m.id) ?? [],
 				lat: m.lat,
 				lng: m.lng,
 				caption: m.caption,
@@ -64,7 +75,8 @@ export async function feed(): Promise<FeedItem[]> {
 		lat: c.lat,
 		lng: c.lng,
 		note: c.note,
-		comments: n ?? 0
+		comments: n ?? 0,
+		likers: likers.get(c.id) ?? []
 	}));
 	return [...mItems, ...cItems].sort((a, b) => a.at.localeCompare(b.at));
 }

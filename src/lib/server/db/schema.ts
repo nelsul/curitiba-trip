@@ -9,7 +9,8 @@ import {
 	real,
 	bigint,
 	bigserial,
-	index
+	index,
+	uniqueIndex
 } from 'drizzle-orm/pg-core';
 
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -76,6 +77,7 @@ export const media = pgTable(
 		durationS: real('duration_s'),
 		thumbKey: text('thumb_key'),
 		displayKey: text('display_key'),
+		mediumKey: text('medium_key'), // ~1080px, used by the feed
 		posterKey: text('poster_key'),
 		videoKey: text('video_key'),
 		caption: text('caption').notNull().default(''),
@@ -131,6 +133,24 @@ export const comments = pgTable(
 		createdAt: createdAt()
 	},
 	(t) => [index('comments_media_idx').on(t.mediaId), index('comments_checkin_idx').on(t.checkinId)]
+);
+
+export const likes = pgTable(
+	'likes',
+	{
+		id: bigserial('id', { mode: 'number' }).primaryKey(),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		mediaId: uuid('media_id').references(() => media.id, { onDelete: 'cascade' }),
+		checkinId: uuid('checkin_id').references(() => checkins.id, { onDelete: 'cascade' }),
+		createdAt: createdAt()
+	},
+	(t) => [
+		// one like per person per item (nulls are distinct, so media and check-in likes don't collide)
+		uniqueIndex('likes_user_media_uq').on(t.userId, t.mediaId),
+		uniqueIndex('likes_user_checkin_uq').on(t.userId, t.checkinId)
+	]
 );
 
 export type User = typeof users.$inferSelect;

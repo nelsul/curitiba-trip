@@ -10,7 +10,7 @@
 	let busy = $state(false);
 </script>
 
-<section class="comments">
+<section class="comments" id="comentarios">
 	<h2><Icon name="chat" size={22} /> Comentários</h2>
 	{#if comments.length === 0}<p class="muted">Ninguém comentou ainda.</p>{/if}
 	<ul>

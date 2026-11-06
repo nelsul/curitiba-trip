@@ -5,11 +5,18 @@
 	import Avatar from '$lib/components/Avatar.svelte';
 	import Comments from '$lib/components/Comments.svelte';
 	import LocationPicker from '$lib/components/LocationPicker.svelte';
+	import LikeButton from '$lib/components/LikeButton.svelte';
+	import LikedBy from '$lib/components/LikedBy.svelte';
 	import { fmtBytes, fmtTime, fmtDuration, fmtLongDay, dayKey } from '$lib/format';
 
 	let { data, form } = $props();
 	const it = $derived(data.item);
 	const mine = $derived(it.userId === data.me.id);
+	const personMap = $derived(new Map(data.persons.map((p) => [p.id, p])));
+	let likers = $state<string[]>([]);
+	$effect(() => {
+		likers = data.likers;
+	});
 
 	let editCaption = $state(false);
 	let caption = $state('');
@@ -49,6 +56,11 @@
 			</a>
 		{/if}
 	</figure>
+
+	<div class="like-row">
+		<LikeButton target={{ mediaId: it.id }} {likers} meId={data.me.id} onchange={(l) => (likers = l)} />
+		<LikedBy {likers} persons={personMap} meId={data.me.id} />
+	</div>
 
 	<header class="who">
 		<Avatar name={it.name} color={it.color} photo={it.photo} size={44} />
@@ -113,6 +125,7 @@
 	.viewer img, .viewer video { width: 100%; height: auto; max-height: 80vh; object-fit: contain; }
 	.state { color: #fff; text-align: center; padding: 24px; display: grid; gap: 12px; justify-items: center; }
 	.state img { max-height: 50vh; opacity: 0.6; }
+	.like-row { display: flex; align-items: center; gap: 4px; margin: -6px 0 6px -8px; }
 	.who { display: flex; gap: 10px; align-items: center; }
 	.who p { margin: 0; }
 	.cap { display: inline-block; }

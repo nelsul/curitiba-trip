@@ -2,6 +2,8 @@ import { error, redirect } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import { checkins, db, users } from '$lib/server/db';
 import { addComment, deleteComment, listComments } from '$lib/server/comments';
+import { likersOf } from '$lib/server/likes';
+import { people } from '$lib/server/feed';
 import { clip } from '$lib/server/validate';
 import { mediaUrl } from '$lib/server/r2';
 import type { Actions, PageServerLoad } from './$types';
@@ -21,7 +23,9 @@ export const load: PageServerLoad = async ({ params }) => {
 	const { c, name, color, avatarKey } = await getCheckin(params.id);
 	return {
 		item: { id: c.id, userId: c.userId, name, color, photo: await mediaUrl(avatarKey), lat: c.lat, lng: c.lng, note: c.note, at: c.createdAt.toISOString() },
-		comments: await listComments({ checkinId: c.id })
+		comments: await listComments({ checkinId: c.id }),
+		likers: await likersOf({ checkinId: c.id }),
+		persons: await people()
 	};
 };
 

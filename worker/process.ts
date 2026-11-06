@@ -138,13 +138,17 @@ export async function processMedia(ctx: Ctx, mediaId: string) {
 
 		if (m.kind === 'photo') {
 			const display = join(dir, 'display.webp');
+			const medium = join(dir, 'medium.webp');
 			const thumb = join(dir, 'thumb.webp');
 			await vipsThumb(src, display, '2048x2048>');
+			await vipsThumb(src, medium, '1080x1350>');
 			await vipsThumb(src, thumb, '480x480', true);
 			Object.assign(patch, await vipsSize(display));
 			await upload(ctx, `${base}/display.webp`, display, 'image/webp');
+			await upload(ctx, `${base}/medium.webp`, medium, 'image/webp');
 			await upload(ctx, `${base}/thumb.webp`, thumb, 'image/webp');
 			patch.displayKey = `${base}/display.webp`;
+			patch.mediumKey = `${base}/medium.webp`;
 			patch.thumbKey = `${base}/thumb.webp`;
 		} else {
 			const info = await probe(src);

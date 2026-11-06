@@ -4,6 +4,8 @@ import { and, eq } from 'drizzle-orm';
 import { db, media, users } from '$lib/server/db';
 import { mediaUrl, r2 } from '$lib/server/r2';
 import { addComment, deleteComment, listComments } from '$lib/server/comments';
+import { likersOf } from '$lib/server/likes';
+import { people } from '$lib/server/feed';
 import { clip } from '$lib/server/validate';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -21,13 +23,15 @@ async function getMedia(id: string) {
 export const load: PageServerLoad = async ({ params, depends }) => {
 	depends('app:media');
 	const { m, name, color, avatarKey } = await getMedia(params.id);
-	const [display, video, poster, original, comments, photo] = await Promise.all([
+	const [display, video, poster, original, comments, photo, likers, persons] = await Promise.all([
 		mediaUrl(m.displayKey),
 		mediaUrl(m.videoKey),
 		mediaUrl(m.posterKey),
 		mediaUrl(m.originalKey, m.originalName),
 		listComments({ mediaId: m.id }),
-		mediaUrl(avatarKey)
+		mediaUrl(avatarKey),
+		likersOf({ mediaId: m.id }),
+		people()
 	]);
 	return {
 		item: {
@@ -55,7 +59,9 @@ export const load: PageServerLoad = async ({ params, depends }) => {
 			poster,
 			original
 		},
-		comments
+		comments,
+		likers,
+		persons
 	};
 };
 
@@ -88,7 +94,7 @@ export const actions: Actions = {
 	},
 	apagar: async ({ params, locals }) => {
 		const m = await owned(params.id, locals.user!.id);
-		const keys = [m.originalKey, m.displayKey, m.thumbKey, m.posterKey, m.videoKey].filter(Boolean) as string[];
+		const keys = [m.originalKey, m.displayKey, m.mediumKey, m.thumbKey, m.posterKey, m.videoKey].filter(Boolean) as string[];
 		const { s3, bucket } = r2();
 		await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys.map((Key) => ({ Key })) } }));
 		await db().delete(media).where(and(eq(media.id, m.id), eq(media.userId, locals.user!.id)));
