@@ -1,0 +1,61 @@
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	import Avatar from '$lib/components/Avatar.svelte';
+	import Icon from '$lib/components/Icon.svelte';
+	let { data, form } = $props();
+	const PALETTE = ['#2F5A40', '#C4747E', '#3E6E9A', '#7A4A2E', '#8A5BB0', '#D08A2E', '#2E8A8A', '#B0465E', '#5B7A2E', '#4E5BA6'];
+	const nextColor = $derived(PALETTE[data.users.length % PALETTE.length]);
+</script>
+
+<svelte:head><title>Pessoas · Viagem a Curitiba</title></svelte:head>
+
+<main class="page narrow">
+	<div class="title-row"><span class="title-icon"><Icon name="people" size={26} /></span><h1>Pessoas</h1></div>
+	<p class="muted">Só quem está nesta lista consegue entrar.</p>
+	{#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
+	{#if form?.added}<p role="status">{form.added} foi adicionado(a). Já pode entrar com o e-mail.</p>{/if}
+
+	<ul class="list">
+		{#each data.users as u (u.id)}
+			<li class="card">
+				<form method="POST" action="?/editar" use:enhance={() => async ({ update }) => update({ reset: false })} class="row">
+					<input type="hidden" name="id" value={u.id} />
+					<Avatar name={u.name} color={u.color} size={36} />
+					<div class="grow">
+						<input name="name" value={u.name} aria-label="Nome" />
+						<p class="small muted">{u.email}{u.is_admin ? ' · admin' : ''} · {u.items} itens</p>
+					</div>
+					<input type="color" name="color" value={u.color} aria-label="Cor de {u.name}" />
+					<button class="btn small secondary">Salvar</button>
+				</form>
+				{#if u.items === 0 && u.id !== data.me.id}
+					<form method="POST" action="?/remover" use:enhance={({ cancel }) => { if (!confirm(`Remover ${u.name}?`)) cancel(); }}>
+						<input type="hidden" name="id" value={u.id} />
+						<button class="link">Remover</button>
+					</form>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+
+	<form method="POST" action="?/adicionar" use:enhance class="card add">
+		<h2>Adicionar pessoa</h2>
+		<label>Nome <input name="name" required maxlength="60" /></label>
+		<label>E-mail <input name="email" type="email" required /></label>
+		<label class="inline">Cor <input type="color" name="color" value={nextColor} /></label>
+		<button class="btn">Adicionar</button>
+	</form>
+</main>
+
+<style>
+	.list { list-style: none; padding: 0; display: grid; gap: 10px; margin: 16px 0; }
+	.row { display: flex; gap: 10px; align-items: center; }
+	.grow { flex: 1; min-width: 0; }
+	.grow p { margin: 4px 0 0; overflow-wrap: anywhere; }
+	input[type='color'] { width: 44px; height: 44px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); flex: none; }
+	.add { display: grid; gap: 10px; }
+	.add h2 { margin: 0; }
+	.add label { display: grid; gap: 4px; font-weight: 600; }
+	.add .inline { display: flex; align-items: center; gap: 10px; }
+	.link { background: none; border: 0; color: var(--danger); text-decoration: underline; cursor: pointer; min-height: 36px; padding: 0; margin-top: 6px; }
+</style>

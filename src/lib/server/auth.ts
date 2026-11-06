@@ -1,0 +1,123 @@
+import { env } from '$env/dynamic/private';
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import type { Cookies } from '@sveltejs/kit';
+import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { db, loginCodes, sessions, users, type User } from './db';
+import { sendLoginCode } from './mail';
+
+export const SESSION_COOKIE = 'sessao';
+const SESSION_DAYS = 60;
+const CODE_TTL_MIN = 10;
+const CODE_MAX_ATTEMPTS = 5;
+const CODE_RESEND_SECONDS = 60;
+
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+const hmacCode = (email: string, code: string) =>
+	createHmac('sha256', env.AUTH_SECRET || 'dev-secret').update(`${email}:${code}`).digest('hex');
+
+export const normalizeEmail = (e: string) => e.trim().toLowerCase();
+
+export type SendResult = { ok: true } | { ok: false; error: string };
+
+export async function requestCode(rawEmail: string): Promise<SendResult> {
+	const email = normalizeEmail(rawEmail);
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Digite um e-mail válido.' };
+
+	const [user] = await db().select().from(users).where(eq(users.email, email));
+	if (!user) return { ok: false, error: 'Esse e-mail não está na lista da viagem. Fale com o Nelson.' };
+
+	const [recent] = await db()
+		.select({ createdAt: loginCodes.createdAt })
+		.from(loginCodes)
+		.where(and(eq(loginCodes.email, email), gt(loginCodes.createdAt, new Date(Date.now() - CODE_RESEND_SECONDS * 1000))))
+		.limit(1);
+	if (recent) return { ok: true }; // a code was just sent; don't spam
+
+	const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+	await db().insert(loginCodes).values({
+		email,
+		codeHash: hmacCode(email, code),
+		expiresAt: new Date(Date.now() + CODE_TTL_MIN * 60_000)
+	});
+	try {
+		await sendLoginCode(email, user.name, code);
+	} catch (e) {
+		console.error('[auth] failed to send code', e);
+		return { ok: false, error: 'Não foi possível enviar o e-mail agora. Tente de novo em instantes.' };
+	}
+	return { ok: true };
+}
+
+export type VerifyResult = { ok: true; token: string } | { ok: false; error: string };
+
+export async function verifyCode(rawEmail: string, rawCode: string): Promise<VerifyResult> {
+	const email = normalizeEmail(rawEmail);
+	const code = rawCode.replace(/\D/g, '');
+	if (code.length !== 6) return { ok: false, error: 'O código tem 6 números.' };
+
+	const [row] = await db()
+		.select()
+		.from(loginCodes)
+		.where(and(eq(loginCodes.email, email), isNull(loginCodes.usedAt), gt(loginCodes.expiresAt, new Date())))
+		.orderBy(desc(loginCodes.createdAt))
+		.limit(1);
+	if (!row) return { ok: false, error: 'Código expirado. Peça um novo.' };
+	if (row.attempts >= CODE_MAX_ATTEMPTS) return { ok: false, error: 'Muitas tentativas. Peça um novo código.' };
+
+	const a = Buffer.from(row.codeHash, 'hex');
+	const b = Buffer.from(hmacCode(email, code), 'hex');
+	if (a.length !== b.length || !timingSafeEqual(a, b)) {
+		await db().update(loginCodes).set({ attempts: row.attempts + 1 }).where(eq(loginCodes.id, row.id));
+		return { ok: false, error: 'Código incorreto.' };
+	}
+
+	await db().update(loginCodes).set({ usedAt: new Date() }).where(eq(loginCodes.id, row.id));
+	const [user] = await db().select().from(users).where(eq(users.email, email));
+	if (!user) return { ok: false, error: 'Usuário não encontrado.' };
+
+	const token = randomBytes(32).toString('base64url');
+	await db()
+		.insert(sessions)
+		.values({ id: sha256(token), userId: user.id, expiresAt: new Date(Date.now() + SESSION_DAYS * 86_400_000) });
+	return { ok: true, token };
+}
+
+export async function userFromToken(token: string | undefined): Promise<User | null> {
+	if (!token) return null;
+	const id = sha256(token);
+	const [row] = await db()
+		.select({ user: users, expiresAt: sessions.expiresAt })
+		.from(sessions)
+		.innerJoin(users, eq(users.id, sessions.userId))
+		.where(eq(sessions.id, id));
+	if (!row) return null;
+	const now = Date.now();
+	if (row.expiresAt.getTime() < now) {
+		await db().delete(sessions).where(eq(sessions.id, id));
+		return null;
+	}
+	// sliding expiration: refresh when less than half the lifetime is left
+	if (row.expiresAt.getTime() - now < (SESSION_DAYS / 2) * 86_400_000) {
+		await db()
+			.update(sessions)
+			.set({ expiresAt: new Date(now + SESSION_DAYS * 86_400_000) })
+			.where(eq(sessions.id, id));
+	}
+	return row.user;
+}
+
+export function setSessionCookie(cookies: Cookies, token: string) {
+	cookies.set(SESSION_COOKIE, token, {
+		path: '/',
+		httpOnly: true,
+		sameSite: 'lax',
+		secure: !env.ORIGIN?.startsWith('http://'),
+		maxAge: SESSION_DAYS * 86_400
+	});
+}
+
+export async function signOut(cookies: Cookies) {
+	const token = cookies.get(SESSION_COOKIE);
+	if (token) await db().delete(sessions).where(eq(sessions.id, sha256(token)));
+	cookies.delete(SESSION_COOKIE, { path: '/' });
+}

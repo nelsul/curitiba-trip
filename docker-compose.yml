@@ -1,0 +1,46 @@
+name: viagem
+
+x-env: &env
+  DATABASE_URL: postgres://viagem:${DB_PASSWORD:?set DB_PASSWORD in .env}@db:5432/viagem
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: viagem
+      POSTGRES_USER: viagem
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes: [db:/var/lib/postgresql/data]
+    # Only on the VPS loopback: reach it from a dev machine through an SSH tunnel.
+    ports: ["127.0.0.1:5433:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U viagem -d viagem"]
+      interval: 5s
+      retries: 20
+
+  app:
+    build: { context: ., target: app }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      <<: *env
+      PORT: "3000"
+      ORIGIN: ${ORIGIN:-https://viagem.nelsul.com}
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: "1"
+    ports: ["127.0.0.1:3100:3000"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  worker:
+    build: { context: ., target: worker }
+    restart: unless-stopped
+    env_file: .env
+    environment: *env
+    depends_on:
+      db: { condition: service_healthy }
+      app: { condition: service_started }
+
+volumes:
+  db: {}
