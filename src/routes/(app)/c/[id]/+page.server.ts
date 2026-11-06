@@ -3,12 +3,13 @@ import { and, eq } from 'drizzle-orm';
 import { checkins, db, users } from '$lib/server/db';
 import { addComment, deleteComment, listComments } from '$lib/server/comments';
 import { clip } from '$lib/server/validate';
+import { mediaUrl } from '$lib/server/r2';
 import type { Actions, PageServerLoad } from './$types';
 
 async function getCheckin(id: string) {
 	if (!/^[0-9a-f-]{36}$/.test(id)) error(404, 'Não encontrado');
 	const [row] = await db()
-		.select({ c: checkins, name: users.name, color: users.color })
+		.select({ c: checkins, name: users.name, color: users.color, avatarKey: users.avatarKey })
 		.from(checkins)
 		.innerJoin(users, eq(users.id, checkins.userId))
 		.where(eq(checkins.id, id));
@@ -17,9 +18,9 @@ async function getCheckin(id: string) {
 }
 
 export const load: PageServerLoad = async ({ params }) => {
-	const { c, name, color } = await getCheckin(params.id);
+	const { c, name, color, avatarKey } = await getCheckin(params.id);
 	return {
-		item: { id: c.id, userId: c.userId, name, color, lat: c.lat, lng: c.lng, note: c.note, at: c.createdAt.toISOString() },
+		item: { id: c.id, userId: c.userId, name, color, photo: await mediaUrl(avatarKey), lat: c.lat, lng: c.lng, note: c.note, at: c.createdAt.toISOString() },
 		comments: await listComments({ checkinId: c.id })
 	};
 };

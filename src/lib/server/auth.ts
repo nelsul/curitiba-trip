@@ -17,21 +17,34 @@ const hmacCode = (email: string, code: string) =>
 
 export const normalizeEmail = (e: string) => e.trim().toLowerCase();
 
-export type SendResult = { ok: true } | { ok: false; error: string };
+export type SendResult = { ok: true; maskedEmail: string } | { ok: false; error: string };
 
-export async function requestCode(rawEmail: string): Promise<SendResult> {
-	const email = normalizeEmail(rawEmail);
-	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Digite um e-mail válido.' };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-	const [user] = await db().select().from(users).where(eq(users.email, email));
-	if (!user) return { ok: false, error: 'Esse e-mail não está na lista da viagem. Fale com o Nelson.' };
+async function userById(id: string) {
+	if (!UUID.test(id)) return null;
+	const [u] = await db().select().from(users).where(eq(users.id, id));
+	return u ?? null;
+}
+
+/** "maria.silva@example.com" → "ma•••@example.com" (shown on the public login page) */
+export function maskEmail(email: string) {
+	const [local, domain] = email.split('@');
+	return `${local.slice(0, 2)}•••@${domain}`;
+}
+
+/** Sends a login code to the email of the person picked on the login page. */
+export async function requestCode(userId: string): Promise<SendResult> {
+	const user = await userById(userId);
+	if (!user) return { ok: false, error: 'Pessoa não encontrada. Recarregue a página.' };
+	const email = user.email;
 
 	const [recent] = await db()
 		.select({ createdAt: loginCodes.createdAt })
 		.from(loginCodes)
 		.where(and(eq(loginCodes.email, email), gt(loginCodes.createdAt, new Date(Date.now() - CODE_RESEND_SECONDS * 1000))))
 		.limit(1);
-	if (recent) return { ok: true }; // a code was just sent; don't spam
+	if (recent) return { ok: true, maskedEmail: maskEmail(email) }; // a code was just sent; don't spam
 
 	const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
 	await db().insert(loginCodes).values({
@@ -45,13 +58,15 @@ export async function requestCode(rawEmail: string): Promise<SendResult> {
 		console.error('[auth] failed to send code', e);
 		return { ok: false, error: 'Não foi possível enviar o e-mail agora. Tente de novo em instantes.' };
 	}
-	return { ok: true };
+	return { ok: true, maskedEmail: maskEmail(email) };
 }
 
 export type VerifyResult = { ok: true; token: string } | { ok: false; error: string };
 
-export async function verifyCode(rawEmail: string, rawCode: string): Promise<VerifyResult> {
-	const email = normalizeEmail(rawEmail);
+export async function verifyCode(userId: string, rawCode: string): Promise<VerifyResult> {
+	const picked = await userById(userId);
+	if (!picked) return { ok: false, error: 'Pessoa não encontrada. Recarregue a página.' };
+	const email = picked.email;
 	const code = rawCode.replace(/\D/g, '');
 	if (code.length !== 6) return { ok: false, error: 'O código tem 6 números.' };
 
@@ -72,8 +87,7 @@ export async function verifyCode(rawEmail: string, rawCode: string): Promise<Ver
 	}
 
 	await db().update(loginCodes).set({ usedAt: new Date() }).where(eq(loginCodes.id, row.id));
-	const [user] = await db().select().from(users).where(eq(users.email, email));
-	if (!user) return { ok: false, error: 'Usuário não encontrado.' };
+	const user = picked;
 
 	const token = randomBytes(32).toString('base64url');
 	await db()

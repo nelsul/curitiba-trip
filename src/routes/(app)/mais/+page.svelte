@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Avatar from '$lib/components/Avatar.svelte';
+	import AvatarEditor from '$lib/components/AvatarEditor.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import { loc, startSharing, stopSharing } from '$lib/location.svelte';
 	let { data } = $props();
@@ -11,8 +11,12 @@
 	<div class="title-row"><span class="title-icon"><Icon name="user" size={26} /></span><h1>Mais</h1></div>
 
 	<section class="card me">
-		<Avatar name={data.me.name} color={data.me.color} size={48} />
-		<div><strong class="nm">{data.me.name}</strong>{#if data.me.isAdmin}<p class="small muted">Administrador</p>{/if}</div>
+		<AvatarEditor userId={data.me.id} name={data.me.name} color={data.me.color} photo={data.me.photo} size={88} compact />
+		<div class="me-info">
+			<strong class="nm">{data.me.name}</strong>
+			{#if data.me.isAdmin}<p class="small muted">Administrador</p>{/if}
+			<p class="small muted">Toque na foto para trocar.</p>
+		</div>
 	</section>
 
 	<section class="card stack">
@@ -38,7 +42,8 @@
 
 <style>
 	section { margin-bottom: 16px; }
-	.me { display: flex; gap: 12px; align-items: center; }
+	.me { display: flex; gap: 16px; align-items: center; }
+	.me-info { display: grid; gap: 2px; }
 	.me p { margin: 0; }
 	.nm { font-family: var(--font-display); font-weight: 600; font-size: 1.4rem; }
 	.stack { display: grid; gap: 10px; }

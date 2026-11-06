@@ -2,16 +2,17 @@ import { error, fail } from '@sveltejs/kit';
 import { and, asc, eq } from 'drizzle-orm';
 import { comments, db, users } from './db';
 import { clip } from './validate';
+import { mediaUrl } from './r2';
 
 export async function listComments(target: { mediaId: string } | { checkinId: string }) {
 	const where = 'mediaId' in target ? eq(comments.mediaId, target.mediaId) : eq(comments.checkinId, target.checkinId);
 	const rows = await db()
-		.select({ id: comments.id, body: comments.body, at: comments.createdAt, userId: users.id, name: users.name, color: users.color })
+		.select({ id: comments.id, body: comments.body, at: comments.createdAt, userId: users.id, name: users.name, color: users.color, avatarKey: users.avatarKey })
 		.from(comments)
 		.innerJoin(users, eq(users.id, comments.userId))
 		.where(where)
 		.orderBy(asc(comments.createdAt));
-	return rows.map((r) => ({ ...r, at: r.at.toISOString() }));
+	return Promise.all(rows.map(async ({ avatarKey, ...r }) => ({ ...r, photo: await mediaUrl(avatarKey), at: r.at.toISOString() })));
 }
 
 export async function addComment(request: Request, userId: string, target: { mediaId: string } | { checkinId: string }) {

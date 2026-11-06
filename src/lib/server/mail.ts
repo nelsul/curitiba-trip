@@ -1,11 +1,13 @@
 import { env } from '$env/dynamic/private';
 import nodemailer from 'nodemailer';
+import { dev } from '$app/environment';
 
 let transport: nodemailer.Transporter | undefined;
 
 export async function sendLoginCode(to: string, name: string, code: string) {
-	if (!env.SMTP_HOST || !env.SMTP_USERNAME || !env.SMTP_PASSWORD) {
-		console.warn(`[mail] SMTP not configured. Code for ${to}: ${code}`);
+	// Local dev never emails anyone: the code goes to the dev server console instead.
+	if (dev || !env.SMTP_HOST || !env.SMTP_USERNAME || !env.SMTP_PASSWORD) {
+		console.warn(`[mail] not sending (${dev ? 'dev mode' : 'SMTP not configured'}). Code for ${to}: ${code}`);
 		return;
 	}
 	const port = Number(env.SMTP_PORT || 465);

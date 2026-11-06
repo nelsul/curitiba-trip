@@ -83,7 +83,7 @@
 						<div class="dot" style:background={p?.color} aria-hidden="true"></div>
 						<div class="body card bubble">
 							<header class="who">
-								<Avatar name={p?.name ?? '?'} color={p?.color ?? '#888'} size={28} />
+								<Avatar name={p?.name ?? '?'} color={p?.color ?? '#888'} photo={p?.photo} size={32} />
 								<strong>{p?.name ?? 'Alguém'}</strong>
 								<span class="muted small">
 									{#if e.type === 'media'}

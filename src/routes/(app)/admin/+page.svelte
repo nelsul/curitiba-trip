@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import Avatar from '$lib/components/Avatar.svelte';
+	import AvatarEditor from '$lib/components/AvatarEditor.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	let { data, form } = $props();
 	const PALETTE = ['#2F5A40', '#C4747E', '#3E6E9A', '#7A4A2E', '#8A5BB0', '#D08A2E', '#2E8A8A', '#B0465E', '#5B7A2E', '#4E5BA6'];
@@ -11,20 +11,23 @@
 
 <main class="page narrow">
 	<div class="title-row"><span class="title-icon"><Icon name="people" size={26} /></span><h1>Pessoas</h1></div>
-	<p class="muted">Só quem está nesta lista consegue entrar.</p>
+	<p class="muted">Só quem está nesta lista consegue entrar. Toque na foto de alguém para trocar.</p>
 	{#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
 	{#if form?.added}<p role="status">{form.added} foi adicionado(a). Já pode entrar com o e-mail.</p>{/if}
 
 	<ul class="list">
 		{#each data.users as u (u.id)}
 			<li class="card">
-				<form method="POST" action="?/editar" use:enhance={() => async ({ update }) => update({ reset: false })} class="row">
-					<input type="hidden" name="id" value={u.id} />
-					<Avatar name={u.name} color={u.color} size={36} />
+				<div class="head">
+					<AvatarEditor userId={u.id} name={u.name} color={u.color} photo={u.photo} size={60} compact />
 					<div class="grow">
-						<input name="name" value={u.name} aria-label="Nome" />
-						<p class="small muted">{u.email}{u.is_admin ? ' · admin' : ''} · {u.items} itens</p>
+						<strong class="nm">{u.name}</strong>
+						<p class="small muted">{u.email}{u.is_admin ? ' · admin' : ''} · {u.items} {u.items === 1 ? 'item' : 'itens'}</p>
 					</div>
+				</div>
+				<form method="POST" action="?/editar" use:enhance={() => async ({ update }) => update({ reset: false })} class="edit">
+					<input type="hidden" name="id" value={u.id} />
+					<input name="name" value={u.name} aria-label="Nome de {u.name}" />
 					<input type="color" name="color" value={u.color} aria-label="Cor de {u.name}" />
 					<button class="btn small secondary">Salvar</button>
 				</form>
@@ -49,7 +52,12 @@
 
 <style>
 	.list { list-style: none; padding: 0; display: grid; gap: 10px; margin: 16px 0; }
-	.row { display: flex; gap: 10px; align-items: center; }
+	.list li { display: grid; gap: 10px; }
+	.head { display: flex; gap: 14px; align-items: center; }
+	.head :global(.editor) { flex: none; }
+	.nm { font: 600 1.15rem var(--font-display); }
+	.edit { display: flex; gap: 8px; align-items: center; }
+	.edit input:not([type='color']) { flex: 1; min-width: 0; }
 	.grow { flex: 1; min-width: 0; }
 	.grow p { margin: 4px 0 0; overflow-wrap: anywhere; }
 	input[type='color'] { width: 44px; height: 44px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); flex: none; }

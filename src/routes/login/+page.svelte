@@ -1,14 +1,18 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import Icon from '$lib/components/Icon.svelte';
-	let { form } = $props();
-	let busy = $state(false);
-	const step = $derived(form?.step ?? 'email');
-	const submit = () => {
-		busy = true;
+	import Avatar from '$lib/components/Avatar.svelte';
+	let { data, form } = $props();
+	let busy = $state<string | null>(null);
+	let back = $state(false);
+	const step = $derived(back ? 'pick' : (form?.step ?? 'pick'));
+	const chosen = $derived(form && 'userId' in form ? data.persons.find((p) => p.id === form.userId) : undefined);
+	const submit = (key: string) => () => {
+		busy = key;
+		back = false;
 		return async ({ update }: { update: () => Promise<void> }) => {
 			await update();
-			busy = false;
+			busy = null;
 		};
 	};
 </script>
@@ -26,31 +30,51 @@
 	</div>
 	<p class="intro">Fotos, vídeos e lugares de todo mundo, num diário só.</p>
 
-	<div class="card form-card">
-		{#if step === 'email'}
-			<form method="POST" action="?/enviar" use:enhance={submit}>
-				<label for="email">Seu e-mail</label>
-				<input id="email" name="email" type="email" autocomplete="email" inputmode="email" required value={form?.email ?? ''} />
-				{#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
-				<button class="btn sun block" disabled={busy}>{busy ? 'Enviando…' : 'Receber código por e-mail'}</button>
-			</form>
-		{:else}
-			<form method="POST" action="?/verificar" use:enhance={submit}>
-				<p>Enviamos um código de 6 números para <strong>{form?.email}</strong>.</p>
-				<input type="hidden" name="email" value={form?.email} />
+	{#if step === 'pick'}
+		<section class="form-card">
+			<h2 class="who-title">Quem é você?</h2>
+			{#if form?.error}<p class="error center" role="alert">{form.error}</p>{/if}
+			<ul class="people">
+				{#each data.persons as p, i (p.id)}
+					<li style:animation-delay="{150 + i * 60}ms">
+						<form method="POST" action="?/enviar" use:enhance={submit(p.id)}>
+							<input type="hidden" name="userId" value={p.id} />
+							<button class="person" disabled={busy !== null} aria-busy={busy === p.id} style:--c={p.color}>
+								<Avatar name={p.name} color={p.color} photo={p.photo} size={64} />
+								<span class="pname">{p.name}</span>
+								{#if busy === p.id}<span class="sending small">Enviando…</span>{/if}
+							</button>
+						</form>
+					</li>
+				{/each}
+			</ul>
+			<p class="muted small center">Vamos mandar um código para o seu e-mail.</p>
+		</section>
+	{:else}
+		<div class="card form-card">
+			<div class="chosen">
+				{#if chosen}<Avatar name={chosen.name} color={chosen.color} photo={chosen.photo} size={56} />{/if}
+				<p>Oi{chosen ? `, ${chosen.name}` : ''}! Enviamos um código de 6 números para <strong>{form?.maskedEmail}</strong>.</p>
+			</div>
+			<form method="POST" action="?/verificar" use:enhance={submit('code')}>
+				<input type="hidden" name="userId" value={form?.userId} />
+				<input type="hidden" name="maskedEmail" value={form?.maskedEmail} />
 				<label for="code">Código</label>
 				<!-- svelte-ignore a11y_autofocus -->
 				<input id="code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*" maxlength="7" required autofocus class="code" />
 				{#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
-				<button class="btn sun block" disabled={busy}>{busy ? 'Embarcando…' : 'Embarcar'}</button>
+				<button class="btn sun block" disabled={busy !== null}>{busy === 'code' ? 'Embarcando…' : 'Embarcar'}</button>
 			</form>
-			<form method="POST" action="?/enviar" use:enhance={submit} class="resend">
-				<input type="hidden" name="email" value={form?.email} />
-				<button class="link">Não chegou? Enviar de novo</button>
+			<div class="resend">
+				<form method="POST" action="?/enviar" use:enhance={submit('resend')}>
+					<input type="hidden" name="userId" value={form?.userId} />
+					<button class="link">Não chegou? Enviar de novo</button>
+				</form>
 				<p class="muted small">Olhe também a caixa de spam.</p>
-			</form>
-		{/if}
-	</div>
+				<button class="link" onclick={() => (back = true)}>Não é você? Trocar</button>
+			</div>
+		</div>
+	{/if}
 </main>
 
 <style>
@@ -74,10 +98,29 @@
 	.clouds span:nth-child(3) { bottom: 26px; left: 25%; width: 50px; animation-duration: 10s; }
 	@keyframes drift { 50% { transform: translateX(24px); } }
 	.intro { text-align: center; margin: 18px 8px; font-weight: 700; color: var(--muted); }
-	form { display: grid; gap: 12px; }
+	.form-card form { display: grid; gap: 12px; }
+	.who-title { text-align: center; margin: 4px 0 14px; }
+	.center { text-align: center; }
+	.people { list-style: none; padding: 0; margin: 0 0 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 12px; }
+	.people li { animation: pop-in 0.45s var(--bounce) both; }
+	.people form { display: block; }
+	.person {
+		width: 100%; display: grid; justify-items: center; gap: 6px; padding: 14px 6px 10px; cursor: pointer;
+		background: var(--surface); border: 2.5px solid var(--line); border-radius: 20px; box-shadow: 0 4px 0 var(--shadow);
+		transition: transform 0.15s var(--bounce), border-color 0.15s;
+	}
+	.person:hover:not(:disabled) { transform: translateY(-3px) rotate(-1.5deg); border-color: var(--c); }
+	.person:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--shadow); }
+	.person:disabled { cursor: default; }
+	.person[aria-busy='true'] { border-color: var(--c); }
+	.person[aria-busy='true'] :global(.avatar) { animation: bob 0.6s ease-in-out infinite; }
+	.pname { font: 600 1.05rem var(--font-display); }
+	.sending { color: var(--muted); font-weight: 800; margin-top: -4px; }
+	.chosen { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+	.chosen p { margin: 0; }
 	label { font-weight: 800; font-family: var(--font-display); }
 	.code { font-size: 1.7rem; letter-spacing: 0.35em; text-align: center; font-family: var(--font-display); }
-	.resend { margin-top: 14px; text-align: center; gap: 0; }
+	.resend { margin-top: 14px; text-align: center; display: grid; justify-items: center; }
 	.link { background: none; border: 0; color: var(--leaf); font-weight: 800; text-decoration: underline; cursor: pointer; min-height: 44px; }
 	p { margin: 0; }
 	.form-card { animation: pop-in 0.5s 0.15s var(--bounce) both; }

@@ -51,7 +51,7 @@
 	</figure>
 
 	<header class="who">
-		<Avatar name={it.name} color={it.color} size={36} />
+		<Avatar name={it.name} color={it.color} photo={it.photo} size={44} />
 		<div>
 			<strong>{it.name}</strong>
 			<p class="small muted"><span class="cap">{fmtLongDay(dayKey(it.at))}</span>, {fmtTime(it.at)}{it.takenAtSource === 'upload' ? ' (hora do envio)' : ''}</p>

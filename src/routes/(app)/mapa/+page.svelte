@@ -95,7 +95,7 @@
 
 		for (const l of latest) {
 			if (person !== 'all' && l.userId !== person) continue;
-			const node = personElement({ name: l.name, color: l.color, ago: fmtAgo(l.at), fresh: Date.now() - Date.parse(l.at) < 15 * 60_000 });
+			const node = personElement({ name: l.name, color: l.color, photo: l.photo, ago: fmtAgo(l.at), fresh: Date.now() - Date.parse(l.at) < 15 * 60_000 });
 			markers.push(new ml.Marker({ element: node, anchor: 'bottom' }).setLngLat([l.lng, l.lat]).addTo(map));
 			if (day === 'all' || day === today) bounds.extend([l.lng, l.lat]);
 		}

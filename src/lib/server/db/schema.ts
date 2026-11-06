@@ -19,6 +19,7 @@ export const users = pgTable('users', {
 	name: text('name').notNull(),
 	email: text('email').notNull().unique(), // always lowercase
 	color: text('color').notNull().default('#2F5A40'),
+	avatarKey: text('avatar_key'), // R2 key of the profile photo (avatars/<userId>/<random>.webp)
 	isAdmin: boolean('is_admin').notNull().default(false),
 	createdAt: createdAt()
 });

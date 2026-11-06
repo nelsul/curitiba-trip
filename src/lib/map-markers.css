@@ -46,6 +46,7 @@
 	display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: #fff;
 	font: 600 14px 'Fredoka', system-ui, sans-serif; border: 3.5px solid #fff; box-shadow: 0 3px 0 rgb(0 0 0 / 0.2); opacity: 0.8;
 }
+img.mk-av { object-fit: cover; padding: 0; background: #e9e0bf; }
 .mk-person-root.fresh .mk-av { opacity: 1; animation: mk-glow 2s ease-out infinite; }
 .mk-tag {
 	order: -1; background: #fffcf0; color: #5a4530; font: 800 11px 'Nunito', system-ui, sans-serif; padding: 2px 8px;

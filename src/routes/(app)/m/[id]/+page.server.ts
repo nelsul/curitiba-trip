@@ -10,7 +10,7 @@ import type { Actions, PageServerLoad } from './$types';
 async function getMedia(id: string) {
 	if (!/^[0-9a-f-]{36}$/.test(id)) error(404, 'Não encontrado');
 	const [row] = await db()
-		.select({ m: media, name: users.name, color: users.color })
+		.select({ m: media, name: users.name, color: users.color, avatarKey: users.avatarKey })
 		.from(media)
 		.innerJoin(users, eq(users.id, media.userId))
 		.where(eq(media.id, id));
@@ -20,13 +20,14 @@ async function getMedia(id: string) {
 
 export const load: PageServerLoad = async ({ params, depends }) => {
 	depends('app:media');
-	const { m, name, color } = await getMedia(params.id);
-	const [display, video, poster, original, comments] = await Promise.all([
+	const { m, name, color, avatarKey } = await getMedia(params.id);
+	const [display, video, poster, original, comments, photo] = await Promise.all([
 		mediaUrl(m.displayKey),
 		mediaUrl(m.videoKey),
 		mediaUrl(m.posterKey),
 		mediaUrl(m.originalKey, m.originalName),
-		listComments({ mediaId: m.id })
+		listComments({ mediaId: m.id }),
+		mediaUrl(avatarKey)
 	]);
 	return {
 		item: {
@@ -34,6 +35,7 @@ export const load: PageServerLoad = async ({ params, depends }) => {
 			userId: m.userId,
 			name,
 			color,
+			photo,
 			kind: m.kind,
 			status: m.status,
 			error: m.error,

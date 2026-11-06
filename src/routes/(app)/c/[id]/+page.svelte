@@ -17,7 +17,7 @@
 <main class="page narrow">
 	<a href="/" class="back btn small secondary">← Diário</a>
 	<header class="who">
-		<Avatar name={it.name} color={it.color} size={36} />
+		<Avatar name={it.name} color={it.color} photo={it.photo} size={44} />
 		<div>
 			<strong>{it.name}</strong> fez check-in
 			<p class="small muted"><span class="cap">{fmtLongDay(dayKey(it.at))}</span>, {fmtTime(it.at)}</p>

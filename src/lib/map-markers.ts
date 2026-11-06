@@ -36,12 +36,12 @@ export function polaroidElement(o: { id: string; href: string; thumb: string | n
 	return root;
 }
 
-export function personElement(o: { name: string; color: string; ago: string; fresh: boolean }) {
+export function personElement(o: { name: string; color: string; photo?: string | null; ago: string; fresh: boolean }) {
 	const root = document.createElement('div');
 	root.className = `mk-person-root${o.fresh ? ' fresh' : ''}`;
 	root.setAttribute('role', 'img');
 	root.setAttribute('aria-label', `${o.name}, ${o.ago}`);
-	root.innerHTML = `<span class="mk-person"><span class="mk-tag">${esc(o.name)} · ${esc(o.ago)}</span><span class="mk-av" style="background:${o.color}">${esc(initials(o.name))}</span></span>`;
+	root.innerHTML = `<span class="mk-person"><span class="mk-tag">${esc(o.name)} · ${esc(o.ago)}</span>${o.photo ? `<img class="mk-av" src="${esc(o.photo)}" alt="" style="border-color:${o.color}">` : `<span class="mk-av" style="background:${o.color}">${esc(initials(o.name))}</span>`}</span>`;
 	return root;
 }
 

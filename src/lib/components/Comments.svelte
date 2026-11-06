@@ -4,7 +4,7 @@
 	import Icon from './Icon.svelte';
 	import { fmtAgo } from '$lib/format';
 
-	type C = { id: string; body: string; at: string; userId: string; name: string; color: string };
+	type C = { id: string; body: string; at: string; userId: string; name: string; color: string; photo: string | null };
 	let { comments, meId, error = '' }: { comments: C[]; meId: string; error?: string } = $props();
 	let body = $state('');
 	let busy = $state(false);
@@ -16,7 +16,7 @@
 	<ul>
 		{#each comments as c (c.id)}
 			<li>
-				<Avatar name={c.name} color={c.color} size={30} />
+				<Avatar name={c.name} color={c.color} photo={c.photo} size={34} />
 				<div class="say">
 					<p class="meta"><strong>{c.name}</strong> <span class="muted small">{fmtAgo(c.at)}</span></p>
 					<p class="text">{c.body}</p>

@@ -27,7 +27,7 @@
 		<button class="chip" aria-pressed={person === 'all'} onclick={() => (person = 'all')}><Icon name="people" size={16} /> Todo mundo</button>
 		{#each persons as p}
 			<button class="chip person" aria-pressed={person === p.id} onclick={() => (person = person === p.id ? 'all' : p.id)}>
-				<Avatar name={p.name} color={p.color} size={22} /> {p.name}
+				<Avatar name={p.name} color={p.color} photo={p.photo} size={24} /> {p.name}
 			</button>
 		{/each}
 	</div>

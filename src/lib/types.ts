@@ -1,4 +1,4 @@
-export type Person = { id: string; name: string; color: string };
+export type Person = { id: string; name: string; color: string; photo: string | null };
 
 export type FeedMedia = {
 	type: 'media';

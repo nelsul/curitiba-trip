@@ -5,7 +5,11 @@ import { dayKey } from '$lib/format';
 import type { FeedCheckin, FeedItem, FeedMedia, Person } from '$lib/types';
 
 export async function people(): Promise<Person[]> {
-	return db().select({ id: users.id, name: users.name, color: users.color }).from(users).orderBy(asc(users.name));
+	const rows = await db()
+		.select({ id: users.id, name: users.name, color: users.color, avatarKey: users.avatarKey })
+		.from(users)
+		.orderBy(asc(users.name));
+	return Promise.all(rows.map(async ({ avatarKey, ...u }) => ({ ...u, photo: await mediaUrl(avatarKey) })));
 }
 
 export async function feed(): Promise<FeedItem[]> {

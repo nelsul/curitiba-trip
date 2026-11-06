@@ -3,14 +3,16 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { db, users } from '$lib/server/db';
 import { normalizeEmail } from '$lib/server/auth';
 import { clip } from '$lib/server/validate';
+import { mediaUrl, r2 } from '$lib/server/r2';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
-	const rows = await db().execute<{ id: string; name: string; email: string; color: string; is_admin: boolean; items: number }>(sql`
-		select u.id, u.name, u.email, u.color, u.is_admin,
+	const rows = await db().execute<{ id: string; name: string; email: string; color: string; is_admin: boolean; avatar_key: string | null; items: number }>(sql`
+		select u.id, u.name, u.email, u.color, u.is_admin, u.avatar_key,
 			(select count(*) from media m where m.user_id = u.id)::int + (select count(*) from checkins c where c.user_id = u.id)::int as items
 		from users u order by u.name`);
-	return { users: [...rows] };
+	return { users: await Promise.all([...rows].map(async ({ avatar_key, ...u }) => ({ ...u, photo: await mediaUrl(avatar_key) }))) };
 };
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -39,11 +41,16 @@ export const actions: Actions = {
 	remover: async ({ request, locals }) => {
 		const id = String((await request.formData()).get('id') ?? '');
 		if (id === locals.user!.id) return fail(400, { error: 'Você não pode se remover.' });
+		const [target] = await db().select({ avatarKey: users.avatarKey }).from(users).where(eq(users.id, id));
 		const [{ n }] = await db().execute<{ n: number }>(
 			sql`select ((select count(*) from media where user_id = ${id}) + (select count(*) from checkins where user_id = ${id}))::int as n`
 		);
 		if (n > 0) return fail(400, { error: 'Essa pessoa já enviou coisas; não dá para remover.' });
 		await db().delete(users).where(eq(users.id, id));
+		if (target?.avatarKey) {
+			const { s3, bucket } = r2();
+			await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: target.avatarKey })).catch(() => {});
+		}
 		return { removed: true };
 	}
 };
