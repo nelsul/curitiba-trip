@@ -42,3 +42,16 @@ backups/
 .vscode/
 .idea/
 .claude/settings.local.json
+
+# ── Android (Gradle) ──
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/
+android/keystore/
+android/keystore.properties
+*.jks
+*.keystore
+*.apk
+*.aab

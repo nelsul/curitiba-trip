@@ -1,0 +1,4 @@
+# Copy to local.properties (git-ignored). Android Studio fills sdk.dir by itself.
+sdk.dir=/Users/YOU/Library/Android/sdk
+# Point the debug app at your local web server (through adb reverse):
+# apiBaseUrl=http://127.0.0.1:5174   (after: adb reverse tcp:5174 tcp:5174)

@@ -1,4 +1,4 @@
-// Generates web/src/tokens.css and ios/CuritibaTrip/DesignSystem/Theme.swift from design/tokens.json.
+// Generates web/src/tokens.css, ios/CuritibaTrip/DesignSystem/Theme.swift and the Android Tokens.kt from design/tokens.json.
 // `--check` exits 1 if the generated files are out of date (used by CI).
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -47,9 +47,30 @@ enum FontFamily {
 }
 `;
 
+const kotlin = `// ${header}
+package com.nelsul.curitibatrip.ui.theme
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+
+object Palette {
+${Object.entries(t.color).map(([k, v]) => `\tval ${k} = Color(0xFF${v.slice(1).toUpperCase()})`).join('\n')}
+}
+
+object Radius {
+${Object.entries(t.radius).map(([k, v]) => `\tval ${k} = ${v}.dp`).join('\n')}
+}
+
+/** Height of the solid "chunky" shadow under cards, buttons and chips. */
+object Depth {
+${Object.entries(t.shadow).map(([k, v]) => `\tval ${k} = ${v}.dp`).join('\n')}
+}
+`;
+
 const targets = [
 	[join(root, 'web/src/tokens.css'), css],
-	[join(root, 'ios/CuritibaTrip/DesignSystem/Theme.swift'), swift]
+	[join(root, 'ios/CuritibaTrip/DesignSystem/Theme.swift'), swift],
+	[join(root, 'android/app/src/main/java/com/nelsul/curitibatrip/ui/theme/Tokens.kt'), kotlin]
 ];
 const check = process.argv.includes('--check');
 let stale = false;

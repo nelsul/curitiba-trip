@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The plane and the sun coin from design/app-icon.svg, scaled into the 72 dp visible area (×0.0703, offset 18). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+	android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+	<group android:translateX="54" android:translateY="53.16" android:rotation="-8" android:scaleX="1.758" android:scaleY="1.758">
+		<group android:translateX="-12" android:translateY="-12">
+			<group android:rotation="90" android:pivotX="12" android:pivotY="12">
+				<path
+					android:fillColor="#FFF6DC" android:strokeColor="#FFF6DC" android:strokeWidth="0.6" android:strokeLineJoin="round"
+					android:pathData="M21 15.5 13.5 11V5.5a1.5 1.5 0 0 0-3 0V11L3 15.5v2l7.5-2.3V19L8 20.7V22l4-1 4 1v-1.3L13.5 19v-3.8l7.5 2.3z" />
+			</group>
+		</group>
+	</group>
+	<path android:fillColor="#F6D36B" android:strokeColor="#C9A43C" android:strokeWidth="0.7"
+		android:pathData="M70.17,72m-6.47,0a6.47,6.47 0,1 1,12.94 0a6.47,6.47 0,1 1,-12.94 0" />
+	<group android:translateX="70.17" android:translateY="72" android:scaleX="0.3656" android:scaleY="0.3656">
+		<group android:translateX="-12" android:translateY="-12">
+			<path android:strokeColor="#4A3410" android:strokeWidth="2.4" android:strokeLineCap="round" android:strokeLineJoin="round"
+				android:pathData="M5 19C5 10 11 4 20 4c0 9-6 15-15 15zm0 0 8-8" />
+		</group>
+	</group>
+</vector>
