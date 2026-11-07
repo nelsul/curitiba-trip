@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 @main
 struct CuritibaTripApp: App {
@@ -44,6 +45,17 @@ struct RootView: View {
 
 /// iOS wakes the app when background uploads finish; the uploader reconnects and calls the handler when done.
 final class AppDelegate: NSObject, UIApplicationDelegate {
+	func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+		MainActor.assumeIsolated {
+			// must be registered before launch finishes
+			Notifier.registerBackgroundTask()
+			UNUserNotificationCenter.current().delegate = Notifier.shared
+			// also runs when iOS relaunches the app in the background for a location event
+			LocationSharing.shared.restore()
+		}
+		return true
+	}
+
 	func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
 		guard identifier == Uploader.sessionId else { return completionHandler() }
 		MainActor.assumeIsolated {

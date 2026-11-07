@@ -79,6 +79,9 @@ struct MapaView: View {
 		.sheet(isPresented: $checkingIn) { CheckinSheet { lat, lng in await checkedIn(lat, lng) } }
 		.task { await load() }
 		.task { await pollPeople() }
+		// "Chegou em …? Fazer check-in" notification
+		.onAppear { if Notifier.shared.openCheckin { Notifier.shared.openCheckin = false; checkingIn = true } }
+		.onChange(of: Notifier.shared.openCheckin) { _, on in if on { Notifier.shared.openCheckin = false; checkingIn = true } }
 		.onChange(of: day) { fitToken += 1 }
 		.onChange(of: person) { fitToken += 1 }
 		.onChange(of: app.feedVersion) { Task { await load(fit: false) } }
