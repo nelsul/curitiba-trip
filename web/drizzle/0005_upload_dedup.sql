@@ -1,0 +1,2 @@
+ALTER TABLE "media" ADD COLUMN "client_asset_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "media_user_asset_uq" ON "media" USING btree ("user_id","client_asset_id") WHERE client_asset_id is not null;

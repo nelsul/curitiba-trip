@@ -1,17 +1,19 @@
 import { error, json } from '@sveltejs/kit';
-import { and, eq } from 'drizzle-orm';
-import { checkins, db } from '$lib/server/db';
-import { deleteObject } from '$lib/server/images';
+import { checkinDetail, deleteCheckin, updateCheckinNote } from '$lib/server/details';
+import { json as body } from '$lib/server/validate';
 import type { RequestHandler } from './$types';
 
-/** Only the person who checked in can delete it (comments and likes go with it). */
+export const GET: RequestHandler = async ({ params }) => json(await checkinDetail(params.id));
+
+/** Owner: `{ note }` */
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
+	const { note } = await body<{ note?: string }>(request);
+	await updateCheckinNote(params.id, locals.user!.id, note ?? '');
+	return json((await checkinDetail(params.id)).item);
+};
+
+/** Only the person who checked in can delete it (comments, likes and the map picture go with it). */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!/^[0-9a-f-]{36}$/.test(params.id)) error(404, 'Não encontrado');
-	const [c] = await db()
-		.delete(checkins)
-		.where(and(eq(checkins.id, params.id), eq(checkins.userId, locals.user!.id)))
-		.returning({ snapshotKey: checkins.snapshotKey });
-	if (!c) error(403, 'Só quem fez o check-in pode apagar.');
-	await deleteObject(c.snapshotKey);
+	if (!(await deleteCheckin(params.id, locals.user!.id))) error(403, 'Só quem fez o check-in pode apagar.');
 	return json({ ok: true });
 };
