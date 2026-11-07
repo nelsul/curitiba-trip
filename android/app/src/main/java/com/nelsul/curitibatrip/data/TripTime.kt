@@ -35,5 +35,9 @@ object TripTime {
 		}
 	}
 
+	/** "2026-11-13" → "sex" */
+	fun shortWeekday(key: String): String =
+		runCatching { LocalDate.parse(key).format(DateTimeFormatter.ofPattern("EEE", locale)).removeSuffix(".") }.getOrDefault("")
+
 	fun dayKey(iso: String): String = instant(iso)?.atZone(zone)?.toLocalDate()?.toString() ?: ""
 }

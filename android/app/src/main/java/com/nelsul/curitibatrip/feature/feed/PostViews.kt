@@ -61,6 +61,7 @@ import com.nelsul.curitibatrip.data.FeedMedia
 import com.nelsul.curitibatrip.data.LikeBody
 import com.nelsul.curitibatrip.data.LikeResponse
 import com.nelsul.curitibatrip.data.Person
+import com.nelsul.curitibatrip.data.Route
 import com.nelsul.curitibatrip.data.TripTime
 import com.nelsul.curitibatrip.ui.components.Avatar
 import com.nelsul.curitibatrip.ui.components.HeartShape
@@ -77,8 +78,8 @@ import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Pages that aren't built yet open on the website (`open("/m/<id>")`). */
-typealias Opener = (String) -> Unit
+/** Opens a photo/video or check-in page. */
+typealias Opener = (Route) -> Unit
 
 private fun Modifier.postFrame() = this
 	.fillMaxWidth()
@@ -139,7 +140,7 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 				MediaSlide(items[i], Modifier.pointerInput(items[i].id) {
 					detectTapGestures(
 						onDoubleTap = { if (!items[i].isVideo) { bigHeart++; setLike(items[i], true) } },
-						onTap = { open("/m/${items[i].id}") },
+						onTap = { open(Route.Media(items[i].id)) },
 					)
 				})
 			}
@@ -147,8 +148,8 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 		}
 		Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
 			LikeButton(likersOf(current).contains(app.me?.id)) { setLike(current, it) }
-			Icon(IconName.Chat, Palette.ink, Modifier.pressable({ open("/m/${current.id}") }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 26.dp)
-			Icon(IconName.Expand, Palette.ink, Modifier.pressable({ open("/m/${current.id}") }).padding(10.dp).semantics { contentDescription = "Abrir em tela cheia" }, size = 24.dp)
+			Icon(IconName.Chat, Palette.ink, Modifier.pressable({ open(Route.Media(current.id)) }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 26.dp)
+			Icon(IconName.Expand, Palette.ink, Modifier.pressable({ open(Route.Media(current.id)) }).padding(10.dp).semantics { contentDescription = "Abrir em tela cheia" }, size = 24.dp)
 			Spacer(Modifier.weight(1f))
 			if (items.size > 1) Dots(items.size, pager.currentPage)
 			Spacer(Modifier.width(92.dp))
@@ -158,7 +159,7 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 			if (current.caption.isNotEmpty()) Caption(person?.name ?: "", current.caption)
 			if (current.comments > 0) Text(
 				if (current.comments == 1) "Ver 1 comentário" else "Ver os ${current.comments} comentários",
-				style = body(14, FontWeight.Bold), color = Palette.muted, modifier = Modifier.pressable({ open("/m/${current.id}") }),
+				style = body(14, FontWeight.Bold), color = Palette.muted, modifier = Modifier.pressable({ open(Route.Media(current.id)) }),
 			)
 		}
 	}
@@ -214,7 +215,7 @@ fun CheckinPost(checkin: FeedCheckin, person: Person?, open: Opener) {
 	}
 	Column(Modifier.popIn().postFrame()) {
 		PostHeader(person, "fez check-in · ${TripTime.time(checkin.at)}")
-		Box(Modifier.fillMaxWidth().aspectRatio(3f / 2f).clipToBounds().pressable({ open("/c/${checkin.id}") }).semantics { contentDescription = "Abrir check-in" }) {
+		Box(Modifier.fillMaxWidth().aspectRatio(3f / 2f).clipToBounds().pressable({ open(Route.Checkin(checkin.id)) }).semantics { contentDescription = "Abrir check-in" }) {
 			if (checkin.snapshot != null) {
 				AsyncImage(checkin.snapshot, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
 			} else {
@@ -228,7 +229,7 @@ fun CheckinPost(checkin: FeedCheckin, person: Person?, open: Opener) {
 		}
 		Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
 			LikeButton(current.contains(app.me?.id)) { setLike(it) }
-			Icon(IconName.Chat, Palette.ink, Modifier.pressable({ open("/c/${checkin.id}") }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 26.dp)
+			Icon(IconName.Chat, Palette.ink, Modifier.pressable({ open(Route.Checkin(checkin.id)) }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 26.dp)
 		}
 		Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 			LikedBy(current)

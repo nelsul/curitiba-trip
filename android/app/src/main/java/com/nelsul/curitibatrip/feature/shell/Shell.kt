@@ -2,7 +2,21 @@ package com.nelsul.curitibatrip.feature.shell
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
+import com.nelsul.curitibatrip.data.Route
+import com.nelsul.curitibatrip.feature.detail.CheckinDetailScreen
+import com.nelsul.curitibatrip.feature.detail.MediaDetailScreen
+import com.nelsul.curitibatrip.feature.more.MoreScreen
+import com.nelsul.curitibatrip.feature.roteiro.RoteiroScreen
+import com.nelsul.curitibatrip.ui.components.DottedBackground
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -54,6 +68,13 @@ fun Shell() {
 	var tab by rememberSaveable { mutableStateOf(Tab.Diario) }
 	val context = LocalContext.current
 	val openWeb: (String) -> Unit = { path -> context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Api.base + path))) }
+	// each tab keeps its own stack of pages (photo/check-in) on top of its main screen
+	val stacks = remember { Tab.entries.associateWith { mutableStateListOf<Route>() } }
+	val stack = stacks.getValue(tab)
+	val open: (Route) -> Unit = { stack.add(it) }
+	val back: () -> Unit = { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
+	BackHandler(enabled = stack.isNotEmpty(), onBack = back)
+	BackHandler(enabled = stack.isEmpty() && tab != Tab.Diario) { tab = Tab.Diario }
 	// the dock steps aside while the keyboard is up, so text fields stay visible
 	val keyboardUp = WindowInsets.isImeVisible
 
@@ -61,9 +82,25 @@ fun Shell() {
 		Column(Modifier.fillMaxSize()) {
 			Box(Modifier.statusBarsPadding()) { TopBar() }
 			Box(Modifier.weight(1f).fillMaxWidth()) {
+				// the tab's main screen stays alive under its pages, so it keeps its scroll position
 				when (tab) {
-					Tab.Diario -> FeedScreen(DockSpace, openWeb)
-					else -> ComingSoon(tab, when (tab) { Tab.Mapa -> "/mapa"; Tab.Enviar -> "/enviar"; Tab.Roteiro -> "/roteiro"; else -> "/mais" }, openWeb)
+					Tab.Diario -> FeedScreen(DockSpace, open)
+					Tab.Roteiro -> RoteiroScreen(DockSpace)
+					Tab.Mais -> MoreScreen(DockSpace)
+					else -> ComingSoon(tab, if (tab == Tab.Mapa) "/mapa" else "/enviar", openWeb)
+				}
+				AnimatedContent(
+					stack.lastOrNull(),
+					transitionSpec = { (slideInHorizontally { it } togetherWith slideOutHorizontally { it }) },
+					label = "page",
+				) { route ->
+					if (route != null) Box(Modifier.fillMaxSize().imePadding()) {
+						DottedBackground()
+						when (route) {
+							is Route.Media -> MediaDetailScreen(route.id, DockSpace, back)
+							is Route.Checkin -> CheckinDetailScreen(route.id, DockSpace, back)
+						}
+					}
 				}
 			}
 		}
@@ -72,7 +109,7 @@ fun Shell() {
 			Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
 			enter = slideInVertically { it } + fadeIn(),
 			exit = slideOutVertically { it } + fadeOut(),
-		) { Dock(tab, { tab = it }) }
+		) { Dock(tab, { if (it == tab) stack.clear() else tab = it }) }
 	}
 }
 

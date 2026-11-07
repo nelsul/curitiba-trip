@@ -64,3 +64,54 @@ data class Post(
 @Serializable data class LikeBody(val mediaId: String? = null, val checkinId: String? = null, val liked: Boolean)
 @Serializable data class LikeResponse(val likers: List<String>)
 @Serializable data class Ok(val ok: Boolean? = null)
+
+// ── Details and comments ──
+
+@Serializable
+data class Comment(val id: String, val body: String, val at: String, val userId: String, val name: String, val color: String, val photo: String? = null)
+
+@Serializable
+data class MediaItem(
+	val id: String,
+	val userId: String,
+	val kind: String,
+	val status: String,
+	val at: String,
+	val takenAtSource: String? = null,
+	val lat: Double? = null,
+	val lng: Double? = null,
+	val locationSource: String? = null,
+	val width: Int? = null,
+	val height: Int? = null,
+	val durationS: Double? = null,
+	val sizeBytes: Long = 0,
+	val originalName: String = "",
+	val caption: String = "",
+	val display: String? = null,
+	val medium: String? = null,
+	val video: String? = null,
+	val poster: String? = null,
+	val original: String? = null,
+	val mimeType: String? = null,
+) { val isVideo get() = kind == "video" }
+
+@Serializable data class MediaDetail(val item: MediaItem, val comments: List<Comment> = emptyList(), val likers: List<String> = emptyList())
+
+@Serializable
+data class CheckinItem(val id: String, val userId: String, val snapshot: String? = null, val lat: Double, val lng: Double, val note: String = "", val at: String)
+
+@Serializable data class CheckinDetail(val item: CheckinItem, val comments: List<Comment> = emptyList(), val likers: List<String> = emptyList())
+
+// ── Itinerary ──
+
+@Serializable
+data class Itinerary(val transport: Map<String, Transport> = emptyMap(), val days: List<Day> = emptyList()) {
+	@Serializable data class Transport(val label: String)
+	@Serializable data class Place(val id: String, val name: String, val lat: Double, val lng: Double, val hours: String = "", val mapsUrl: String, val uberUrl: String)
+	@Serializable data class Stop(val time: String, val transport: String, val note: String = "", val title: String, val place: Place? = null)
+	@Serializable data class Day(val date: String, val title: String, val who: String = "", val lead: String = "", val wedding: Boolean = false, val routeUrl: String? = null, val stops: List<Stop> = emptyList())
+}
+
+// ── Devices ──
+
+@Serializable data class Device(val id: String, val deviceName: String? = null, val lastUsedAt: String? = null, val createdAt: String? = null, val current: Boolean = false)

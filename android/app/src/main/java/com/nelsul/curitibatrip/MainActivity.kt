@@ -40,8 +40,9 @@ class MainActivity : ComponentActivity() {
 				LaunchedEffect(Unit) { app.restore() }
 				Box(Modifier.fillMaxSize()) {
 					DottedBackground()
-					Crossfade(app.phase, label = "phase") { phase ->
-						when (phase) {
+					// keyed by the kind of phase, so refreshing who's signed in (new photo) doesn't rebuild the screens
+					Crossfade(app.phase::class, label = "phase") { _ ->
+						when (val phase = app.phase) {
 							AppState.Phase.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Palette.sea) }
 							AppState.Phase.SignedOut -> LoginScreen()
 							is AppState.Phase.SignedIn -> Shell()
