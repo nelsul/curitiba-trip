@@ -1,5 +1,5 @@
 {
-  "name": "viagem",
+  "name": "curitiba-trip-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "db:generate": "drizzle-kit generate",
-    "worker": "node --experimental-strip-types worker/main.ts"
+    "worker": "node --experimental-strip-types worker/main.ts",
+    "dev:db": "docker compose -f docker-compose.dev.yml up -d",
+    "db:migrate": "node --env-file=.env scripts/migrate.mjs",
+    "user:add": "node --env-file=.env scripts/user.mjs add"
   },
   "engines": {
     "node": ">=22.18"

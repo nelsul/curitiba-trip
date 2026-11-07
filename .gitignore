@@ -1,7 +1,37 @@
-node_modules
-.svelte-kit
-build
-build-worker
+# ── Secrets: never commit these (server, R2, email, database passwords) ──
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+GoogleService-Info.plist
+
+# ── Web (SvelteKit) ──
+node_modules/
+.svelte-kit/
+build/
+build-worker/
+
+# ── iOS (Xcode / SwiftPM) ──
+xcuserdata/
+DerivedData/
+*.xcuserstate
+.build/
+.swiftpm/
+*.ipa
+*.dSYM.zip
+Config/Secrets.xcconfig
+
+# ── Logs, database dumps (migrations in web/drizzle/*.sql ARE committed) ──
+*.log
+*.dump
+*.sql.gz
+backups/
+
+# ── OS / editors ──
+.DS_Store
+.vscode/
+.idea/
+.claude/settings.local.json

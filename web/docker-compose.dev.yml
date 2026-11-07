@@ -1,0 +1,16 @@
+# Local Postgres for development: `npm run dev:db` (data stays in a Docker volume on your machine).
+# Not used in production. Matches DATABASE_URL in .env.example.
+name: curitiba-trip-dev
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: viagem
+      POSTGRES_USER: viagem
+      POSTGRES_PASSWORD: viagem
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [devdb:/var/lib/postgresql/data]
+
+volumes:
+  devdb: {}
