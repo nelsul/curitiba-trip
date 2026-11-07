@@ -29,6 +29,7 @@ DerivedData/
 *.ipa
 *.dSYM.zip
 Config/Secrets.xcconfig
+ios/Config/Local.xcconfig
 
 # ── Logs, database dumps (migrations in web/drizzle/*.sql ARE committed) ──
 *.log
