@@ -2,7 +2,7 @@ import { env } from '$env/dynamic/private';
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { Cookies } from '@sveltejs/kit';
 import { and, desc, eq, gt, isNull } from 'drizzle-orm';
-import { db, loginCodes, sessions, users, type User } from './db';
+import { db, loginCodes, sessions, users, type SessionKind, type User } from './db';
 import { sendLoginCode } from './mail';
 
 export const SESSION_COOKIE = 'sessao';
@@ -11,7 +11,7 @@ const CODE_TTL_MIN = 10;
 const CODE_MAX_ATTEMPTS = 5;
 const CODE_RESEND_SECONDS = 60;
 
-const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 const hmacCode = (email: string, code: string) =>
 	createHmac('sha256', env.AUTH_SECRET || 'dev-secret').update(`${email}:${code}`).digest('hex');
 
@@ -63,7 +63,10 @@ export async function requestCode(userId: string): Promise<SendResult> {
 
 export type VerifyResult = { ok: true; token: string } | { ok: false; error: string };
 
-export async function verifyCode(userId: string, rawCode: string): Promise<VerifyResult> {
+/** Where the new session will live: a browser cookie, or a Bearer token held by the iOS app. */
+export type SessionOptions = { kind?: SessionKind; deviceName?: string | null };
+
+export async function verifyCode(userId: string, rawCode: string, opts: SessionOptions = {}): Promise<VerifyResult> {
 	const picked = await userById(userId);
 	if (!picked) return { ok: false, error: 'Pessoa não encontrada. Recarregue a página.' };
 	const email = picked.email;
@@ -87,20 +90,32 @@ export async function verifyCode(userId: string, rawCode: string): Promise<Verif
 	}
 
 	await db().update(loginCodes).set({ usedAt: new Date() }).where(eq(loginCodes.id, row.id));
-	const user = picked;
+	return { ok: true, token: await createSession(picked.id, opts) };
+}
 
+export async function createSession(userId: string, { kind = 'cookie', deviceName = null }: SessionOptions = {}) {
 	const token = randomBytes(32).toString('base64url');
 	await db()
 		.insert(sessions)
-		.values({ id: sha256(token), userId: user.id, expiresAt: new Date(Date.now() + SESSION_DAYS * 86_400_000) });
-	return { ok: true, token };
+		.values({
+			id: sha256(token),
+			userId,
+			kind,
+			deviceName: deviceName?.trim().slice(0, 60) || null,
+			lastUsedAt: new Date(),
+			expiresAt: new Date(Date.now() + SESSION_DAYS * 86_400_000)
+		});
+	return token;
 }
 
-export async function userFromToken(token: string | undefined): Promise<User | null> {
+export type AuthResult = { user: User; sessionId: string; kind: SessionKind };
+
+/** Resolves a cookie or Bearer token to its user. Sliding expiry; lastUsedAt is written at most hourly. */
+export async function authenticate(token: string | undefined | null): Promise<AuthResult | null> {
 	if (!token) return null;
 	const id = sha256(token);
 	const [row] = await db()
-		.select({ user: users, expiresAt: sessions.expiresAt })
+		.select({ user: users, expiresAt: sessions.expiresAt, kind: sessions.kind, lastUsedAt: sessions.lastUsedAt })
 		.from(sessions)
 		.innerJoin(users, eq(users.id, sessions.userId))
 		.where(eq(sessions.id, id));
@@ -110,14 +125,22 @@ export async function userFromToken(token: string | undefined): Promise<User | n
 		await db().delete(sessions).where(eq(sessions.id, id));
 		return null;
 	}
+	const patch: { expiresAt?: Date; lastUsedAt?: Date } = {};
 	// sliding expiration: refresh when less than half the lifetime is left
-	if (row.expiresAt.getTime() - now < (SESSION_DAYS / 2) * 86_400_000) {
-		await db()
-			.update(sessions)
-			.set({ expiresAt: new Date(now + SESSION_DAYS * 86_400_000) })
-			.where(eq(sessions.id, id));
-	}
-	return row.user;
+	if (row.expiresAt.getTime() - now < (SESSION_DAYS / 2) * 86_400_000) patch.expiresAt = new Date(now + SESSION_DAYS * 86_400_000);
+	if (!row.lastUsedAt || now - row.lastUsedAt.getTime() > 3600_000) patch.lastUsedAt = new Date(now);
+	if (patch.expiresAt || patch.lastUsedAt) await db().update(sessions).set(patch).where(eq(sessions.id, id));
+	return { user: row.user, sessionId: id, kind: row.kind };
+}
+
+/** `Authorization: Bearer <token>` → token (the iOS app); otherwise null. */
+export function bearerToken(header: string | null) {
+	const m = header?.match(/^Bearer\s+([A-Za-z0-9_-]{20,200})$/);
+	return m ? m[1] : null;
+}
+
+export async function revokeSession(sessionId: string) {
+	await db().delete(sessions).where(eq(sessions.id, sessionId));
 }
 
 export function setSessionCookie(cookies: Cookies, token: string) {
