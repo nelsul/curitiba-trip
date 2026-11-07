@@ -75,4 +75,8 @@ dependencies {
 	implementation(libs.okhttp)
 	implementation(libs.coil.compose)
 	implementation(libs.coil.network.okhttp)
+	implementation(libs.coil.video)
+	implementation(libs.androidx.work)
+	implementation(libs.androidx.exifinterface)
+	implementation(libs.play.location)
 }

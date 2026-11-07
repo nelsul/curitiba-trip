@@ -39,5 +39,8 @@ object TripTime {
 	fun shortWeekday(key: String): String =
 		runCatching { LocalDate.parse(key).format(DateTimeFormatter.ofPattern("EEE", locale)).removeSuffix(".") }.getOrDefault("")
 
+	val tripDays = listOf("2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-18")
+	const val WEDDING_DAY = "2026-11-14"
+
 	fun dayKey(iso: String): String = instant(iso)?.atZone(zone)?.toLocalDate()?.toString() ?: ""
 }

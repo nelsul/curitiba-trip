@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import com.nelsul.curitibatrip.data.Route
+import com.nelsul.curitibatrip.LocalApp
+import com.nelsul.curitibatrip.feature.enviar.EnviarScreen
+import com.nelsul.curitibatrip.upload.Uploads
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import com.nelsul.curitibatrip.feature.detail.CheckinDetailScreen
 import com.nelsul.curitibatrip.feature.detail.MediaDetailScreen
 import com.nelsul.curitibatrip.feature.more.MoreScreen
@@ -75,6 +80,10 @@ fun Shell() {
 	val back: () -> Unit = { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
 	BackHandler(enabled = stack.isNotEmpty(), onBack = back)
 	BackHandler(enabled = stack.isEmpty() && tab != Tab.Diario) { tab = Tab.Diario }
+	// refresh the feed as uploads reach the server
+	val app = LocalApp.current
+	val arrivals by Uploads.arrivals.collectAsState()
+	LaunchedEffect(arrivals) { if (arrivals > 0) app.feedChanged() }
 	// the dock steps aside while the keyboard is up, so text fields stay visible
 	val keyboardUp = WindowInsets.isImeVisible
 
@@ -87,7 +96,8 @@ fun Shell() {
 					Tab.Diario -> FeedScreen(DockSpace, open)
 					Tab.Roteiro -> RoteiroScreen(DockSpace)
 					Tab.Mais -> MoreScreen(DockSpace)
-					else -> ComingSoon(tab, if (tab == Tab.Mapa) "/mapa" else "/enviar", openWeb)
+					Tab.Enviar -> EnviarScreen(DockSpace, open)
+					else -> ComingSoon(tab, "/mapa", openWeb)
 				}
 				AnimatedContent(
 					stack.lastOrNull(),

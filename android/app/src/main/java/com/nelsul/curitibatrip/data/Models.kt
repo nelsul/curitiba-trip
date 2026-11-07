@@ -60,7 +60,7 @@ data class Post(
 	val item: FeedCheckin? = null,
 )
 
-@Serializable data class FeedPage(val posts: List<Post>, val nextCursor: String? = null)
+@Serializable data class FeedPage(val posts: List<Post>, val nextCursor: String? = null, val days: List<String>? = null)
 @Serializable data class LikeBody(val mediaId: String? = null, val checkinId: String? = null, val liked: Boolean)
 @Serializable data class LikeResponse(val likers: List<String>)
 @Serializable data class Ok(val ok: Boolean? = null)
