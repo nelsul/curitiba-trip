@@ -19,6 +19,8 @@ build/
 build-worker/
 
 # ── iOS (Xcode / SwiftPM) ──
+# The Xcode project is generated from ios/project.yml with XcodeGen
+ios/*.xcodeproj/
 xcuserdata/
 DerivedData/
 *.xcuserstate
