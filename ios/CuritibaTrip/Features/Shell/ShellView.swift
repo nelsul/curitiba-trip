@@ -3,22 +3,51 @@ import SwiftUI
 /// Top bar + the screen for the selected tab + the floating dock.
 struct ShellView: View {
 	@State private var tab: Tab = .diario
+	/// The dock steps aside while the keyboard is up, so text fields (comments, captions) stay visible.
+	@State private var keyboardUp = false
 
 	var body: some View {
 		VStack(spacing: 0) {
 			TopBar()
 			ZStack {
+				// each tab keeps its own navigation stack (detail pages push inside it)
 				switch tab {
-				case .diario: FeedView()
-				case .mapa: ComingSoon(tab: .mapa, webPath: "/mapa")
-				case .enviar: ComingSoon(tab: .enviar, webPath: "/enviar")
-				case .roteiro: ComingSoon(tab: .roteiro, webPath: "/roteiro")
-				case .mais: MoreView()
+				case .diario: Stacked { FeedView() }
+				case .mapa: Stacked { ComingSoon(tab: .mapa, webPath: "/mapa") }
+				case .enviar: Stacked { ComingSoon(tab: .enviar, webPath: "/enviar") }
+				case .roteiro: Stacked { RoteiroView() }
+				case .mais: Stacked { MoreView() }
 				}
 			}
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
 		}
-		.safeAreaInset(edge: .bottom, spacing: 0) { Dock(selection: $tab).padding(.bottom, 4) }
+		.safeAreaInset(edge: .bottom, spacing: 0) {
+			if !keyboardUp { Dock(selection: $tab).padding(.bottom, 4).transition(.move(edge: .bottom).combined(with: .opacity)) }
+		}
+		.animation(.easeOut(duration: 0.2), value: keyboardUp)
+		.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+		.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
+	}
+}
+
+/// A navigation stack that knows how to open photo/video and check-in pages.
+struct Stacked<Content: View>: View {
+	@ViewBuilder let content: () -> Content
+
+	var body: some View {
+		NavigationStack {
+			content()
+				.frame(maxWidth: .infinity, maxHeight: .infinity)
+				.background(DottedBackground()) // a NavigationStack paints its own opaque background otherwise
+				.toolbar(.hidden, for: .navigationBar)
+				.navigationDestination(for: Route.self) { route in
+					switch route {
+					case .media(let id): MediaDetailView(id: id)
+					case .checkin(let id): CheckinDetailView(id: id)
+					}
+				}
+		}
+		.tint(.ink)
 	}
 }
 
@@ -44,34 +73,3 @@ struct ComingSoon: View {
 	}
 }
 
-/// Mais (first version): who's signed in + sign out.
-struct MoreView: View {
-	@Environment(AppState.self) private var app
-	@Environment(\.openURL) private var openURL
-
-	var body: some View {
-		ScrollView {
-			VStack(alignment: .leading, spacing: 16) {
-				TitleRow(icon: .user, title: "Mais")
-				if let me = app.me {
-					HStack(spacing: 16) {
-						AvatarView(name: me.name, color: me.tint, photo: me.photo, size: 72)
-						VStack(alignment: .leading, spacing: 2) {
-							Text(me.name).font(.display(24)).foregroundStyle(Color.ink)
-							if me.isAdmin { Text("Administrador").font(.text(14)).foregroundStyle(Color.muted) }
-						}
-						Spacer()
-					}
-					.card()
-				}
-				if app.me?.isAdmin == true {
-					Button { openURL(API.shared.base.appending(path: "/admin")) } label: { Text("Gerenciar pessoas (site)") }
-						.buttonStyle(.chunky(.secondary, fullWidth: true))
-				}
-				Button { Task { await app.signOut() } } label: { Text("Sair") }
-					.buttonStyle(.chunky(.secondary, fullWidth: true))
-			}
-			.padding(16)
-		}
-	}
-}

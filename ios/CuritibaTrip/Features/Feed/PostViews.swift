@@ -42,7 +42,10 @@ struct MediaPostView: View {
 
 			HStack(spacing: 2) {
 				LikeButton(liked: likersOf(current).contains(app.me?.id ?? "")) { liked in Task { await setLike(current, liked) } }
-				Icon(.chat, size: 26).foregroundStyle(Color.ink).frame(width: 44, height: 44).accessibilityLabel("Comentários")
+				NavigationLink(value: Route.media(current.id)) { Icon(.chat, size: 26).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
+					.accessibilityLabel("Comentários")
+				NavigationLink(value: Route.media(current.id)) { Icon(.expand, size: 24).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
+					.accessibilityLabel("Abrir em tela cheia")
 				Spacer()
 				if items.count > 1 { Dots(count: items.count, index: index) }
 				Spacer().frame(width: 92)
@@ -56,8 +59,10 @@ struct MediaPostView: View {
 						.foregroundStyle(Color.ink)
 				}
 				if current.comments > 0 {
-					Text(current.comments == 1 ? "Ver 1 comentário" : "Ver os \(current.comments) comentários")
-						.font(.text(14, .bold)).foregroundStyle(Color.muted)
+					NavigationLink(value: Route.media(current.id)) {
+						Text(current.comments == 1 ? "Ver 1 comentário" : "Ver os \(current.comments) comentários")
+							.font(.text(14, .bold)).foregroundStyle(Color.muted)
+					}
 				}
 			}
 			.padding(.horizontal, 14)
@@ -151,9 +156,11 @@ struct CheckinPostView: View {
 			.clipped()
 			.overlay(alignment: .top) { Rectangle().fill(Color.line).frame(height: 2.5) }
 			.overlay(alignment: .bottom) { Rectangle().fill(Color.line).frame(height: 2.5) }
+			.overlay { NavigationLink(value: Route.checkin(checkin.id)) { Color.clear.contentShape(Rectangle()) }.accessibilityLabel("Abrir check-in") }
 			HStack(spacing: 2) {
 				LikeButton(liked: current.contains(app.me?.id ?? "")) { liked in Task { await setLike(liked) } }
-				Icon(.chat, size: 26).foregroundStyle(Color.ink).frame(width: 44, height: 44).accessibilityLabel("Comentários")
+				NavigationLink(value: Route.checkin(checkin.id)) { Icon(.chat, size: 26).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
+					.accessibilityLabel("Comentários")
 				Spacer()
 			}
 			.padding(.horizontal, 6)

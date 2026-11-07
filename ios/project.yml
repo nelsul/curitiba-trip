@@ -56,3 +56,8 @@ targets:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         ITSAppUsesNonExemptEncryption: false
+        NSPhotoLibraryAddUsageDescription: Para salvar nas suas Fotos o arquivo original de uma foto ou vídeo da viagem.
+        NSPhotoLibraryUsageDescription: Para enviar fotos e vídeos da viagem em qualidade original, com o local e a hora em que foram feitos.
+        NSLocationWhenInUseUsageDescription: Para fazer check-in e mostrar no mapa onde você está para o grupo da viagem.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Para o grupo ver no mapa por onde você passou, mesmo com o app fechado (só se você ligar o compartilhamento).
+        NSCameraUsageDescription: Para tirar fotos direto para o diário da viagem.
