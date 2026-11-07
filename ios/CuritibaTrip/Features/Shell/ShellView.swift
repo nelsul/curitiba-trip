@@ -14,7 +14,7 @@ struct ShellView: View {
 				// each tab keeps its own navigation stack (detail pages push inside it)
 				switch tab {
 				case .diario: Stacked { FeedView() }
-				case .mapa: Stacked { ComingSoon(tab: .mapa, webPath: "/mapa") }
+				case .mapa: Stacked { MapaView() }
 				case .enviar: Stacked { EnviarView() }
 				case .roteiro: Stacked { RoteiroView() }
 				case .mais: Stacked { MoreView() }
@@ -27,7 +27,11 @@ struct ShellView: View {
 		}
 		.animation(.easeOut(duration: 0.2), value: keyboardUp)
 		// pick up uploads iOS kept sending while the app was closed, and refresh the feed as files arrive
-		.task { Uploader.shared.start() }
+		.task {
+			Uploader.shared.start()
+			LocationSharing.shared.restore()
+		}
+		.onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in LocationSharing.shared.resume() }
 		.onChange(of: Uploader.shared.arrivals) { app.feedChanged() }
 		.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
 		.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
@@ -47,10 +51,13 @@ struct Stacked<Content: View>: View {
 				// the dock floats over the stacks (they don't get its safe-area inset): keep the end of every list above it
 				.contentMargins(.bottom, 104, for: .scrollContent)
 				.navigationDestination(for: Route.self) { route in
-					switch route {
-					case .media(let id): MediaDetailView(id: id)
-					case .checkin(let id): CheckinDetailView(id: id)
+					Group {
+						switch route {
+						case .media(let id): MediaDetailView(id: id)
+						case .checkin(let id): CheckinDetailView(id: id)
+						}
 					}
+					.contentMargins(.bottom, 104, for: .scrollContent)
 				}
 		}
 		.tint(.ink)
@@ -79,3 +86,8 @@ struct ComingSoon: View {
 	}
 }
 
+
+extension View {
+	/// Horizontal scrollers inside a tab must not get the stacks' bottom dock margin (it would push their content up).
+	func noDockMargin() -> some View { contentMargins(.bottom, 0, for: .scrollContent) }
+}

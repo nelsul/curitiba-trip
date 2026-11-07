@@ -1,3 +1,4 @@
+import CoreLocation
 import AVKit
 import Photos
 import SwiftUI
@@ -18,6 +19,7 @@ struct MediaDetailView: View {
 	@State private var saving: String?
 	@State private var zoom = false
 	@State private var confirmDelete = false
+	@State private var placing = false
 
 	var body: some View {
 		ScrollView {
@@ -56,9 +58,13 @@ struct MediaDetailView: View {
 							Icon(.pin, size: 18).foregroundStyle(Color.sea)
 							Text(locationLabel(item.locationSource)).font(.text(14)).foregroundStyle(Color.muted)
 							Spacer()
+							if mine { Button("Corrigir") { placing = true }.font(.text(14, .extraBold)).tint(.leaf) }
 							Link("Google Maps", destination: URL(string: "https://www.google.com/maps/search/?api=1&query=\(lat),\(lng)")!)
 								.font(.text(14, .extraBold)).tint(.leaf)
 						}
+					} else if mine {
+						Button { placing = true } label: { Label { Text("Marcar no mapa") } icon: { Icon(.pin, size: 18) } }
+							.buttonStyle(.chunky(.secondary, small: true))
 					}
 					VStack(alignment: .leading, spacing: 10) {
 						Text(fileLine(item)).font(.text(13)).foregroundStyle(Color.muted)
@@ -87,6 +93,13 @@ struct MediaDetailView: View {
 					}
 				}
 				.fullScreenCover(isPresented: $zoom) { ZoomViewer(url: item.display ?? item.medium) }
+				.fullScreenCover(isPresented: $placing) {
+					LocationPicker(start: item.lat.flatMap { lat in item.lng.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) } }) { c in
+						let updated: MediaItem = try await API.shared.patch("/api/media/\(id)", ["lat": c.latitude, "lng": c.longitude])
+						detail?.item = updated
+						app.feedChanged()
+					}
+				}
 				.confirmationDialog("Apagar este arquivo para todo mundo? Não dá para desfazer.", isPresented: $confirmDelete, titleVisibility: .visible) {
 					Button("Apagar", role: .destructive) { Task { await remove() } }
 				}
