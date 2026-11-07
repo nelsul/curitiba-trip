@@ -1,6 +1,10 @@
 package com.nelsul.curitibatrip
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import coil3.video.VideoFrameDecoder
+import com.nelsul.curitibatrip.upload.Uploads
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -17,11 +21,21 @@ class TripApp : Application(), SingletonImageLoader.Factory {
 		super.onCreate()
 		TokenStore.init(this)
 		state = AppState(this)
+		Uploads.init(this)
+		val nm = getSystemService(NotificationManager::class.java)
+		nm.createNotificationChannel(NotificationChannel(CHANNEL_UPLOADS, "Envios", NotificationManager.IMPORTANCE_LOW).apply { description = "Progresso dos envios de fotos e vídeos" })
+	}
+
+	companion object {
+		const val CHANNEL_UPLOADS = "envios"
 	}
 
 	/** Photos come from presigned R2 links; Coil caches them (memory + disk) like NukeUI on iOS. */
 	override fun newImageLoader(context: PlatformContext) = ImageLoader.Builder(context)
-		.components { add(OkHttpNetworkFetcherFactory(callFactory = { Api.client })) }
+		.components {
+			add(OkHttpNetworkFetcherFactory(callFactory = { Api.client }))
+			add(VideoFrameDecoder.Factory()) // thumbnails of picked videos
+		}
 		.crossfade(true)
 		.build()
 }
