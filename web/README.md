@@ -51,4 +51,13 @@ Commit the generated SQL and `drizzle/meta` files.
 
 ## Production
 
-`Dockerfile` builds two images (`app` and `worker`), and `docker-compose.yml` runs them with Postgres. Deploys are done by the maintainer. Production secrets live only on the server; never add real keys to this repo.
+Merging into `main` deploys automatically (`.github/workflows/deploy.yml`):
+
+1. CI runs again: `npm ci`, the type check, and the build.
+2. A `.env` is written from the **production** environment secrets on GitHub.
+3. `web/` is sent to the VPS over SSH and rebuilt with `docker compose up -d --build`. The deploy key on the server can only run that deploy.
+4. A smoke test checks that the site responds.
+
+You can also re-run a deploy from the Actions tab ("Deploy" → Run workflow).
+
+Production secrets live only in GitHub (environment `production`, usable only from `main`) and on the server. Never add real keys to this repo. `Dockerfile` builds two images (`app` and `worker`), and `docker-compose.yml` runs them with Postgres.

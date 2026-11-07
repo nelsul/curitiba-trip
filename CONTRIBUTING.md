@@ -4,10 +4,13 @@ Thanks for helping build our trip app! 🌴
 
 ## Workflow
 
-1. Create a branch from `main`: `git switch -c feature/short-name`.
+`main` is protected: nobody pushes to it directly, Nelson included. Every change goes through a pull request, and **merging into `main` deploys to the live site automatically**.
+
+1. Create a branch from `main`: `git switch -c feature/short-name`. Fork the repo first if you don't have write access.
 2. Make your change and run it locally (see [`web/README.md`](web/README.md)).
-3. Run `npm run check` and `npm run build` in `web/`. Both must pass.
+3. Run `npm run check` and `npm run build` in `web/`. CI runs the same checks on your PR, and they must pass before it can be merged.
 4. Open a pull request with a short description. Add screenshots for anything visual, at phone size (about 375 px wide).
+5. Once it's merged, the Deploy workflow ships it. Watch it in the Actions tab.
 
 ## Guidelines
 
