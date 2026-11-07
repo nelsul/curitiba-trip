@@ -95,14 +95,20 @@ struct Dock: View {
 				} label: {
 					VStack(spacing: 2) {
 						if tab == .enviar {
-							Icon(tab.icon, size: 26)
-								.foregroundStyle(Color.onSun)
-								.frame(width: 52, height: 52)
-								.background(Circle().fill(Color.sun))
-								.overlay(Circle().strokeBorder(Color.surface, lineWidth: 4))
-								.background(Circle().fill(Color.sunDark).offset(y: 4))
-								.offset(y: -18)
-								.padding(.bottom, -18)
+							// Same 38 pt slot as the other tabs (so the labels line up); the raised coin floats above it.
+							Color.clear
+								.frame(width: 38, height: 38)
+								.overlay {
+									Icon(tab.icon, size: 26)
+										.foregroundStyle(Color.onSun)
+										.frame(width: 56, height: 56)
+										// gold depth inside the coin, navy drop like the dock (no gold crescent outside the ring)
+										.background(Circle().fill(Color.sun.shadow(.inner(color: .sunDark, radius: 0, y: -4))))
+										.overlay(Circle().strokeBorder(Color.surface, lineWidth: 4))
+										.background(Circle().fill(Color.shadow).offset(y: 4))
+										.scaleEffect(active ? 1.06 : 1)
+										.offset(y: -12)
+								}
 						} else {
 							Icon(tab.icon, size: 22)
 								.foregroundStyle(.white)
