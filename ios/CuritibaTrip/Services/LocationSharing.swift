@@ -24,6 +24,8 @@ final class LocationSharing: NSObject {
 	@ObservationIgnored private let manager = CLLocationManager()
 	@ObservationIgnored private var lastSent: CLLocation?
 	@ObservationIgnored private var started = false
+	/// The itinerary areas being watched (`monitoredRegions` lags behind changes, so we keep our own copy).
+	@ObservationIgnored private var arrivalAreas: [CLCircularRegion] = []
 	private let log = Logger(subsystem: "com.nelsul.curitibatrip", category: "location")
 
 	private override init() {
@@ -41,6 +43,7 @@ final class LocationSharing: NSObject {
 	func restore() {
 		guard !started else { return }
 		started = true
+		arrivalAreas = manager.monitoredRegions.compactMap { $0 as? CLCircularRegion }
 		if UserDefaults.standard.bool(forKey: Self.pref) { start() }
 		if UserDefaults.standard.bool(forKey: Self.backgroundPref) { startBackground() }
 		Task { await flush() }
@@ -110,6 +113,7 @@ final class LocationSharing: NSObject {
 		manager.stopMonitoringSignificantLocationChanges()
 		manager.stopMonitoringVisits()
 		for r in manager.monitoredRegions { manager.stopMonitoring(for: r) }
+		arrivalAreas = []
 	}
 
 	private struct Queued: Codable { let lat: Double; let lng: Double; let accuracy: Double; let at: String }
@@ -141,20 +145,44 @@ final class LocationSharing: NSObject {
 	// MARK: Chegada (itinerary areas)
 
 	/// Watches the next stops of the itinerary (iOS allows 20 areas; we use up to 15).
+	/// Watches the next stops of the itinerary (iOS allows 20 areas; we use up to 15). Several callers can ask at
+	/// once during launch, so it computes the new list first and then only changes what differs.
 	func updateArrivalRegions() async {
-		for r in manager.monitoredRegions { manager.stopMonitoring(for: r) }
-		guard background, hasAlways, Notifier.shared.isOn(.arrival),
-			  let it: Itinerary = try? await API.shared.get("/api/itinerary") else { return }
-		let upcoming = Notifier.timedStops(it).filter { $0.date.timeIntervalSinceNow > -3 * 3600 && $0.stop.place != nil }
-		var seen = Set<String>()
-		for s in upcoming {
-			guard let p = s.stop.place, seen.insert(p.id).inserted else { continue }
-			let region = CLCircularRegion(center: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng), radius: 150, identifier: "\(p.id)|\(p.name)")
-			region.notifyOnEntry = true
-			region.notifyOnExit = false
-			manager.startMonitoring(for: region)
-			if seen.count >= 15 { break }
+		var wanted: [CLCircularRegion] = []
+		if background, hasAlways, Notifier.shared.isOn(.arrival) {
+			// offline: keep the current areas
+			guard let it: Itinerary = try? await API.shared.get("/api/itinerary") else { return }
+			let upcoming = Notifier.timedStops(it).filter { $0.date.timeIntervalSinceNow > -3 * 3600 && $0.stop.place != nil }
+			var seen = Set<String>()
+			for s in upcoming {
+				guard let p = s.stop.place, seen.insert(p.id).inserted else { continue }
+				let region = CLCircularRegion(center: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng), radius: 150, identifier: "\(p.id)|\(p.name)")
+				region.notifyOnEntry = true
+				region.notifyOnExit = false
+				wanted.append(region)
+				if wanted.count >= 15 { break }
+			}
 		}
+		let ids = Set(wanted.map(\.identifier))
+		for r in manager.monitoredRegions where !ids.contains(r.identifier) { manager.stopMonitoring(for: r) }
+		let had = Set(arrivalAreas.map(\.identifier))
+		for r in wanted where !had.contains(r.identifier) {
+			manager.startMonitoring(for: r)
+			manager.requestState(for: r) // already there? (answered in didDetermineState)
+		}
+		arrivalAreas = wanted
+	}
+
+	/// Region entry events can be slow or missed, so every precise position is also checked against the areas.
+	private func checkArrival(_ l: CLLocation) {
+		guard background, l.horizontalAccuracy >= 0, l.horizontalAccuracy <= 100 else { return }
+		for r in arrivalAreas where r.contains(l.coordinate) { arrived(in: r) }
+	}
+
+	private func arrived(in region: CLRegion) {
+		let parts = region.identifier.split(separator: "|", maxSplits: 1)
+		guard parts.count == 2 else { return }
+		Task { await Notifier.shared.arrived(at: String(parts[1]), regionId: String(parts[0])) }
 	}
 
 	// MARK: Sending
@@ -191,6 +219,7 @@ extension LocationSharing: @preconcurrency CLLocationManagerDelegate {
 		guard let l = locations.last else { return }
 		last = l
 		error = nil
+		checkArrival(l)
 		if UIApplication.shared.applicationState == .background {
 			// woken by a significant change: queue it with its real time and send what we have
 			guard background else { return }
@@ -211,10 +240,10 @@ extension LocationSharing: @preconcurrency CLLocationManagerDelegate {
 		Task { await flush() }
 	}
 
-	func locationManager(_ m: CLLocationManager, didEnterRegion region: CLRegion) {
-		let parts = region.identifier.split(separator: "|", maxSplits: 1)
-		guard parts.count == 2 else { return }
-		Task { await Notifier.shared.arrived(at: String(parts[1]), regionId: String(parts[0])) }
+	func locationManager(_ m: CLLocationManager, didEnterRegion region: CLRegion) { arrived(in: region) }
+
+	func locationManager(_ m: CLLocationManager, didDetermineState state: CLRegionState, for region: CLRegion) {
+		if state == .inside { arrived(in: region) }
 	}
 
 	func locationManager(_ m: CLLocationManager, didFailWithError error: Error) {
