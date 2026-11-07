@@ -6,6 +6,7 @@ struct ShellView: View {
 	/// The dock steps aside while the keyboard is up, so text fields (comments, captions) stay visible.
 	@State private var keyboardUp = false
 	@Environment(AppState.self) private var app
+	@Bindable private var notifier = Notifier.shared
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -13,7 +14,7 @@ struct ShellView: View {
 			ZStack {
 				// each tab keeps its own navigation stack (detail pages push inside it)
 				switch tab {
-				case .diario: Stacked { FeedView() }
+				case .diario: Stacked(open: $notifier.openRoute) { FeedView() }
 				case .mapa: Stacked { MapaView() }
 				case .enviar: Stacked { EnviarView() }
 				case .roteiro: Stacked { RoteiroView() }
@@ -30,6 +31,15 @@ struct ShellView: View {
 		.task {
 			Uploader.shared.start()
 			LocationSharing.shared.restore()
+			await Notifier.shared.start()
+		}
+		// a tapped notification: open the post, or the map's check-in
+		.onChange(of: notifier.openRoute) { _, r in if r != nil { tab = .diario } }
+		.onChange(of: notifier.openCheckin) { _, on in if on { tab = .mapa } }
+		.onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+			Notifier.shared.markSeen() // what's in the app now was seen; only newer things notify
+			Notifier.shared.scheduleRefresh()
+			LocationSharing.shared.pause()
 		}
 		.onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in LocationSharing.shared.resume() }
 		.onChange(of: Uploader.shared.arrivals) { app.feedChanged() }
@@ -40,6 +50,8 @@ struct ShellView: View {
 
 /// A navigation stack that knows how to open photo/video and check-in pages.
 struct Stacked<Content: View>: View {
+	/// Set from outside (a tapped notification) to push a page.
+	var open: Binding<Route?> = .constant(nil)
 	@ViewBuilder let content: () -> Content
 
 	var body: some View {
@@ -50,6 +62,15 @@ struct Stacked<Content: View>: View {
 				.toolbar(.hidden, for: .navigationBar)
 				// the dock floats over the stacks (they don't get its safe-area inset): keep the end of every list above it
 				.contentMargins(.bottom, 104, for: .scrollContent)
+				.navigationDestination(item: open) { route in
+					Group {
+						switch route {
+						case .media(let id): MediaDetailView(id: id)
+						case .checkin(let id): CheckinDetailView(id: id)
+						}
+					}
+					.contentMargins(.bottom, 104, for: .scrollContent)
+				}
 				.navigationDestination(for: Route.self) { route in
 					Group {
 						switch route {

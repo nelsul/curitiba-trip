@@ -58,6 +58,8 @@ struct MoreView: View {
 				}
 				.card()
 
+				AlertsCard()
+
 				if app.me?.isAdmin == true {
 					Button { openURL(API.shared.base.appending(path: "/admin")) } label: { Text("Gerenciar pessoas (site)") }
 						.buttonStyle(.chunky(.secondary, fullWidth: true))
@@ -211,5 +213,48 @@ extension UIImage {
 		format.scale = 1
 		format.preferredRange = .standard
 		return UIGraphicsImageRenderer(size: target, format: format).image { _ in draw(in: CGRect(origin: .zero, size: target)) }
+	}
+}
+
+/// Mais › "Avisos e localização": one switch per kind of notification, and the background location.
+private struct AlertsCard: View {
+	private var location: LocationSharing { .shared }
+	@State private var activity = Notifier.shared.isOn(.activity)
+	@State private var itinerary = Notifier.shared.isOn(.itinerary)
+	@State private var arrival = Notifier.shared.isOn(.arrival)
+	@State private var background = UserDefaults.standard.bool(forKey: "localizacao-segundo-plano")
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 12) {
+			Text("Avisos e localização").font(.display(20)).foregroundStyle(Color.ink)
+			row("Novidades do grupo", "Fotos, check-ins, comentários e curtidas nos seus posts (confere de tempos em tempos).", $activity) { on in
+				Task { await Notifier.shared.set(.activity, on) }
+			}
+			row("Lembretes do roteiro", "30 minutos antes de cada parada com horário.", $itinerary) { on in
+				Task { await Notifier.shared.set(.itinerary, on) }
+			}
+			Divider().overlay(Color.line)
+			row("Meu caminho com o app fechado", "O grupo vê no mapa por onde você passou, mesmo com o app fechado. Gasta pouca bateria. Precisa da localização \"Sempre\".", $background) { on in
+				location.setBackground(on)
+				if !on, arrival { arrival = false; Task { await Notifier.shared.set(.arrival, false) } }
+			}
+			row("Avisar quando chegar", "Ao chegar num lugar do roteiro: \"Chegou? Fazer check-in\".", $arrival) { on in
+				Task { await Notifier.shared.set(.arrival, on) }
+			}
+			.disabled(!background)
+			.opacity(background ? 1 : 0.5)
+			if let e = location.error { Text(e).font(.text(13, .bold)).foregroundStyle(Color.danger) }
+		}
+		.card()
+	}
+
+	private func row(_ title: String, _ detail: String, _ value: Binding<Bool>, changed: @escaping (Bool) -> Void) -> some View {
+		Toggle(isOn: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = $0; changed($0) })) {
+			VStack(alignment: .leading, spacing: 2) {
+				Text(title).font(.text(16, .bold)).foregroundStyle(Color.ink)
+				Text(detail).font(.text(13)).foregroundStyle(Color.muted)
+			}
+		}
+		.tint(.leaf)
 	}
 }
