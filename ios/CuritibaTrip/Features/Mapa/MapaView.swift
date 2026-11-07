@@ -59,13 +59,16 @@ struct MapaView: View {
 					.overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Color.line, lineWidth: 3))
 					.padding(10)
 			} else if let error {
-				EmptyState(text: error, retry: { Task { await load() } })
+				EmptyState(text: error, retry: { Task { await load() } }).padding(20)
 			} else {
 				ProgressView().tint(.sea)
 			}
 		}
-		.overlay(alignment: .topLeading) { filters.padding(22) }
-		.overlay(alignment: .bottom) { actions.padding(.horizontal, 22).padding(.bottom, 108) }
+		// fill the tab even while there's no map (otherwise the overlays below sit on the small error card)
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		// filters and actions belong to the map: only once it has loaded
+		.overlay(alignment: .topLeading) { if style != nil { filters.padding(22) } }
+		.overlay(alignment: .bottom) { if style != nil { actions.padding(.horizontal, 22).padding(.bottom, 108) } }
 		.overlay { if let stamp { StampToast(date: stamp).allowsHitTesting(false) } }
 		.navigationDestination(item: $open) { route in
 			Group {
