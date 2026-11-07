@@ -133,10 +133,17 @@ struct Dock: View {
 		.sensoryFeedback(.selection, trigger: selection)
 		.padding(.vertical, 8)
 		.frame(maxWidth: 520)
-		.background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Color.surface))
-		.overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(Color.line, lineWidth: 2.5))
-		.background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Color.shadow).offset(y: 5))
-		.shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+		// Fill, border and shadow are all drawn *behind* the tabs. (As an overlay, the border would be
+		// painted on top of the raised "Enviar" coin and cut a line through it.)
+		.background {
+			let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
+			ZStack {
+				shape.fill(Color.shadow).offset(y: 5)
+				shape.fill(Color.surface)
+				shape.strokeBorder(Color.line, lineWidth: 2.5)
+			}
+			.shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+		}
 		.padding(.horizontal, 10)
 	}
 }
