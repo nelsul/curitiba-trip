@@ -150,3 +150,54 @@ struct Itinerary: Decodable, Sendable {
 // MARK: - Devices
 
 struct Device: Decodable, Identifiable, Sendable { let id: String; let deviceName: String?; let lastUsedAt: String?; let createdAt: String; let current: Bool }
+
+// MARK: - Map (GET /api/map)
+
+/// A located post or check-in on the map.
+enum MapItem: Decodable, Identifiable, Hashable, Sendable {
+	case media(FeedMedia)
+	case checkin(FeedCheckin)
+
+	private enum Key: String, CodingKey { case type }
+
+	init(from decoder: Decoder) throws {
+		let type = try decoder.container(keyedBy: Key.self).decode(String.self, forKey: .type)
+		self = type == "checkin" ? .checkin(try FeedCheckin(from: decoder)) : .media(try FeedMedia(from: decoder))
+	}
+
+	var id: String { switch self { case .media(let m): m.id; case .checkin(let c): c.id } }
+	var userId: String { switch self { case .media(let m): m.userId; case .checkin(let c): c.userId } }
+	var day: String { switch self { case .media(let m): m.day; case .checkin(let c): c.day } }
+	var at: String { switch self { case .media(let m): m.at; case .checkin(let c): c.at } }
+	var lat: Double { switch self { case .media(let m): m.lat ?? 0; case .checkin(let c): c.lat } }
+	var lng: Double { switch self { case .media(let m): m.lng ?? 0; case .checkin(let c): c.lng } }
+}
+
+struct MapPing: Decodable, Hashable, Sendable {
+	let userId: String
+	let lat: Double
+	let lng: Double
+	let at: String
+	let day: String
+}
+
+/// Someone's latest shared position.
+struct LatestLocation: Decodable, Hashable, Identifiable, Sendable {
+	let userId: String
+	let name: String
+	let color: String
+	let photo: URL?
+	let lat: Double
+	let lng: Double
+	let at: String
+	var id: String { userId }
+	var tint: Color { Color(hex: color) }
+}
+
+struct MapData: Decodable, Sendable {
+	let items: [MapItem]
+	let pings: [MapPing]
+	let latest: [LatestLocation]
+}
+
+struct CheckinCreated: Decodable, Sendable { let id: String }

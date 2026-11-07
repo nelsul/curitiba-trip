@@ -10,6 +10,9 @@ packages:
   Nuke:
     url: https://github.com/kean/Nuke
     exactVersion: 12.9.0
+  MapLibre:
+    url: https://github.com/maplibre/maplibre-gl-native-distribution
+    exactVersion: 6.31.0
 configFiles:
   Debug: Config/Base.xcconfig
   Release: Config/Base.xcconfig
@@ -28,6 +31,8 @@ targets:
     dependencies:
       - package: Nuke
         product: NukeUI
+      - package: MapLibre
+        product: MapLibre
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.nelsul.curitibatrip

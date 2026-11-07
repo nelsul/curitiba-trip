@@ -30,6 +30,7 @@ struct RoteiroView: View {
 					.padding(.vertical, 6)
 					.padding(.horizontal, 2)
 				}
+				.noDockMargin()
 				if let day { ticket(day).id(day.id).transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity)) }
 			}
 			.padding(16)

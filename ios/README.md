@@ -8,7 +8,7 @@ A native **SwiftUI** app for the trip (iOS 17+), separate from the web app but f
 
 | Done | Next |
 |---|---|
-| Project (XcodeGen), design system (tokens, fonts, icons, buttons, cards, chips, top bar, dock), login (passport, "Quem é você?", email code), Diário (paged feed, carousels, likes, liked-by), photo/video and check-in pages (zoom, comments, captions, save original, delete), Roteiro (days, Uber, maps), Mais (profile photo framer, signed-in devices, sign out), Enviar (originals from the photo library with location, background multipart upload that survives closing the app, flight animation) | Mapa (MapLibre), background location, local notifications |
+| Project (XcodeGen), design system (tokens, fonts, icons, buttons, cards, chips, top bar, dock), login (passport, "Quem é você?", email code), Diário (paged feed, carousels, likes, liked-by), photo/video and check-in pages (zoom, comments, captions, save original, delete), Roteiro (days, Uber, maps), Mais (profile photo framer, signed-in devices, sign out), Enviar (originals from the photo library with location, background multipart upload that survives closing the app, flight animation), Mapa (MapLibre: polaroids, pins, people, trails, day/person filters, check-in with a map picture, live location sharing while the app is open, fixing a photo's location) | Background location, local notifications |
 
 Screens not built yet show "Abrir no site".
 
