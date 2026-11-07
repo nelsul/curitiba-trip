@@ -1,52 +1,26 @@
-import { error, redirect } from '@sveltejs/kit';
-import { and, eq } from 'drizzle-orm';
-import { checkins, db, users } from '$lib/server/db';
-import { addComment, deleteComment, listComments } from '$lib/server/comments';
-import { likersOf } from '$lib/server/likes';
+import { redirect } from '@sveltejs/kit';
+import { addComment, deleteComment } from '$lib/server/comments';
+import { assertTarget, checkinDetail, deleteCheckin, updateCheckinNote } from '$lib/server/details';
 import { people } from '$lib/server/feed';
-import { clip } from '$lib/server/validate';
-import { mediaUrl } from '$lib/server/r2';
-import { deleteObject } from '$lib/server/images';
 import type { Actions, PageServerLoad } from './$types';
 
-async function getCheckin(id: string) {
-	if (!/^[0-9a-f-]{36}$/.test(id)) error(404, 'Não encontrado');
-	const [row] = await db()
-		.select({ c: checkins, name: users.name, color: users.color, avatarKey: users.avatarKey })
-		.from(checkins)
-		.innerJoin(users, eq(users.id, checkins.userId))
-		.where(eq(checkins.id, id));
-	if (!row) error(404, 'Não encontrado');
-	return row;
-}
-
 export const load: PageServerLoad = async ({ params }) => {
-	const { c, name, color, avatarKey } = await getCheckin(params.id);
-	return {
-		item: { id: c.id, userId: c.userId, name, color, photo: await mediaUrl(avatarKey), snapshot: await mediaUrl(c.snapshotKey), lat: c.lat, lng: c.lng, note: c.note, at: c.createdAt.toISOString() },
-		comments: await listComments({ checkinId: c.id }),
-		likers: await likersOf({ checkinId: c.id }),
-		persons: await people()
-	};
+	const [detail, persons] = await Promise.all([checkinDetail(params.id), people()]);
+	return { ...detail, persons };
 };
 
 export const actions: Actions = {
 	comentar: async ({ params, request, locals }) => {
-		await getCheckin(params.id);
+		await assertTarget({ checkinId: params.id });
 		return addComment(request, locals.user!.id, { checkinId: params.id });
 	},
 	apagarComentario: ({ request, locals }) => deleteComment(request, locals.user!.id),
 	nota: async ({ params, request, locals }) => {
-		const note = clip((await request.formData()).get('note'), 2000);
-		await db().update(checkins).set({ note }).where(and(eq(checkins.id, params.id), eq(checkins.userId, locals.user!.id)));
+		await updateCheckinNote(params.id, locals.user!.id, (await request.formData()).get('note') ?? '');
 		return { saved: true };
 	},
 	apagar: async ({ params, locals }) => {
-		const [c] = await db()
-			.delete(checkins)
-			.where(and(eq(checkins.id, params.id), eq(checkins.userId, locals.user!.id)))
-			.returning({ snapshotKey: checkins.snapshotKey });
-		await deleteObject(c?.snapshotKey);
+		await deleteCheckin(params.id, locals.user!.id);
 		redirect(303, '/');
 	}
 };

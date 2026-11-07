@@ -36,6 +36,30 @@ Store the token in the **Keychain**. On `401`, clear it and show the login. If t
 | GET / POST | `/api/locations` | Latest position per person / send my position `{ lat, lng, accuracy }` |
 | PUT / DELETE | `/api/users/:id/avatar` | Body: a square image (≤ 1 MB). Yourself, or anyone if you're an admin. |
 
-## Coming next (see `ios/PLAN.md` §5)
+## Feed, map and details
 
-Feed with paging, map data, media and check-in details, comments, itinerary, map style, `/api/activity`, upload de-duplication (`clientAssetId`) and batched locations.
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/feed?limit=20&before=&day=&person=` | → `{ posts, nextCursor }`. Newest first. Each post is `{ type: 'media', key, userId, day, at, items: [FeedMedia] }` (a carousel: same person, same day, ≤30 min apart, oldest→newest inside) or `{ type: 'checkin', key, userId, day, at, item }`. Pass `nextCursor` as `before` for the next page (`null` = end). `limit` is 1–50. The web feed uses the same grouping (`$lib/feed-group`). |
+| GET | `/api/map?day=` | → `{ items, pings, latest }`: located posts and check-ins, trails, everyone's latest position. `day` (YYYY-MM-DD, Curitiba time) limits items and trails. |
+| GET | `/api/media/:id` | → `{ item, comments, likers }`. `item` has `display` (2048 px), `medium` (1080 px), `video`, `poster` and `original` (download) URLs. |
+| PATCH | `/api/media/:id` | Owner: `{ caption?, lat?, lng? }` (lat+lng = manual location) → the updated item |
+| DELETE | `/api/media/:id` | Owner: removes the post and all its files |
+| GET | `/api/checkins/:id` | → `{ item, comments, likers }` (`item.snapshot` = the map picture) |
+| PATCH | `/api/checkins/:id` | Owner: `{ note }` → the updated item |
+| GET / POST | `/api/media/:id/comments`, `/api/checkins/:id/comments` | List, or `{ body }` → the new comment (201) |
+| DELETE | `/api/comments/:id` | Only your own |
+| GET | `/api/itinerary` | → `{ transport, days }`, where each stop has `place` (name, lat, lng, hours, `mapsUrl`, `uberUrl`) and each day has a `routeUrl` |
+| GET | `/api/map-style.json` | The island night MapLibre style (the same as the web map). Cache for an hour. |
+
+## For the app's background work
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/activity?since=<ISO>` | → `{ now, since, posts, checkins, comments, likes }`: what *other people* did since then. `posts` is summarized per person (`photos`, `videos`); comments and likes are only on *my* posts. Each call covers exactly (since, now], so store `now` and send it as the next `since`. The window is at most 7 days. Use it for local notifications. |
+| POST | `/api/locations/batch` | `[{ lat, lng, accuracy?, at }]` (max 500) → `{ received, stored }`. Points recorded in the background with their real times. Points older than 48 h, in the future, with accuracy over 500 m, or within 30 m and 3 min of the previous one are dropped. |
+| POST | `/api/uploads` | Also accepts **`clientAssetId`** (the PHAsset local identifier) and `locationSource: 'device-library'`. Re-sending a photo that already finished returns `{ id, duplicate: true, status }`; an unfinished earlier attempt is discarded and restarted. |
+
+## Not in the API yet
+
+The admin endpoints (`/api/admin/users`); the app opens `/admin` on the website meanwhile.

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
 	pgTable,
 	text,
@@ -59,7 +60,8 @@ export const sessions = pgTable(
 
 export type MediaKind = 'photo' | 'video';
 export type MediaStatus = 'uploading' | 'processing' | 'ready' | 'failed';
-export type LocationSource = 'exif' | 'device' | 'manual';
+/** device-library = taken from the iPhone's photo library entry (PHAsset), sent by the iOS app */
+export type LocationSource = 'exif' | 'device' | 'device-library' | 'manual';
 export type TimeSource = 'exif' | 'file' | 'upload';
 
 export const media = pgTable(
@@ -90,11 +92,17 @@ export const media = pgTable(
 		posterKey: text('poster_key'),
 		videoKey: text('video_key'),
 		caption: text('caption').notNull().default(''),
+		/** the iPhone photo-library ID (iOS app): one post per photo per person, so retries never duplicate */
+		clientAssetId: text('client_asset_id'),
 		error: text('error'),
 		createdAt: createdAt(),
 		processedAt: timestamp('processed_at', { withTimezone: true })
 	},
-	(t) => [index('media_taken_idx').on(t.takenAt), index('media_user_idx').on(t.userId)]
+	(t) => [
+		index('media_taken_idx').on(t.takenAt),
+		index('media_user_idx').on(t.userId),
+		uniqueIndex('media_user_asset_uq').on(t.userId, t.clientAssetId).where(sql`client_asset_id is not null`)
+	]
 );
 
 export const checkins = pgTable(

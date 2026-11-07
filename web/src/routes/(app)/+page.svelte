@@ -7,7 +7,8 @@
 	import Post from '$lib/components/Post.svelte';
 	import { dayKey, fmtLongDay } from '$lib/format';
 	import { TRIP_DAYS } from '$lib/trip';
-	import type { FeedCheckin, FeedItem, FeedMedia } from '$lib/types';
+	import type { FeedCheckin, FeedItem } from '$lib/types';
+	import { groupPosts, type Post as FeedPost } from '$lib/feed-group';
 
 	let { data } = $props();
 
@@ -18,34 +19,14 @@
 	const byId = $derived(new Map(data.persons.map((p) => [p.id, p])));
 	const days = $derived([...new Set([...TRIP_DAYS, ...data.items.map((i) => i.day)])].sort());
 
-	type Entry =
-		| { type: 'media'; key: string; userId: string; to: string; items: FeedMedia[] }
-		| { type: 'checkin'; key: string; item: FeedCheckin };
-
-	const GROUP_GAP = 30 * 60_000;
-
-	/** Day → posts, newest first. Consecutive photos/videos from the same person within 30 min become one carousel post. */
+	/** Day → posts, newest first (grouping shared with GET /api/feed, see $lib/feed-group). */
 	const grouped = $derived.by(() => {
 		const filtered = data.items.filter(
 			(i: FeedItem) => (day === 'all' || i.day === day) && (person === 'all' || i.userId === person)
 		);
-		const out = new Map<string, Entry[]>();
-		for (const it of filtered) {
-			const list = out.get(it.day) ?? out.set(it.day, []).get(it.day)!;
-			if (it.type === 'checkin') {
-				list.push({ type: 'checkin', key: `c${it.id}`, item: it });
-				continue;
-			}
-			const last = list.at(-1);
-			if (last?.type === 'media' && last.userId === it.userId && Date.parse(it.at) - Date.parse(last.to) <= GROUP_GAP) {
-				last.items.push(it);
-				last.to = it.at;
-			} else {
-				list.push({ type: 'media', key: `m${it.id}`, userId: it.userId, to: it.at, items: [it] });
-			}
-		}
-		// newest first: latest day on top, latest post first within it (carousel photos keep their own order)
-		return [...out.entries()].reverse().map(([d, list]) => [d, list.reverse()] as const);
+		const out = new Map<string, FeedPost[]>();
+		for (const p of groupPosts(filtered)) (out.get(p.day) ?? out.set(p.day, []).get(p.day)!).push(p);
+		return [...out.entries()];
 	});
 
 	// Check-ins made before map pictures existed (or whose picture failed) get one the first time
