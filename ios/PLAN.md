@@ -4,13 +4,13 @@
 
 **Decided by Nelson:**
 - **Full SwiftUI** native app.
-- **Paid Apple Developer Program,** with **Ad Hoc** distribution (no App Store).
+- **No paid Apple Developer Program.** The app is signed with Nelson's **free Apple ID** and installed by connecting each friend's iPhone to Nelson's Mac (§3).
 
 ## 1. Goals
 
 1. A native iPhone app that **follows the web app's design exactly**: the same cozy island and night theme, components, motion and Portuguese text.
-2. Do what a website can't: location in the background, uploads that finish with the app closed, the photo library with original quality and location, push notifications, widgets, Live Activities and the share sheet.
-3. Friends install it **from a link**, no App Store (§3).
+2. Do what a website can't: location in the background, uploads that finish with the app closed, the photo library with original quality and location, notifications, widgets, Live Activities and the share sheet.
+3. Friends install it **from Nelson's Mac**, no App Store and no paid account (§3).
 4. A first version on everyone's phone **before the flights** (install session Tue 11/10). The website stays the fallback.
 
 Out of scope for now: Android (see §12) and the App Store.
@@ -30,25 +30,39 @@ A SwiftUI app, **iOS 17+**, talking to the same backend as the web (`https://via
 | Photos | PhotoKit (`PHAsset`, original HEIC/HEVC + location) |
 | Uploads | Background `URLSession`, one upload task per chunk, against the existing R2 multipart flow |
 | Location | Core Location: significant-change + visits in the background; standard updates while the map is open |
-| Push | APNs, sent by the web worker |
+| Notifications | **Local** notifications driven by background refresh and location wake-ups (free signing has no push, §5.5) |
 | Project | **XcodeGen** (`project.yml` committed; the `.xcodeproj` is generated and git-ignored), so PRs don't fight over project files |
 
 Third-party code is kept to two packages: MapLibre and Nuke. Exact versions are pinned when added.
 
-## 3. Distribution: Ad Hoc
+## 3. Distribution: free signing from Nelson's Mac
 
-1. **Enroll in the Apple Developer Program now.** Approval for individuals can take **up to ~48 hours**, and Ad Hoc can't be set up before then.
-2. **Register every iPhone:** each device's UDID goes into the developer account (limit: 100 iPhones per membership year). Two ways to collect them:
-   - **Cable:** connect the iPhone to a Mac, open Finder, then click the device's details line until the UDID shows.
-   - **Link (stretch goal):** a page `viagem.nelsul.com/app/registrar` serving Apple's "profile service" `.mobileconfig`. The iPhone sends its UDID back to us after one tap. About an hour of backend work.
-3. **Build:** archive in Xcode with an Ad Hoc profile listing those devices, then export the `.ipa`.
-4. **Install from a link:** `viagem.nelsul.com/app`, behind the normal login, shows an "Instalar" button (an `itms-services://` link to a `manifest.plist`). The `.ipa` and manifest live in R2 behind short-lived presigned URLs. The app only installs on registered iPhones anyway.
-5. **Updates:** a new build uses the same link. The app checks `minAppVersion` from `/api/me` and shows "Nova versão: toque para atualizar".
-6. **New friend mid-trip:** register their UDID, rebuild, and everyone can update from the same link.
+Xcode signs the app with Nelson's **free Apple ID** ("Personal Team") and installs it directly on each iPhone.
 
-Ad Hoc builds use Apple's **production** push environment, so the backend sends to production APNs.
+### What each friend does (once, ~10 minutes, with Nelson)
+1. **Update the iPhone** to at least **iOS 17**.
+2. **Connect it to Nelson's Mac** with a cable, unlock it and tap **Trust This Computer**.
+3. Nelson clicks **Run** in Xcode with that iPhone selected. Xcode registers the device and installs the app.
+4. On the iPhone, turn on **Developer Mode** (Settings → Privacy & Security → Developer Mode); the phone restarts. The option appears after the first install attempt from Xcode.
+5. Allow the developer: Settings → General → VPN & Device Management → Nelson's Apple ID → **Trust**.
+6. Open "Viagem", sign in with the email code, and allow photos, location and notifications.
 
-Later (optional): build and sign in GitHub Actions on a macOS runner, with the signing certificate and profile as `production` secrets. For the trip, builds are made on Nelson's Mac.
+After the first cable session, Xcode can also install **over Wi-Fi** when the Mac and the iPhone are on the same network (Xcode → Devices → "Connect via network"). Updates during the trip then don't need a cable.
+
+### Limits of free signing (to verify on day 1)
+
+| Limit | Impact | What we do |
+|---|---|---|
+| **The app expires after 7 days** | Installed Tue 11/10, it stops opening around **Tue 11/17**, before the trip ends (11/18) | Install as late as possible on 11/10, and **re-install around 11/15–16** in Curitiba (over Wi-Fi if Nelson brings the Mac). If the Mac doesn't travel, the website covers the last days. |
+| **No push notifications** (APNs needs the paid program) | No "Carlos comentou" alerts arriving from the server | Local notifications from background checks (§5.5): best effort, not instant |
+| **No Wallet passes** | — | Wallet pass dropped |
+| **App Groups / Keychain sharing for extensions** may not be available to free teams | Widgets and the Share Extension need to share the login with the app | Check in Xcode on day 1. If not available: widgets fetch public data without login, and the Share Extension is dropped. |
+| **App ID limits** (a small number of new app IDs per week, and few sideloaded apps per device) | Each extension uses an app ID | Keep it to the app plus at most 2 extensions. Friends with other sideloaded apps may hit the per-device limit. |
+| **Every install needs Nelson's Mac** | Nobody can install or update alone | Install sessions (Tue 11/10, ~11/15–16); updates over Wi-Fi |
+
+Background location, background uploads, the photo library, local notifications, Live Activities (updated by the app) and Siri shortcuts all work with free signing.
+
+**Developer Mode note:** it lowers some protections on the phone. It can be turned off again after the trip (Settings → Privacy & Security → Developer Mode), though the app then stops opening.
 
 ## 4. Design parity
 
@@ -114,6 +128,7 @@ These ship as normal PRs: CI, merge, automatic deploy. The web app also moves on
 | Endpoint | Notes |
 |---|---|
 | `GET /api/me` | Includes `minAppVersion`. |
+| `GET /api/activity?since=` | What's new for me, used for local notifications (§5.5). |
 | `GET /api/people` | |
 | `GET /api/feed?before=<cursor>&limit=30&day=&person=` | **Paginated**, newest first, already grouped into posts (carousels) so the web and iOS group the same way. The web feed switches to it. |
 | `GET /api/map?day=` | Pins, check-ins, trails and latest positions. |
@@ -135,15 +150,18 @@ Unchanged: `/api/uploads*`, `/api/likes`, `/api/checkins` (create), `/api/checki
 
 - `POST /api/locations/batch` `[{ lat, lng, accuracy, at }]`. Client times are accepted only within the last 48 hours, never in the future, and thinned (≥30 m or ≥3 min apart).
 
-### 5.5 Push notifications
+### 5.5 Notifications without push
 
-- A `devices` table (user, APNs token, last seen, preferences) and `POST /api/devices`, `PATCH /api/devices/:id` (preferences).
-- The worker sends through APNs (HTTP/2) with the **`.p8` key stored as a `production` GitHub secret**, which the deploy writes into the server `.env`.
-- Events: new posts by others (batched every ~10 min: "Bruna e Carlos postaram 7 fotos"), comments on your posts, likes (batched), and a "next stop" heads-up from the itinerary.
+Free signing has no APNs, so the app notifies **locally**:
 
-### 5.6 Install page
+- `GET /api/activity?since=<timestamp>` returns what's new for me: posts by others (grouped), comments on my posts, likes on my posts and new check-ins.
+- The app checks it when iOS wakes it up: background refresh (`BGAppRefreshTask`, timing decided by iOS), background location updates (when location sharing is on, roughly every few hundred meters) and when the app opens. It then shows grouped local notifications: "Bruna e Carlos postaram 7 fotos", "Icaro comentou na sua foto".
+- Itinerary reminders ("Ópera de Arame em 30 min") are **scheduled locally** from `/api/itinerary`, so they're exact.
+- **Expectation:** server events arrive with a delay of minutes to hours, not instantly. If the paid program is ever added, real push can be added on top of the same `/api/activity` data.
 
-- `/app`: install button and version notes. `/app/manifest.plist` and the `.ipa` are served through R2 presigned URLs. The UDID registration page (§3, stretch) lives here too.
+### 5.6 Version check
+
+- `/api/me` returns `minAppVersion`. Builds older than that show "Nova versão disponível: fale com o Nelson para atualizar", so nobody stays on a broken build.
 
 ## 6. Screens (MVP = before the trip)
 
@@ -167,16 +185,16 @@ Unchanged: `/api/uploads*`, `/api/likes`, `/api/checkins` (create), `/api/checki
 | 1 | **Location in the background** | The map works with the app closed (battery-friendly modes); each person's daily trail draws itself. Off by default, one switch in Mais. | MVP |
 | 2 | **Photo library with location** | Picks originals (HEIC/HEVC) with location and capture time straight from PhotoKit. No GPS stripping, full quality. | MVP |
 | 3 | **Uploads that finish in your pocket** | A background `URLSession`: close the app and it keeps uploading. | MVP |
-| 4 | **Push notifications** | §5.5 | MVP |
+| 4 | **Activity notifications** | Local notifications from background checks, plus exact itinerary reminders (§5.5). Not instant. | MVP |
 | 5 | **"Fotos de hoje" auto-import** | Each evening it lists the day's photos taken in Curitiba; post the ones you pick in one tap. | MVP if time allows, otherwise in the first update |
 | 6 | **Arrival check-ins** | Geofences around the itinerary stops trigger "Chegou no Jardim Botânico! Fazer check-in?" | First update |
-| 7 | **Share Extension** | "Viagem" in the Photos share sheet | First update |
-| 8 | **Live Activity / Dynamic Island** | The next stop with a countdown and transport; on the wedding day, the ride home | During the trip |
+| 7 | **Share Extension** | "Viagem" in the Photos share sheet (only if free teams can share the login, §3) | First update |
+| 8 | **Live Activity / Dynamic Island** | The next stop with a countdown and transport; on the wedding day, the ride home (updated by the app, no push) | During the trip |
 | 9 | **Widgets** | Countdown to the wedding, the next stop, the group's latest photo | During the trip |
 | 10 | **Câmera da viagem** | An in-app camera with a passport-stamp frame that posts straight away | During the trip |
 | 11 | **Offline mode** | Posts and check-ins queue without signal; the itinerary and map kept for offline use | During the trip |
 | 12 | **Siri / Action button** | "Fazer check-in na viagem" | Later |
-| 13 | **Wallet pass "Passaporte da viagem"** | Itinerary days as boarding passes that pop up near each stop | After |
+| 13 | ~~Wallet pass~~ | Not possible with free signing | — |
 | 14 | **Retrospectiva** | A recap video of everyone's moments, made on the phone | After |
 
 Check-in map pictures: the app uses MapLibre's native snapshotter with the same style, pin, label and attribution as the web version, uploaded to the existing snapshot endpoint.
@@ -194,7 +212,7 @@ ios/
   PLAN.md · README.md
   project.yml                  ← XcodeGen spec (targets, packages, capabilities, signing settings)
   CuritibaTrip/
-    App/                       ← CuritibaTripApp, AppState, RootView, deep links, push delegate
+    App/                       ← CuritibaTripApp, AppState, RootView, deep links, notification delegate
     DesignSystem/
       Theme.swift              ← generated from design/tokens.json
       Fonts/ (Fredoka, Nunito) · Icons.xcassets
@@ -214,23 +232,23 @@ design/
   tokens.json
 ```
 
-Bundle IDs: `com.nelsul.curitibatrip` (+ `.share`, `.widgets`), plus an App Group: `group.com.nelsul.curitibatrip`.
+Bundle IDs: `com.nelsul.curitibatrip` (+ `.share`, `.widgets` if free signing allows them, §3), plus an App Group: `group.com.nelsul.curitibatrip` (to verify).
 
 ## 9. Timeline
 
-This is aggressive. If something slips, the website covers it and the app gets an update from the same link during the trip.
+This is aggressive. If something slips, the website covers it, and the app gets an update at the next install session.
 
 | When | What |
 |---|---|
-| **Fri 11/06 (today)** | Nelson **enrolls in the Apple Developer Program**. |
-| **Sat 11/07** | Backend PRs: token auth (5.1), JSON endpoints, feed paging, itinerary, map style (5.2), upload dedup and batched locations (5.3–5.4). Design tokens (4.1). App skeleton: XcodeGen, theme, fonts, icons, components, `APIClient`, login. |
-| **Sun 11/08** | Feed, post, detail, comments, likes; Enviar with the photo library and background upload; Mapa with MapLibre, check-in and live sharing. Collect UDIDs. |
-| **Mon 11/09** | Roteiro, Mais (cropper, location switch), background location, push (backend 5.5 + app), install page (5.6). First Ad Hoc build; test on 2+ real iPhones. |
-| **Tue 11/10** | Fixes, final build, **install session**. |
-| 11/11–18 | Updates from the same link: auto-import, arrival check-ins, Share Extension, Live Activity, widgets, camera, offline. |
-| After | Siri, Wallet pass, Retrospectiva; maybe iOS CI builds. |
+| **Sat 11/07** | Backend PRs: token auth (5.1), JSON endpoints, feed paging, itinerary, map style, `/api/activity` (5.2, 5.5), upload dedup and batched locations (5.3–5.4). Design tokens (4.1). App skeleton: XcodeGen, theme, fonts, icons, components, `APIClient`, login. **Day-1 check:** what free signing allows (App Groups, extensions) on Nelson's iPhone. |
+| **Sun 11/08** | Feed, post, detail, comments, likes; Enviar with the photo library and background upload; Mapa with MapLibre, check-in and live sharing. |
+| **Mon 11/09** | Roteiro, Mais (cropper, location switch), background location, local notifications and reminders. Test on Nelson's iPhone + 1 more. |
+| **Tue 11/10 (evening)** | **Install session:** everyone's iPhone on Nelson's Mac (§3). Pair Wi-Fi installs for later. As late as possible, so the 7 days last longer. |
+| 11/11–14 | Updates over Wi-Fi when the Mac and phones share a network: auto-import, arrival check-ins, Live Activity, widgets, camera, offline. |
+| **~11/15–16** | **Re-install session** (expiry is ~11/17). |
+| After | Siri, Retrospectiva. |
 
-**Cut order if late:** auto-import → push (the app still works; notifications arrive in an update) → the Mais extras. Never cut: login, feed, upload, map, check-in, itinerary.
+**Cut order if late:** auto-import → local notifications → the Mais extras. Never cut: login, feed, upload, map, check-in, itinerary.
 
 ## 10. Testing
 
@@ -243,13 +261,15 @@ This is aggressive. If something slips, the website covers it and the app gets a
 
 | Risk | Mitigation |
 |---|---|
-| Developer Program approval takes days | Enroll today; build and test in the simulator meanwhile. |
+| The app expires 7 days after install | A late install on 11/10 + a re-install session ~11/15–16 (Wi-Fi if the Mac travels); the website as fallback. |
+| Every install needs Nelson's Mac | Install sessions; Wi-Fi pairing; whoever misses it uses the website. |
+| Free-team limits on extensions and App Groups | Verified on day 1; extensions are optional. |
 | A full SwiftUI rebuild in 4 days | MVP cut order (§9); the website is the fallback; updates during the trip from the same link. |
-| A friend's iPhone isn't registered | Collect UDIDs by Sunday; registering mid-trip is possible (rebuild + update link). |
+| A friend's iPhone runs iOS < 17 | Check everyone's iOS version this weekend; lower the target only if needed. |
 | The design drifts from the web | Shared tokens + generated `Theme.swift`, the same icons and fonts, screenshot checks. |
 | Background location drains batteries | Significant-change and visit tracking only; an easy off switch. |
 | Duplicate uploads | `clientAssetId` unique per person. |
-| Secrets in a public repo | The signing certificate, profiles and APNs `.p8` only in GitHub `production` secrets or Nelson's keychain; `.gitignore` covers `*.p8`, `*.p12`, `*.cer` and `*.mobileprovision`. |
+| Secrets in a public repo | Signing stays in Nelson's Xcode/keychain (nothing to commit); `.gitignore` covers `*.p8`, `*.p12`, `*.cer` and `*.mobileprovision`. |
 
 ## 12. Android?
 
@@ -257,6 +277,7 @@ SwiftUI is iOS-only. For an Android friend, the website keeps working. A native 
 
 ## 13. Still to confirm
 
-1. The list of people and iPhones to register (and the iOS version of the oldest one).
-2. The bundle ID `com.nelsul.curitibatrip`.
-3. The MVP scope in §6/§7.
+1. Who's getting the app, and each iPhone's **iOS version** (minimum iOS 17).
+2. **Will the Mac come to Curitiba?** That decides the mid-trip re-install (§3).
+3. The bundle ID `com.nelsul.curitibatrip`.
+4. The MVP scope in §6/§7.
