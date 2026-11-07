@@ -45,3 +45,10 @@ extension TripTime {
 		return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
 	}
 }
+
+extension TripTime {
+	/// "12/11 14:30" in Curitiba time.
+	static func short(_ d: Date) -> String {
+		d.formatted(Date.FormatStyle(locale: locale, timeZone: zone).day(.twoDigits).month(.twoDigits).hour().minute())
+	}
+}

@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct CuritibaTripApp: App {
+	@UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 	@State private var app = AppState()
 
 	var body: some Scene {
@@ -38,5 +39,16 @@ struct RootView: View {
 			}
 		}
 		.animation(.easeInOut(duration: 0.25), value: app.phase)
+	}
+}
+
+/// iOS wakes the app when background uploads finish; the uploader reconnects and calls the handler when done.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+	func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+		guard identifier == Uploader.sessionId else { return completionHandler() }
+		MainActor.assumeIsolated {
+			Uploader.shared.backgroundCompletion = completionHandler
+			Uploader.shared.start()
+		}
 	}
 }
