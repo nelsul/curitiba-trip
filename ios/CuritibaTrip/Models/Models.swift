@@ -81,7 +81,7 @@ enum Post: Decodable, Identifiable, Hashable, Sendable {
 	}
 }
 
-struct FeedPage: Decodable, Sendable { let posts: [Post]; let nextCursor: String? }
+struct FeedPage: Decodable, Sendable { let posts: [Post]; let nextCursor: String?; var days: [String]? }
 struct LikeBody: Encodable, Sendable { var mediaId: String?; var checkinId: String?; let liked: Bool }
 struct LikeResponse: Decodable, Sendable { let likers: [String] }
 

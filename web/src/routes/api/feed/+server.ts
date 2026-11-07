@@ -6,6 +6,7 @@ import type { RequestHandler } from './$types';
 /**
  * Newest-first posts (carousels already grouped, like the web feed).
  * ?limit=1..50 (default 20) · ?before=<nextCursor> · ?day=YYYY-MM-DD · ?person=<userId>
+ * `days` lists every day that has posts (ignoring the filters), for the day chips.
  */
 export const GET: RequestHandler = async ({ url }) => {
 	const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
@@ -26,5 +27,6 @@ export const GET: RequestHandler = async ({ url }) => {
 			p.type === 'media' ? { ...p, items: await signItems(p.items, keys) } : { ...p, item: (await signItems([p.item], keys))[0] }
 		)
 	);
-	return json({ posts, nextCursor: start.length > limit ? postCursor(page.at(-1)!) : null });
+	const days = [...new Set(items.map((i) => i.day))].sort();
+	return json({ posts, nextCursor: start.length > limit ? postCursor(page.at(-1)!) : null, days });
 };
