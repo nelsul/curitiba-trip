@@ -1,0 +1,5 @@
+// Copy to Local.xcconfig (git-ignored) and fill in.
+// Your Apple ID's team (Xcode → Settings → Accounts → your Apple ID → Personal Team ID):
+DEVELOPMENT_TEAM =
+// Point the app at a local web server instead of production (simulator only):
+// API_BASE_URL = http:/$()/localhost:5173

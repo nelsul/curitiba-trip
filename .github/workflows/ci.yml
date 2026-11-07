@@ -25,6 +25,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Design tokens are up to date
+        run: node ../design/build-tokens.mjs --check
       - run: npm ci
       - name: Type check (svelte-check)
         run: npm run check

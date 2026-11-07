@@ -37,7 +37,12 @@
 <nav class="dock" aria-label="Principal">
 	{#each items as it}
 		<a href={it.href} class:primary={it.primary} aria-current={active(it.href) ? 'page' : undefined} style:--c={it.color}>
-			<span class="tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={it.icon} /></svg></span>
+			{#if it.primary}
+				<!-- same 38px slot as the others (labels line up); the raised coin floats above it -->
+				<span class="tile"><span class="coin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={it.icon} /></svg></span></span>
+			{:else}
+				<span class="tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={it.icon} /></svg></span>
+			{/if}
 			<span class="label">{it.short}</span>
 		</a>
 	{/each}
@@ -82,7 +87,16 @@
 	.dock a[aria-current='page'] { color: var(--ink); }
 	.dock a[aria-current='page'] .tile { transform: translateY(-4px) rotate(-6deg) scale(1.08); }
 	.dock a:active .tile { transform: scale(0.9); }
-	.dock a.primary .tile { width: 52px; height: 52px; border-radius: 50%; margin-top: -22px; border: 4px solid var(--surface); box-shadow: 0 4px 0 var(--sun-dark); }
+	.dock a.primary .tile { position: relative; background: none; box-shadow: none; }
+	.coin {
+		position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -40px 0 0 -28px;
+		display: grid; place-items: center; border-radius: 50%; background: var(--sun);
+		border: 4px solid var(--surface);
+		/* gold depth inside the coin, navy drop like the rest of the dock (no gold crescent outside the ring) */
+		box-shadow: inset 0 -4px 0 var(--sun-dark), 0 4px 0 var(--shadow);
+		transition: transform 0.2s var(--bounce);
+	}
+	.dock a.primary:active .coin { transform: scale(0.92); }
 	.dock a.primary svg { stroke: #4a3410; width: 26px; height: 26px; }
 	@media (min-width: 820px) {
 		.desktop { display: flex; }
