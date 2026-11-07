@@ -5,6 +5,10 @@
 *.pem
 *.key
 *.p12
+*.p8
+*.cer
+*.mobileprovision.zip
+ExportOptions*.plist
 *.mobileprovision
 GoogleService-Info.plist
 
