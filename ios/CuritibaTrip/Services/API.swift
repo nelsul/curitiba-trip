@@ -36,7 +36,16 @@ struct API: Sendable {
 		try await send("DELETE", path, body: Optional<Empty>.none)
 	}
 
-	private func send<T: Decodable, B: Encodable>(_ method: String, _ path: String, query: [String: String?] = [:], body: B?) async throws -> T {
+	/// Raw binary body (profile photos, check-in map pictures).
+	func put<T: Decodable>(_ path: String, data: Data, contentType: String) async throws -> T {
+		var req = request("PUT", path)
+		req.setValue(contentType, forHTTPHeaderField: "content-type")
+		req.httpBody = data
+		return try await perform(req)
+	}
+
+	/// Builds a request with auth and app version (also used by the uploader).
+	func request(_ method: String, _ path: String, query: [String: String?] = [:]) -> URLRequest {
 		var comps = URLComponents(url: base.appending(path: path), resolvingAgainstBaseURL: false)!
 		let items = query.compactMap { k, v in v.map { URLQueryItem(name: k, value: $0) } }
 		if !items.isEmpty { comps.queryItems = items }
@@ -46,10 +55,10 @@ struct API: Sendable {
 		req.setValue("application/json", forHTTPHeaderField: "accept")
 		req.setValue(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String, forHTTPHeaderField: "x-app-version")
 		if let token = TokenStore.shared.token { req.setValue("Bearer \(token)", forHTTPHeaderField: "authorization") }
-		if let body {
-			req.setValue("application/json", forHTTPHeaderField: "content-type")
-			req.httpBody = try Self.encoder.encode(body)
-		}
+		return req
+	}
+
+	private func perform<T: Decodable>(_ req: URLRequest) async throws -> T {
 		let data: Data, response: URLResponse
 		do {
 			(data, response) = try await URLSession.shared.data(for: req)
@@ -62,6 +71,15 @@ struct API: Sendable {
 			throw APIError(status: status, message: message)
 		}
 		return try Self.decoder.decode(T.self, from: data)
+	}
+
+	private func send<T: Decodable, B: Encodable>(_ method: String, _ path: String, query: [String: String?] = [:], body: B?) async throws -> T {
+		var req = request(method, path, query: query)
+		if let body {
+			req.setValue("application/json", forHTTPHeaderField: "content-type")
+			req.httpBody = try Self.encoder.encode(body)
+		}
+		return try await perform(req)
 	}
 }
 

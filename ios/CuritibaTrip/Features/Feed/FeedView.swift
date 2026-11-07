@@ -39,6 +39,7 @@ struct FeedView: View {
 		}
 		.refreshable { await model.refresh(app: app) }
 		.task { if model.posts.isEmpty { await model.refresh(app: app) } }
+		.onChange(of: app.feedVersion) { Task { await model.refresh(app: app) } }
 	}
 }
 

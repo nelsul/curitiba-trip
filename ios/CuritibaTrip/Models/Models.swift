@@ -84,3 +84,69 @@ enum Post: Decodable, Identifiable, Hashable, Sendable {
 struct FeedPage: Decodable, Sendable { let posts: [Post]; let nextCursor: String? }
 struct LikeBody: Encodable, Sendable { var mediaId: String?; var checkinId: String?; let liked: Bool }
 struct LikeResponse: Decodable, Sendable { let likers: [String] }
+
+// MARK: - Details and comments
+
+struct Comment: Codable, Identifiable, Hashable, Sendable {
+	let id: String
+	let body: String
+	let at: String
+	let userId: String
+	let name: String
+	let color: String
+	let photo: URL?
+	var tint: Color { Color(hex: color) }
+}
+
+struct MediaItem: Codable, Hashable, Sendable {
+	let id: String
+	let userId: String
+	let kind: String
+	let status: String
+	let at: String
+	let takenAtSource: String?
+	let lat: Double?
+	let lng: Double?
+	let locationSource: String?
+	let width: Int?
+	let height: Int?
+	let durationS: Double?
+	let sizeBytes: Int
+	let originalName: String
+	let caption: String
+	let display: URL?
+	let medium: URL?
+	let video: URL?
+	let poster: URL?
+	let original: URL?
+	var isVideo: Bool { kind == "video" }
+}
+
+struct MediaDetail: Decodable, Sendable { var item: MediaItem; var comments: [Comment]; var likers: [String] }
+
+struct CheckinItem: Codable, Hashable, Sendable {
+	let id: String
+	let userId: String
+	let snapshot: URL?
+	let lat: Double
+	let lng: Double
+	let note: String
+	let at: String
+}
+
+struct CheckinDetail: Decodable, Sendable { var item: CheckinItem; var comments: [Comment]; var likers: [String] }
+
+// MARK: - Itinerary
+
+struct Itinerary: Decodable, Sendable {
+	struct Transport: Decodable, Sendable { let label: String }
+	struct Place: Decodable, Sendable { let id: String; let name: String; let lat: Double; let lng: Double; let hours: String; let mapsUrl: URL; let uberUrl: URL }
+	struct Stop: Decodable, Sendable, Identifiable { var id: String { time + title }; let time: String; let transport: String; let note: String; let title: String; let place: Place? }
+	struct Day: Decodable, Sendable, Identifiable { var id: String { date }; let date: String; let title: String; let who: String; let lead: String; let wedding: Bool; let routeUrl: URL?; let stops: [Stop] }
+	let transport: [String: Transport]
+	let days: [Day]
+}
+
+// MARK: - Devices
+
+struct Device: Decodable, Identifiable, Sendable { let id: String; let deviceName: String?; let lastUsedAt: String?; let createdAt: String; let current: Bool }

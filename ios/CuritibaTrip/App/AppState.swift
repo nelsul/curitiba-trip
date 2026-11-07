@@ -8,11 +8,24 @@ final class AppState {
 
 	var phase: Phase = .loading
 	var people: [Person] = []
+	/// Bumped whenever something changes that the feed shows (likes, comments, edits, deletes, uploads).
+	var feedVersion = 0
+
+	func feedChanged() { feedVersion += 1 }
+
+	func reloadMe() async {
+		if let me: Me = try? await API.shared.get("/api/me") { accept(me, minVersion: me.minAppVersion) }
+		await loadPeople()
+	}
 	var me: Me? { if case .signedIn(let m) = phase { m } else { nil } }
 
 	private let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
 
 	func restore() async {
+		#if DEBUG
+		// Simulator testing only: `SIMCTL_CHILD_DEBUG_TOKEN=<token> xcrun simctl launch …` signs in without the email step.
+		if let t = ProcessInfo.processInfo.environment["DEBUG_TOKEN"], !t.isEmpty { TokenStore.shared.save(t) }
+		#endif
 		guard TokenStore.shared.token != nil else { phase = .signedOut; return }
 		do {
 			let me: Me = try await API.shared.get("/api/me")
