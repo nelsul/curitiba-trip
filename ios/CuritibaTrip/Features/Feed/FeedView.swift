@@ -11,10 +11,11 @@ struct FeedView: View {
 				TitleRow(icon: .journal, title: "Diário da viagem")
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.padding(.horizontal, 16)
+				FeedFilters(model: model)
 				if let error = model.error, model.posts.isEmpty {
 					EmptyState(text: error, retry: { Task { await model.refresh(app: app) } })
 				} else if model.posts.isEmpty && !model.loading {
-					EmptyState(text: "Nada por aqui ainda. Que tal registrar o primeiro momento?")
+					EmptyState(text: model.day != nil || model.person != nil ? "Nada com esses filtros." : "Nada por aqui ainda. Que tal registrar o primeiro momento?")
 				}
 				ForEach(Array(model.posts.enumerated()), id: \.element.id) { i, post in
 					if i == 0 || model.posts[i - 1].day != post.day {
@@ -40,6 +41,8 @@ struct FeedView: View {
 		.refreshable { await model.refresh(app: app) }
 		.task { if model.posts.isEmpty { await model.refresh(app: app) } }
 		.onChange(of: app.feedVersion) { Task { await model.refresh(app: app) } }
+		.onChange(of: model.day) { Task { await model.refresh(app: app) } }
+		.onChange(of: model.person) { Task { await model.refresh(app: app) } }
 	}
 }
 
@@ -77,5 +80,58 @@ struct PostHeader: View {
 		}
 		.padding(.horizontal, 12)
 		.padding(.vertical, 10)
+	}
+}
+
+/// Day and person chips under the title (web Filters): "Todos os dias" + one dashed chip per day, "Todo mundo" + one chip per person.
+private struct FeedFilters: View {
+	@Bindable var model: FeedModel
+	@Environment(AppState.self) private var app
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			ScrollView(.horizontal, showsIndicators: false) {
+				HStack(spacing: 8) {
+					Chip(selected: model.day == nil, action: { model.day = nil }) {
+						Label { Text("Todos os dias") } icon: { Icon(.calendar, size: 16) }
+					}
+					ForEach(model.days, id: \.self) { d in
+						let wedding = d == TripTime.weddingDay
+						Chip(selected: model.day == d, dashed: true, tint: wedding ? .berry : nil, action: { model.day = model.day == d ? nil : d }) {
+							HStack(spacing: 5) {
+								Text(String(d.suffix(2))).font(.text(15, .extraBold))
+								Text(TripTime.shortWeekday(d)).font(.text(14, .bold))
+								if wedding { Circle().frame(width: 7, height: 7) }
+							}
+						}
+						.accessibilityLabel(TripTime.longDay(d))
+					}
+				}
+				.padding(.horizontal, 16)
+				.padding(.vertical, 4)
+			}
+			.noDockMargin()
+			ScrollView(.horizontal, showsIndicators: false) {
+				HStack(spacing: 8) {
+					Chip(selected: model.person == nil, action: { model.person = nil }) {
+						Label { Text("Todo mundo") } icon: { Icon(.people, size: 16) }
+					}
+					ForEach(app.people) { p in
+						Chip(selected: model.person == p.id, action: { model.person = model.person == p.id ? nil : p.id }) {
+							HStack(spacing: 6) {
+								AvatarView(name: p.name, color: p.tint, photo: p.photo, size: 24)
+								Text(p.name)
+							}
+							.padding(.leading, -10)
+						}
+					}
+				}
+				.padding(.horizontal, 16)
+				.padding(.vertical, 4)
+			}
+			.noDockMargin()
+		}
+		.animation(.bounce, value: model.day)
+		.animation(.bounce, value: model.person)
 	}
 }

@@ -116,10 +116,7 @@ struct RoteiroView: View {
 		switch t { case "onibus", "rodo": .sky; case "turismo": .leaf; case "uber": .plum; default: .coral }
 	}
 
-	private func weekday(_ date: String) -> String {
-		guard let d = TripTime.date("\(date)T12:00:00.000-03:00") else { return "" }
-		return d.formatted(Date.FormatStyle(locale: TripTime.locale, timeZone: TripTime.zone).weekday(.abbreviated)).replacingOccurrences(of: ".", with: "")
-	}
+	private func weekday(_ date: String) -> String { TripTime.shortWeekday(date) }
 
 	private func load() async {
 		do {

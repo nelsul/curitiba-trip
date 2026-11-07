@@ -52,3 +52,14 @@ extension TripTime {
 		d.formatted(Date.FormatStyle(locale: locale, timeZone: zone).day(.twoDigits).month(.twoDigits).hour().minute())
 	}
 }
+
+extension TripTime {
+	/// "2026-11-13" → "sex"
+	static func shortWeekday(_ key: String) -> String {
+		guard let d = date("\(key)T12:00:00.000-03:00") else { return "" }
+		return d.formatted(Date.FormatStyle(locale: locale, timeZone: zone).weekday(.abbreviated)).replacingOccurrences(of: ".", with: "")
+	}
+
+	static let tripDays = ["2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-18"]
+	static let weddingDay = "2026-11-14"
+}

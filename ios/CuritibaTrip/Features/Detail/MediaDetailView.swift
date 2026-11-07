@@ -194,14 +194,9 @@ struct MediaDetailView: View {
 			let file = FileManager.default.temporaryDirectory.appending(path: item.originalName)
 			try? FileManager.default.removeItem(at: file)
 			try FileManager.default.moveItem(at: tmp, to: file)
-			try await PHPhotoLibrary.shared().performChanges {
-				let req = PHAssetCreationRequest.forAsset()
-				let opts = PHAssetResourceCreationOptions()
-				opts.shouldMoveFile = true
-				req.addResource(with: item.isVideo ? .video : .photo, fileURL: file, options: opts)
-			}
+			try await PhotoSaver.save(file, isVideo: item.isVideo)
 			saving = "Salvo nas Fotos ✓"
-			try? await Task.sleep(for: .seconds(1.5))
+			try? await Task.sleep(for: .seconds(3))
 		} catch {
 			self.error = "Não foi possível salvar: \(error.localizedDescription)"
 		}
@@ -383,6 +378,20 @@ struct ZoomViewer: View {
 			.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
 			.padding()
 			.accessibilityLabel("Fechar")
+		}
+	}
+}
+
+/// Adds a downloaded original to the photo library.
+/// Not on the main actor: Photos runs the change block on its own queue, and a block that inherits the
+/// screen's main-actor isolation makes Swift 6 stop the app there (that was the crash when saving).
+enum PhotoSaver {
+	nonisolated static func save(_ file: URL, isVideo: Bool) async throws {
+		try await PHPhotoLibrary.shared().performChanges {
+			let req = PHAssetCreationRequest.forAsset()
+			let opts = PHAssetResourceCreationOptions()
+			opts.shouldMoveFile = true
+			req.addResource(with: isVideo ? .video : .photo, fileURL: file, options: opts)
 		}
 	}
 }

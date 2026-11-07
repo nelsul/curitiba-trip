@@ -18,7 +18,7 @@ struct MapaView: View {
 	@State private var stamp: Date?
 	private var sharing: LocationSharing { .shared }
 
-	static let tripDays = ["2026-11-11", "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15", "2026-11-16", "2026-11-17", "2026-11-18"]
+	static let tripDays = TripTime.tripDays
 	static var today: String { TripTime.dayKey(Date().formatted(.iso8601)) }
 	static var initialDay: String { tripDays.contains(today) ? today : "all" }
 
