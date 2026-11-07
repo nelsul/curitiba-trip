@@ -39,14 +39,23 @@ export const loginCodes = pgTable(
 	(t) => [index('login_codes_email_idx').on(t.email, t.createdAt)]
 );
 
-export const sessions = pgTable('sessions', {
-	id: text('id').primaryKey(), // sha256 of the cookie token
-	userId: uuid('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-	createdAt: createdAt()
-});
+export type SessionKind = 'cookie' | 'device';
+
+export const sessions = pgTable(
+	'sessions',
+	{
+		id: text('id').primaryKey(), // sha256 of the token (cookie or bearer); the token itself is never stored
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		kind: text('kind').$type<SessionKind>().notNull().default('cookie'), // 'device' = iOS app (Bearer token)
+		deviceName: text('device_name'), // e.g. "iPhone de Nelson", shown in the devices list
+		lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+		createdAt: createdAt()
+	},
+	(t) => [index('sessions_user_idx').on(t.userId)]
+);
 
 export type MediaKind = 'photo' | 'video';
 export type MediaStatus = 'uploading' | 'processing' | 'ready' | 'failed';
