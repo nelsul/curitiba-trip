@@ -22,7 +22,7 @@
 <main class="login">
 	<div class="passport">
 		<div class="clouds" aria-hidden="true"><span></span><span></span><span></span></div>
-		<span class="plane" aria-hidden="true"><Icon name="plane" size={34} stroke={1.4} /></span>
+		<span class="plane" aria-hidden="true"><Icon name="plane" size={24} stroke={1.4} /></span>
 		<p class="kicker">Passaporte da viagem</p>
 		<h1>Curitiba</h1>
 		<p class="dates">11 – 18 de novembro · 2026</p>
@@ -89,14 +89,18 @@
 	h1 { color: #fff6dc; font-size: 3rem; margin: 6px 0 2px; text-shadow: 0 3px 0 rgb(0 0 0 / 0.15); }
 	.dates { margin: 0; font-weight: 700; }
 	.seal { display: inline-grid; place-items: center; width: 58px; height: 58px; margin-top: 14px; border-radius: 50%; background: var(--sun); color: #4a3410; box-shadow: 0 4px 0 var(--sun-dark); animation: wiggle 3s ease-in-out infinite; }
-	.plane { position: absolute; top: 18px; left: -40px; color: #fff; animation: cross 7s linear infinite; }
+	.plane { position: absolute; top: 6px; left: -40px; color: #fff; opacity: 0.9; animation: cross 7s linear infinite; }
 	.plane :global(svg) { fill: #fff; rotate: 90deg; }
-	@keyframes cross { from { transform: translateX(0) translateY(10px); } to { transform: translateX(520px) translateY(-14px); } }
-	.clouds span { position: absolute; width: 70px; height: 22px; border-radius: 999px; background: rgb(255 255 255 / 0.18); animation: drift 12s linear infinite; }
-	.clouds span:nth-child(1) { top: 60px; left: 10%; }
-	.clouds span:nth-child(2) { top: 120px; left: 60%; width: 90px; animation-duration: 16s; }
-	.clouds span:nth-child(3) { bottom: 26px; left: 25%; width: 50px; animation-duration: 10s; }
-	@keyframes drift { 50% { transform: translateX(24px); } }
+	@keyframes cross { from { transform: translateX(0); } to { transform: translateX(520px); } }
+	/* clouds stay in the empty corners, behind the text */
+	.clouds { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+	.clouds span { position: absolute; height: 18px; border-radius: 999px; background: rgb(255 255 255 / 0.14); animation: drift 12s ease-in-out infinite; }
+	.clouds span:nth-child(1) { top: 22px; right: 12%; width: 60px; }
+	.clouds span:nth-child(2) { bottom: 30px; left: 9%; width: 74px; animation-duration: 16s; }
+	.clouds span:nth-child(3) { bottom: 52px; right: 10%; width: 46px; animation-duration: 10s; }
+	.passport > :not(.clouds) { position: relative; z-index: 1; }
+	.passport > .plane { position: absolute; z-index: 0; }
+	@keyframes drift { 50% { transform: translateX(14px); } }
 	.intro { text-align: center; margin: 18px 8px; font-weight: 700; color: var(--muted); }
 	.form-card form { display: grid; gap: 12px; }
 	.who-title { text-align: center; margin: 4px 0 14px; }

@@ -1,29 +1,30 @@
-/* Cozy island-travel theme: sand paper, leaf green, sea teal, sunshine yellow. */
+/* Cozy island-travel theme, night edition: navy sky, mint leaves, sea teal, sunshine yellow. */
 :root {
-	--bg: #f4eed6;
-	--bg-dot: #e9e0bf;
-	--surface: #fffcf0;
-	--surface-2: #f8f1da;
-	--ink: #5a4530;
-	--muted: #7a6650;
-	--line: #e7dbb8;
-	--shadow: #e0d0a6;
+	/* Night on the island: the app has a single (dark) theme */
+	--bg: #1d2a45;
+	--bg-dot: #26365a;
+	--surface: #27375a;
+	--surface-2: #2e4068;
+	--ink: #f4eed6;
+	--muted: #c2bba3;
+	--line: #3a4d78;
+	--shadow: #131d33;
 
-	--leaf: #23824f; /* primary */
-	--leaf-dark: #18663c;
-	--on-leaf: #ffffff;
-	--sea: #1f8a91;
-	--sea-dark: #156a70;
-	--on-sea: #ffffff;
-	--sea-light: #9fe1e6;
-	--sun: #f6c945;
-	--sun-dark: #d9a520;
-	--coral: #e9775e;
-	--berry: #d65c86; /* wedding */
-	--sky: #4a8fd9;
-	--plum: #8a66c2;
-	--danger: #c0453a;
-	--track: #ece2c3;
+	--leaf: #7fd8a6; /* primary */
+	--leaf-dark: #4fae7c;
+	--on-leaf: #12261b;
+	--sea: #6fd0d6;
+	--sea-dark: #3f9ea4;
+	--on-sea: #10262a;
+	--sea-light: #2a5a70;
+	--sun: #f6d36b;
+	--sun-dark: #c9a43c;
+	--coral: #f39a85;
+	--berry: #f08bb0; /* wedding, likes */
+	--sky: #8dbdf0;
+	--plum: #b9a0e8;
+	--danger: #ff9d90;
+	--track: #34466e;
 
 	/* names kept from v1 so older rules still work */
 	--pine: var(--leaf);
@@ -38,25 +39,14 @@
 	--font-body: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
 	--font-display: 'Fredoka', 'Nunito', system-ui, sans-serif;
 	--bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
-	color-scheme: light;
-}
-
-/* Night on the island */
-@media (prefers-color-scheme: dark) {
-	:root:not([data-theme='light']) {
-		--bg: #1d2a45; --bg-dot: #26365a; --surface: #27375a; --surface-2: #2e4068;
-		--ink: #f4eed6; --muted: #c2bba3; --line: #3a4d78; --shadow: #131d33;
-		--leaf: #7fd8a6; --leaf-dark: #4fae7c; --on-leaf: #12261b;
-		--sea: #6fd0d6; --sea-dark: #3f9ea4; --on-sea: #10262a; --sea-light: #2a5a70; --sun: #f6d36b; --sun-dark: #c9a43c;
-		--coral: #f39a85; --berry: #f08bb0; --sky: #8dbdf0; --plum: #b9a0e8; --danger: #ff9d90; --track: #34466e;
-		color-scheme: dark;
-	}
+	color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
 	margin: 0;
+	overflow-x: clip; /* nothing may widen the page sideways (iOS would zoom the whole app out) */
 	color: var(--ink);
 	font-family: var(--font-body);
 	font-size: 16px;

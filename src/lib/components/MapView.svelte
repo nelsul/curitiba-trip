@@ -18,7 +18,6 @@
 		let map: MLMap | undefined;
 		(async () => {
 			try {
-				const night = matchMedia('(prefers-color-scheme: dark)').matches;
 				const [ml, , { islandStyle }] = await Promise.all([
 					import('maplibre-gl'),
 					import('maplibre-gl/dist/maplibre-gl.css'),
@@ -26,7 +25,7 @@
 				]);
 				map = new ml.Map({
 					container: el,
-					style: await islandStyle(night),
+					style: await islandStyle(true),
 					center,
 					zoom,
 					attributionControl: { compact: true },
@@ -60,5 +59,8 @@
 	.map :global(.maplibregl-ctrl-group) { border-radius: 14px; overflow: hidden; border: 2.5px solid var(--line); box-shadow: 0 3px 0 var(--shadow); background: var(--surface); }
 	.map :global(.maplibregl-ctrl-group button) { width: 38px; height: 38px; }
 	.map :global(.maplibregl-ctrl-group button + button) { border-top: 2px solid var(--line); }
+	.map :global(.maplibregl-ctrl-icon) { filter: invert(1) brightness(1.6); } /* dark icons → light on the night theme */
+	.map :global(.maplibregl-ctrl-attrib) { background: rgb(39 55 90 / 0.85); color: var(--muted); }
+	.map :global(.maplibregl-ctrl-attrib a) { color: var(--ink); }
 	.map :global(.maplibregl-ctrl-attrib) { border-radius: 10px; font-size: 10px; }
 </style>

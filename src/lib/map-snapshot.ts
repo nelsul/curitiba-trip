@@ -37,12 +37,19 @@ export async function makeCheckinSnapshot(o: {
 		import('./map-style')
 	]);
 
+	// The map renders into a 540px box. iOS Safari counts even off-screen fixed elements when sizing
+	// the page (it zoomed the whole app out after a check-in), so the box lives inside a 1px clipped
+	// holder that can never widen the layout.
+	const holder = document.createElement('div');
+	Object.assign(holder.style, { position: 'fixed', left: '0', top: '0', width: '1px', height: '1px', overflow: 'hidden', opacity: '0', pointerEvents: 'none', zIndex: '-1' });
+	holder.setAttribute('aria-hidden', 'true');
 	const box = document.createElement('div');
-	Object.assign(box.style, { position: 'fixed', left: '-10000px', top: '0', width: `${W}px`, height: `${H}px`, pointerEvents: 'none' });
-	document.body.append(box);
+	Object.assign(box.style, { width: `${W}px`, height: `${H}px` });
+	holder.append(box);
+	document.body.append(holder);
 	const map = new ml.Map({
 		container: box,
-		style: await islandStyle(false),
+		style: await islandStyle(true),
 		center: [o.lng, o.lat],
 		zoom: 16,
 		interactive: false,
@@ -75,8 +82,8 @@ export async function makeCheckinSnapshot(o: {
 
 		// soft vignette so the pin pops
 		const v = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, W * 0.7);
-		v.addColorStop(0, 'rgba(255,252,240,0)');
-		v.addColorStop(1, 'rgba(90,69,48,0.22)');
+		v.addColorStop(0, 'rgba(29,42,69,0)');
+		v.addColorStop(1, 'rgba(10,16,30,0.35)');
 		ctx.fillStyle = v;
 		ctx.fillRect(0, 0, W, H);
 
@@ -135,18 +142,18 @@ export async function makeCheckinSnapshot(o: {
 		ctx.textBaseline = 'middle';
 		const lw = ctx.measureText(label).width + 28;
 		roundRect(ctx, 14, H - 50, lw, 36, 18);
-		ctx.fillStyle = '#fffcf0';
+		ctx.fillStyle = '#27375a';
 		ctx.fill();
 		ctx.lineWidth = 2.5;
-		ctx.strokeStyle = '#e7dbb8';
+		ctx.strokeStyle = '#3a4d78';
 		ctx.stroke();
-		ctx.fillStyle = '#5a4530';
+		ctx.fillStyle = '#f4eed6';
 		ctx.fillText(label, 28, H - 31);
 
 		// attribution (required by the map data license)
 		ctx.font = "700 9px 'Nunito', system-ui, sans-serif";
 		ctx.textAlign = 'right';
-		ctx.fillStyle = 'rgba(90,69,48,0.75)';
+		ctx.fillStyle = 'rgba(244,238,214,0.7)';
 		ctx.fillText('© OpenStreetMap · OpenFreeMap', W - 8, H - 8);
 
 		const webp = await new Promise<Blob | null>((res) => out.toBlob(res, 'image/webp', 0.85));
@@ -154,7 +161,7 @@ export async function makeCheckinSnapshot(o: {
 		return (await new Promise<Blob | null>((res) => out.toBlob(res, 'image/jpeg', 0.86)))!;
 	} finally {
 		map.remove();
-		box.remove();
+		holder.remove();
 	}
 }
 
