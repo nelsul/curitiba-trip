@@ -87,7 +87,7 @@ class FeedModel {
 /** Diário: Instagram-style feed under wooden day signs, newest first (same as the web and iOS). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FeedScreen(contentPadding: PaddingValues, open: (String) -> Unit) {
+fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 	val app = LocalApp.current
 	val model = remember { FeedModel() }
 	val scope = rememberCoroutineScope()
