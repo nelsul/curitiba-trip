@@ -1,39 +1,16 @@
 # iOS app
 
-A native iOS app for the trip, separate from the web app. **Not started yet.** This folder is where the Xcode project will live.
+A native **SwiftUI** app for the trip (iOS 17+), separate from the web app but following its design exactly. **Not started yet.**
 
-## Plan
+👉 **The full plan is in [PLAN.md](PLAN.md):** approach, installing without the App Store, design parity, backend changes, screens, native features, layout and timeline.
 
-- **SwiftUI**, iOS 17+.
-- Talks to the same backend as the web app (`https://viagem.nelsul.com`). There's no separate server.
-- Things a native app does better than the web:
-  - share your location **in the background** (the website can only do it while open)
-  - upload straight from the photo library **with location and original quality**
-  - notifications for new posts, comments and likes
+## In short
 
-## Suggested layout
-
-```
-ios/
-  CuritibaTrip.xcodeproj
-  CuritibaTrip/
-    App/            # @main, app state
-    Features/       # Feed, Map, Upload, Roteiro, Profile
-    Networking/     # API client for the web backend
-    Resources/      # assets, colors (match web/src/app.css tokens), fonts (Fredoka, Nunito)
-  CuritibaTripTests/
-```
-
-## Backend work needed first
-
-The web API uses a session **cookie** after the email-code login. For the app we'll likely add:
-
-- a token-based login (`POST /api/auth/code`, `POST /api/auth/verify` returning a bearer token)
-- JSON endpoints for the feed and map (today those pages load data on the server)
-- background location pings (`POST /api/locations` exists already)
-
-These go in `web/` first; open an issue to discuss.
+- **SwiftUI + MapLibre Native**, talking to the same backend as the web (`https://viagem.nelsul.com`). The backend changes it needs go in `web/` first (PLAN.md §5).
+- **Same design as the web:** colors and sizes come from shared design tokens (`design/tokens.json` → `Theme.swift`), with the same fonts (Fredoka, Nunito), icons and animations.
+- **Native extras:** location in the background, photo-library uploads with original quality and location that finish with the app closed, local notifications and itinerary reminders, and later widgets, Live Activities and the share sheet.
+- **Not on the App Store, no paid account:** signed with a free Apple ID and installed by connecting each iPhone to Nelson's Mac (Developer Mode on). Free-signed apps expire after 7 days, so there's a re-install session mid-trip (PLAN.md §3).
 
 ## Secrets
 
-Never commit signing certificates, provisioning profiles, API keys or `.xcconfig` files with secrets. The root `.gitignore` already excludes the common ones (`*.p12`, `*.mobileprovision`, `Config/Secrets.xcconfig`, `xcuserdata/`).
+Never commit signing certificates, provisioning profiles, the APNs key or `.xcconfig` files with secrets. The root `.gitignore` already excludes the common ones (`*.p8`, `*.p12`, `*.cer`, `*.mobileprovision`, `Config/Secrets.xcconfig`, `xcuserdata/`).

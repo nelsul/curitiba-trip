@@ -5,6 +5,10 @@
 *.pem
 *.key
 *.p12
+*.p8
+*.cer
+*.mobileprovision.zip
+ExportOptions*.plist
 *.mobileprovision
 GoogleService-Info.plist
 
@@ -15,6 +19,8 @@ build/
 build-worker/
 
 # ── iOS (Xcode / SwiftPM) ──
+# The Xcode project is generated from ios/project.yml with XcodeGen
+ios/*.xcodeproj/
 xcuserdata/
 DerivedData/
 *.xcuserstate
