@@ -2,10 +2,10 @@
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import type { Map as MLMap, Marker, GeoJSONSource } from 'maplibre-gl';
+	import type { Map as MLMap, Marker, IControl } from 'maplibre-gl';
 	import MapView from '$lib/components/MapView.svelte';
 	import Filters from '$lib/components/Filters.svelte';
-	import Icon from '$lib/components/Icon.svelte';
+	import Icon, { ICONS } from '$lib/components/Icon.svelte';
 	import { dayKey, fmtAgo, fmtDateTime } from '$lib/format';
 	import { currentPosition, loc, startSharing, stopSharing } from '$lib/location.svelte';
 	import { animateIn, personElement, pinElement, polaroidElement } from '$lib/map-markers';
@@ -48,27 +48,6 @@
 			animateIn(node, Math.min(stagger++, 12) * 60);
 		};
 
-		// Trails: everything with a position, per person per day, in time order
-		const points = [
-			...data.pings,
-			...data.items.map((i) => ({ userId: i.userId, lat: i.lat!, lng: i.lng!, at: i.at, day: i.day }))
-		]
-			.filter((p) => visible(p.day, p.userId))
-			.sort((a, b) => a.at.localeCompare(b.at));
-		const lines = new Map<string, [number, number][]>();
-		for (const p of points) {
-			const k = `${p.userId}|${p.day}`;
-			(lines.get(k) ?? lines.set(k, []).get(k)!).push([p.lng, p.lat]);
-		}
-		const features = [...lines.entries()]
-			.filter(([, c]) => c.length > 1)
-			.map(([k, coordinates]) => ({
-				type: 'Feature' as const,
-				properties: { color: byId.get(k.split('|')[0])?.color ?? '#888' },
-				geometry: { type: 'LineString' as const, coordinates }
-			}));
-		(map.getSource('trails') as GeoJSONSource).setData({ type: 'FeatureCollection', features });
-
 		for (const it of data.items) {
 			if (!visible(it.day, it.userId)) continue;
 			const p = byId.get(it.userId);
@@ -103,23 +82,59 @@
 		if (fit && !bounds.isEmpty()) map.fitBounds(bounds, { padding: 70, maxZoom: 15, duration: 800 });
 	}
 
+	// ---- where am I ----
+	let me: Marker | null = null;
+	let locating = $state(false);
+
+	/** Flies to my position and marks it with a pulsing dot (also works without "Compartilhar local"). */
+	async function goToMe() {
+		if (!map || !ml || locating) return;
+		locating = true;
+		loc.error = '';
+		try {
+			const p = await currentPosition(30_000);
+			if (!me) {
+				const el = document.createElement('div');
+				el.className = 'me-dot';
+				el.setAttribute('aria-label', 'Você está aqui');
+				me = new ml.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
+			} else me.setLngLat([p.lng, p.lat]);
+			map.flyTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 15), duration: 1000 });
+		} catch (e) {
+			loc.error = (e as Error).message;
+		} finally {
+			locating = false;
+		}
+	}
+	// keep the dot where I am while sharing
+	$effect(() => {
+		if (me && loc.pos) me.setLngLat([loc.pos.lng, loc.pos.lat]);
+	});
+
+	/** A map button under the zoom buttons, styled like them. */
+	class LocateControl implements IControl {
+		#el: HTMLDivElement | undefined;
+		onAdd() {
+			this.#el = document.createElement('div');
+			this.#el.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+			const b = document.createElement('button');
+			b.type = 'button';
+			b.className = 'locate';
+			b.title = 'Ir para onde estou';
+			b.setAttribute('aria-label', 'Ir para onde estou');
+			b.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS.locate}"/></svg>`;
+			b.onclick = goToMe;
+			this.#el.append(b);
+			return this.#el;
+		}
+		onRemove() {
+			this.#el?.remove();
+		}
+	}
+
 	function ready(m: MLMap, lib: ML) {
 		ml = lib;
-		m.addSource('trails', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-		m.addLayer({
-			id: 'trails-glow',
-			type: 'line',
-			source: 'trails',
-			layout: { 'line-cap': 'round', 'line-join': 'round' },
-			paint: { 'line-color': '#fffcf0', 'line-width': 8, 'line-opacity': 0.8 }
-		});
-		m.addLayer({
-			id: 'trails',
-			type: 'line',
-			source: 'trails',
-			layout: { 'line-cap': 'round', 'line-join': 'round' },
-			paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-dasharray': [0.1, 2] }
-		});
+		m.addControl(new LocateControl(), 'top-right');
 		map = m;
 		render(!hasFoco);
 	}
@@ -242,6 +257,13 @@
 	.actions { position: absolute; z-index: 5; left: 22px; right: 22px; bottom: 26px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 	.actions .btn.secondary { background: var(--surface); }
 	.actions p { width: 100%; margin: 0; padding: 8px 12px; }
+	.wrap :global(.locate) { display: grid; place-items: center; color: var(--ink); }
+	.wrap :global(.locate:disabled) { opacity: 0.5; }
+	.wrap :global(.me-dot) {
+		width: 18px; height: 18px; border-radius: 50%; background: #3b8cff; border: 3px solid #fff;
+		box-shadow: 0 0 0 0 rgb(59 140 255 / 0.6); animation: me-pulse 2s infinite;
+	}
+	@keyframes me-pulse { 70% { box-shadow: 0 0 0 16px rgb(59 140 255 / 0); } 100% { box-shadow: 0 0 0 0 rgb(59 140 255 / 0); } }
 	.live-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; animation: bob 1s infinite; }
 	.stamp-toast {
 		position: absolute; z-index: 6; top: 34%; left: 50%; margin-left: -80px; width: 160px; height: 160px; display: grid; place-items: center; pointer-events: none;

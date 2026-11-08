@@ -83,7 +83,7 @@
 	<section class="place">
 		<h2>Onde</h2>
 		{#if editLoc}
-			<p class="small muted">Toque no mapa ou arraste o marcador até o lugar certo.</p>
+			<p class="small muted">Busque o lugar, toque no mapa ou arraste o marcador até o lugar certo.</p>
 			<LocationPicker bind:lat bind:lng editable color={it.color} />
 			<form method="POST" action="?/local" use:enhance={() => async ({ update }) => { await update(); editLoc = false; }} class="row">
 				<input type="hidden" name="lat" value={lat} /><input type="hidden" name="lng" value={lng} />

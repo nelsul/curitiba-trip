@@ -41,7 +41,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/api/feed?limit=20&before=&day=&person=` | → `{ posts, nextCursor, days }`. Newest first. Each post is `{ type: 'media', key, userId, day, at, items: [FeedMedia] }` (a carousel: same person, same day, ≤30 min apart, oldest→newest inside) or `{ type: 'checkin', key, userId, day, at, item }`. Pass `nextCursor` as `before` for the next page (`null` = end). `limit` is 1–50. `days` lists every day that has posts (whatever the filters), for the day chips. The web feed uses the same grouping (`$lib/feed-group`). |
-| GET | `/api/map?day=` | → `{ items, pings, latest }`: located posts and check-ins, trails, everyone's latest position. `day` (YYYY-MM-DD, Curitiba time) limits items and trails. |
+| GET | `/api/map?day=` | → `{ items, pings, latest }`: located posts and check-ins, and everyone's latest position. `day` (YYYY-MM-DD, Curitiba time) limits the items. `pings` is always `[]`: trails were removed (background positions weren't reliable enough); the field stays for older apps. |
 | GET | `/api/media/:id` | → `{ item, comments, likers }`. `item` has `display` (2048 px), `medium` (1080 px), `video`, `poster` and `original` (download) URLs. |
 | PATCH | `/api/media/:id` | Owner: `{ caption?, lat?, lng? }` (lat+lng = manual location) → the updated item |
 | DELETE | `/api/media/:id` | Owner: removes the post and all its files |
@@ -50,6 +50,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 | GET / POST | `/api/media/:id/comments`, `/api/checkins/:id/comments` | List, or `{ body }` → the new comment (201) |
 | DELETE | `/api/comments/:id` | Only your own |
 | GET | `/api/itinerary` | → `{ transport, days }`, where each stop has `place` (name, lat, lng, hours, `mapsUrl`, `uberUrl`) and each day has a `routeUrl` |
+| GET | `/api/places?q=&lat=&lng=` | Place search for marking where a photo/video was taken → `[{ name, detail, lat, lng }]` (max 10). `q` is 2–100 chars; results are ranked near `lat`/`lng` (send the map's center; default Curitiba), itinerary places first. OpenStreetMap data via Photon; `502` if it doesn't answer. |
 | GET | `/api/map-style.json` | The island night MapLibre style (the same as the web map). Cache for an hour. |
 
 ## For the app's background work
