@@ -234,7 +234,7 @@ private struct AlertsCard: View {
 				Task { await Notifier.shared.set(.itinerary, on) }
 			}
 			Divider().overlay(Color.line)
-			row("Meu caminho com o app fechado", "O grupo vê no mapa por onde você passou, mesmo com o app fechado. Gasta pouca bateria. Precisa da localização \"Sempre\".", $background) { on in
+			row("Minha posição com o app fechado", "O grupo vê no mapa onde você está, mesmo com o app fechado. Gasta pouca bateria. Precisa da localização \"Sempre\".", $background) { on in
 				location.setBackground(on)
 				if !on, arrival { arrival = false; Task { await Notifier.shared.set(.arrival, false) } }
 			}

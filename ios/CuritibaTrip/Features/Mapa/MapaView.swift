@@ -1,8 +1,8 @@
 import MapLibre
 import SwiftUI
 
-/// Mapa (web /mapa): everyone's located photos, check-ins, trails and latest positions,
-/// with day/person filters, "Compartilhar local" and "Check-in".
+/// Mapa (web /mapa): everyone's located photos, check-ins and latest positions,
+/// with day/person filters, "Ir para onde estou", "Compartilhar local" and "Check-in".
 struct MapaView: View {
 	@Environment(AppState.self) private var app
 	@State private var style: URL?
@@ -13,6 +13,10 @@ struct MapaView: View {
 	@State private var showFilters = false
 	@State private var fitToken = 0
 	@State private var flyTo: CLLocationCoordinate2D?
+	@State private var flyToken = 0
+	@State private var showsMe = false
+	@State private var locating = false
+	@State private var locateError: String?
 	@State private var open: Route?
 	@State private var checkingIn = false
 	@State private var stamp: Date?
@@ -27,34 +31,14 @@ struct MapaView: View {
 	private var items: [MapItem] { (data?.items ?? []).filter { visible($0.day, $0.userId) } }
 	private var people: [LatestLocation] { (data?.latest ?? []).filter { person == nil || $0.userId == person } }
 
-	/// Everything with a position, per person per day, in time order.
-	private var trails: [Trail] {
-		guard let data else { return [] }
-		var points = data.pings.filter { visible($0.day, $0.userId) }.map { ($0.userId, $0.day, $0.at, $0.lat, $0.lng) }
-		points += items.map { ($0.userId, $0.day, $0.at, $0.lat, $0.lng) }
-		points.sort { $0.2 < $1.2 }
-		var lines: [String: [CLLocationCoordinate2D]] = [:]
-		var order: [String] = []
-		for p in points {
-			let k = "\(p.0)|\(p.1)"
-			if lines[k] == nil { order.append(k) }
-			lines[k, default: []].append(CLLocationCoordinate2D(latitude: p.3, longitude: p.4))
-		}
-		return order.compactMap { k in
-			guard let c = lines[k], c.count > 1 else { return nil }
-			let uid = String(k.split(separator: "|")[0])
-			return Trail(userId: uid, color: app.person(uid)?.color ?? "#888888", coordinates: c)
-		}
-	}
-
 	private var days: [String] { Array(Set(Self.tripDays + (data?.items.map(\.day) ?? []))).sorted() }
 
 	var body: some View {
 		ZStack {
 			if let style {
-				TripMap(styleURL: style, items: items, trails: trails, people: people,
+				TripMap(styleURL: style, items: items, people: people,
 						colors: Dictionary(uniqueKeysWithValues: app.people.map { ($0.id, $0.tint) }),
-						fitToken: fitToken, flyTo: flyTo, onOpen: { open = $0 })
+						fitToken: fitToken, flyTo: flyTo, flyToken: flyToken, showsUser: showsMe, onOpen: { open = $0 })
 					.clipShape(RoundedRectangle(cornerRadius: Radius.card))
 					.overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Color.line, lineWidth: 3))
 					.padding(10)
@@ -67,7 +51,8 @@ struct MapaView: View {
 		// fill the tab even while there's no map (otherwise the overlays below sit on the small error card)
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 		// filters and actions belong to the map: only once it has loaded
-		.overlay(alignment: .topLeading) { if style != nil { filters.padding(22) } }
+		.overlay(alignment: .topLeading) { if style != nil { filters.padding(22).padding(.trailing, 60) } }
+		.overlay(alignment: .topTrailing) { if style != nil { locateButton.padding(22) } }
 		.overlay(alignment: .bottom) { if style != nil { actions.padding(.horizontal, 22).padding(.bottom, 108) } }
 		.overlay { if let stamp { StampToast(date: stamp).allowsHitTesting(false) } }
 		.navigationDestination(item: $open) { route in
@@ -126,9 +111,41 @@ struct MapaView: View {
 		}
 	}
 
+	/// Round map button: flies to where I am and shows the blue dot.
+	private var locateButton: some View {
+		Button { Task { await goToMe() } } label: {
+			Group {
+				if locating { ProgressView().tint(.ink) } else { Icon(.locate, size: 22).foregroundStyle(Color.ink) }
+			}
+			.frame(width: 44, height: 44)
+			.background(RoundedRectangle(cornerRadius: 14).fill(Color.surface))
+			.overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.line, lineWidth: 2.5))
+			.background(RoundedRectangle(cornerRadius: 14).fill(Color.shadow).offset(y: 3))
+		}
+		.buttonStyle(.plain)
+		.disabled(locating)
+		.accessibilityLabel("Ir para onde estou")
+	}
+
+	private func goToMe() async {
+		locating = true
+		locateError = nil
+		defer { locating = false }
+		do {
+			let l: CLLocation
+			if let last = sharing.last, Date().timeIntervalSince(last.timestamp) < 30 { l = last }
+			else { l = try await LocationOnce.current() }
+			showsMe = true
+			flyTo = l.coordinate
+			flyToken += 1
+		} catch {
+			locateError = (error as? LocalizedError)?.errorDescription ?? "Não foi possível pegar sua localização agora."
+		}
+	}
+
 	private var actions: some View {
 		VStack(spacing: 10) {
-			if let e = sharing.error {
+			if let e = locateError ?? sharing.error {
 				Text(e).font(.text(14, .bold)).foregroundStyle(Color.danger).padding(10).card(padding: 0)
 			}
 			HStack(spacing: 10) {
@@ -275,30 +292,54 @@ private struct StampToast: View {
 	}
 }
 
-/// Pick a spot on the map ("Marcar no mapa" / "Corrigir local" on your own photos).
+/// GET /api/places
+struct PlaceResult: Decodable, Hashable, Sendable {
+	let name: String
+	let detail: String
+	let lat: Double
+	let lng: Double
+}
+
+/// Pick a spot on the map ("Marcar no mapa" / "Corrigir local" on your own photos): search a place by name,
+/// or drag the map under the pin.
 struct LocationPicker: View {
 	let start: CLLocationCoordinate2D?
 	let save: (CLLocationCoordinate2D) async throws -> Void
+	@Environment(AppState.self) private var app
 	@Environment(\.dismiss) private var dismiss
 	@State private var style: URL?
 	@State private var center: CLLocationCoordinate2D?
+	@State private var flyTo: CLLocationCoordinate2D?
+	@State private var flyToken = 0
 	@State private var busy = false
 	@State private var error: String?
+	@State private var query = ""
+	@State private var results: [PlaceResult] = []
+	@State private var searching = false
+	@State private var searchNote: String?
+	@State private var chosen: String?
+	@FocusState private var searchFocused: Bool
 
 	var body: some View {
 		VStack(spacing: 12) {
-			Text("Arraste o mapa até o lugar da foto").font(.display(20)).foregroundStyle(Color.ink).padding(.top, 18)
-			ZStack {
-				if let style {
-					TripMap(styleURL: style, initialCenter: start ?? LocationSharing.shared.last?.coordinate, initialZoom: start == nil ? 13 : 16,
-							onCenter: { center = $0 })
-				} else {
-					ProgressView().tint(.sea)
+			Text("Busque o lugar ou arraste o mapa até ele").font(.display(20)).foregroundStyle(Color.ink).padding(.top, 18)
+				.multilineTextAlignment(.center)
+			searchField
+			ZStack(alignment: .top) {
+				ZStack {
+					if let style {
+						TripMap(styleURL: style, flyTo: flyTo, flyToken: flyToken,
+								initialCenter: start ?? LocationSharing.shared.last?.coordinate, initialZoom: start == nil ? 13 : 16,
+								onCenter: { center = $0 })
+					} else {
+						ProgressView().tint(.sea)
+					}
+					PinMarker(color: .coral).frame(width: 56, height: 64).offset(y: -32).allowsHitTesting(false)
 				}
-				PinMarker(color: .coral).frame(width: 56, height: 64).offset(y: -32).allowsHitTesting(false)
+				.clipShape(RoundedRectangle(cornerRadius: Radius.card))
+				.overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Color.line, lineWidth: 3))
+				if !results.isEmpty { resultsList.padding(.horizontal, 6).padding(.top, 6) }
 			}
-			.clipShape(RoundedRectangle(cornerRadius: Radius.card))
-			.overlay(RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Color.line, lineWidth: 3))
 			if let error { Text(error).font(.text(14, .bold)).foregroundStyle(Color.danger) }
 			HStack {
 				Button("Cancelar") { dismiss() }.buttonStyle(.chunky(.secondary))
@@ -321,5 +362,100 @@ struct LocationPicker: View {
 			style = try? await MapStyle.url()
 			if style == nil { error = "Sem conexão para carregar o mapa." }
 		}
+		// search as you type, after a short pause
+		.task(id: query) {
+			let q = query.trimmingCharacters(in: .whitespaces)
+			searchNote = nil
+			if !q.isEmpty { chosen = nil }
+			guard q.count >= 2 else { results = []; return }
+			try? await Task.sleep(for: .milliseconds(350))
+			guard !Task.isCancelled else { return }
+			await search(q)
+		}
+	}
+
+	private var searchField: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			HStack(spacing: 8) {
+				Icon(.search, size: 18).foregroundStyle(Color.muted)
+				TextField("Buscar lugar (ex.: Jardim Botânico)", text: $query)
+					.font(.text(16)).foregroundStyle(Color.ink)
+					.focused($searchFocused)
+					.submitLabel(.search)
+					.autocorrectionDisabled()
+				if searching { ProgressView().tint(.sea) }
+				else if !query.isEmpty {
+					Button { query = ""; results = [] } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.muted) }
+						.buttonStyle(.plain).accessibilityLabel("Limpar busca")
+				}
+			}
+			.padding(.horizontal, 12)
+			.frame(minHeight: 46)
+			.background(RoundedRectangle(cornerRadius: 14).fill(Color.surface))
+			.overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(searchFocused ? Color.sea : Color.line, lineWidth: 2.5))
+			if let note = searchNote ?? chosen.map({ "\($0). Arraste o mapa para ajustar." }) {
+				Text(note).font(.text(14, .bold)).foregroundStyle(Color.muted)
+			}
+		}
+	}
+
+	private var resultsList: some View {
+		ScrollView {
+			VStack(spacing: 0) {
+				ForEach(results, id: \.self) { r in
+					Button { choose(r) } label: {
+						HStack(alignment: .top, spacing: 8) {
+							Icon(.pin, size: 16).foregroundStyle(Color.coral).padding(.top, 3)
+							VStack(alignment: .leading, spacing: 1) {
+								Text(r.name).font(.text(16, .extraBold)).foregroundStyle(Color.ink)
+								if !r.detail.isEmpty { Text(r.detail).font(.text(13)).foregroundStyle(Color.muted).lineLimit(1) }
+							}
+							Spacer(minLength: 0)
+						}
+						.padding(.horizontal, 10).padding(.vertical, 8)
+						.frame(minHeight: 44)
+						.contentShape(Rectangle())
+					}
+					.buttonStyle(.plain)
+				}
+			}
+			.padding(4)
+		}
+		.noDockMargin()
+		.frame(maxHeight: 280)
+		.fixedSize(horizontal: false, vertical: true)
+		.card(padding: 0)
+	}
+
+	private func search(_ q: String) async {
+		searching = true
+		defer { searching = false }
+		let c = center ?? start
+		do {
+			let found: [PlaceResult] = try await API.shared.get("/api/places", query: [
+				"q": q,
+				"lat": c.map { String(format: "%.4f", $0.latitude) },
+				"lng": c.map { String(format: "%.4f", $0.longitude) }
+			])
+			guard !Task.isCancelled else { return }
+			results = found
+			if found.isEmpty { searchNote = "Nenhum lugar encontrado." }
+		} catch {
+			guard !Task.isCancelled else { return }
+			app.handle(error)
+			results = []
+			searchNote = (error as? LocalizedError)?.errorDescription ?? "Não foi possível buscar."
+		}
+	}
+
+	private func choose(_ r: PlaceResult) {
+		let c = CLLocationCoordinate2D(latitude: r.lat, longitude: r.lng)
+		flyTo = c
+		flyToken += 1
+		center = c
+		searchFocused = false
+		results = []
+		chosen = r.name
+		query = ""
 	}
 }

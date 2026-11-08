@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// Top bar: plane tile + "Curitiba" + the dates stamp, with the dashed bottom edge.
+/// Top bar: plane tile + "Curitiba" + the dates stamp, with the dashed bottom edge, and the yellow "Enviar" button on the right.
 struct TopBar: View {
+	var sending = false
+	var onSend: () -> Void = {}
+
 	var body: some View {
 		HStack(spacing: 8) {
 			Icon(.plane, size: 18)
@@ -14,6 +17,7 @@ struct TopBar: View {
 			Text("Curitiba").font(.display(24, relativeTo: .title2)).foregroundStyle(Color.ink)
 			Stamp(text: "11–18/11", size: 12)
 			Spacer()
+			SendButton(active: sending, action: onSend)
 		}
 		.padding(.horizontal, 16)
 		.padding(.vertical, 10)
@@ -22,8 +26,31 @@ struct TopBar: View {
 			Rectangle().fill(.clear).frame(height: 2.5)
 				.overlay(Line().stroke(Color.line, style: StrokeStyle(lineWidth: 2.5, dash: [8, 6])))
 		}
-		.accessibilityElement(children: .combine)
-		.accessibilityLabel("Viagem a Curitiba, 11 a 18 de novembro")
+	}
+}
+
+/// "Enviar": the raised yellow pill at the top right (web header).
+private struct SendButton: View {
+	let active: Bool
+	let action: () -> Void
+
+	var body: some View {
+		Button(action: action) {
+			HStack(spacing: 6) {
+				Icon(.upload, size: 22)
+				Text("Enviar").font(.display(17))
+			}
+			.foregroundStyle(Color.onSun)
+			.padding(.leading, 12).padding(.trailing, 16)
+			.frame(minHeight: 44)
+			.background(Capsule().fill(Color.sun.shadow(.inner(color: .sunDark, radius: 0, y: -3))))
+			.background(Capsule().fill(Color.shadow).offset(y: 3))
+			.rotationEffect(.degrees(active ? -3 : 0))
+		}
+		.buttonStyle(PressScale())
+		.animation(.bounce, value: active)
+		.accessibilityLabel("Enviar fotos e vídeos")
+		.accessibilityAddTraits(active ? .isSelected : [])
 	}
 }
 
@@ -75,50 +102,61 @@ struct DaySign: View {
 }
 
 enum Tab: String, CaseIterable, Identifiable {
-	case diario, mapa, enviar, roteiro, mais
+	case diario, mapa, galeria, roteiro, mais, enviar
 	var id: String { rawValue }
-	var label: String { ["Diário", "Mapa", "Enviar", "Roteiro", "Mais"][Self.allCases.firstIndex(of: self)!] }
-	var icon: IconName { [.journal, .map, .upload, .ticket, .user][Self.allCases.firstIndex(of: self)!] }
-	var color: Color { [.leaf, .sea, .sun, .coral, .plum][Self.allCases.firstIndex(of: self)!] }
+	/// The dock's tabs ("Enviar" lives in the top bar).
+	static let dock: [Tab] = [.diario, .mapa, .galeria, .roteiro, .mais]
+	var label: String {
+		switch self {
+		case .diario: "Diário"
+		case .mapa: "Mapa"
+		case .galeria: "Galeria"
+		case .roteiro: "Roteiro"
+		case .mais: "Mais"
+		case .enviar: "Enviar"
+		}
+	}
+	var icon: IconName {
+		switch self {
+		case .diario: .journal
+		case .mapa: .map
+		case .galeria: .gallery
+		case .roteiro: .ticket
+		case .mais: .user
+		case .enviar: .upload
+		}
+	}
+	var color: Color {
+		switch self {
+		case .diario: .leaf
+		case .mapa: .sea
+		case .galeria, .enviar: .sun
+		case .roteiro: .coral
+		case .mais: .plum
+		}
+	}
 }
 
-/// The floating dock with colored icon tiles; "Enviar" is the raised yellow button (same as the web).
+/// The floating dock with colored icon tiles (same as the web).
 struct Dock: View {
 	@Binding var selection: Tab
 
 	var body: some View {
 		HStack(spacing: 0) {
-			ForEach(Tab.allCases) { tab in
+			ForEach(Tab.dock) { tab in
 				let active = selection == tab
 				Button {
 					selection = tab
 				} label: {
 					VStack(spacing: 2) {
-						if tab == .enviar {
-							// Same 38 pt slot as the other tabs (so the labels line up); the raised coin floats above it.
-							Color.clear
-								.frame(width: 38, height: 38)
-								.overlay {
-									Icon(tab.icon, size: 26)
-										.foregroundStyle(Color.onSun)
-										.frame(width: 56, height: 56)
-										// gold depth inside the coin, navy drop like the dock (no gold crescent outside the ring)
-										.background(Circle().fill(Color.sun.shadow(.inner(color: .sunDark, radius: 0, y: -4))))
-										.overlay(Circle().strokeBorder(Color.surface, lineWidth: 4))
-										.background(Circle().fill(Color.shadow).offset(y: 4))
-										.scaleEffect(active ? 1.06 : 1)
-										.offset(y: -12)
-								}
-						} else {
-							Icon(tab.icon, size: 22)
-								.foregroundStyle(.white)
-								.frame(width: 38, height: 38)
-								.background(RoundedRectangle(cornerRadius: 14).fill(tab.color))
-								.background(RoundedRectangle(cornerRadius: 14).fill(.black.opacity(0.18)).offset(y: 3))
-								.rotationEffect(.degrees(active ? -6 : 0))
-								.scaleEffect(active ? 1.08 : 1)
-								.offset(y: active ? -4 : 0)
-						}
+						Icon(tab.icon, size: 22)
+							.foregroundStyle(.white)
+							.frame(width: 38, height: 38)
+							.background(RoundedRectangle(cornerRadius: 14).fill(tab.color))
+							.background(RoundedRectangle(cornerRadius: 14).fill(.black.opacity(0.18)).offset(y: 3))
+							.rotationEffect(.degrees(active ? -6 : 0))
+							.scaleEffect(active ? 1.08 : 1)
+							.offset(y: active ? -4 : 0)
 						Text(tab.label).font(.text(11, .extraBold)).foregroundStyle(active ? Color.ink : Color.muted)
 					}
 					.frame(maxWidth: .infinity)
@@ -133,8 +171,6 @@ struct Dock: View {
 		.sensoryFeedback(.selection, trigger: selection)
 		.padding(.vertical, 8)
 		.frame(maxWidth: 520)
-		// Fill, border and shadow are all drawn *behind* the tabs. (As an overlay, the border would be
-		// painted on top of the raised "Enviar" coin and cut a line through it.)
 		.background {
 			let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
 			ZStack {

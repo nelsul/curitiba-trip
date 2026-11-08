@@ -13,10 +13,12 @@ The plan's MVP is **done**:
 - **Photo/video and check-in pages:**
   - zoom, video, likes, comments, caption/note editing, delete
   - "Salvar original nas Fotos"
-  - "Corrigir" a photo's location on the map
-- **Enviar:** originals from the photo library with their own location and time, sent in the background (keeps going with the app closed), with the flight animation.
+  - "Corrigir" a photo's location: search a place by name or drag the map
+- **Galeria:** every photo and video full screen, swiping up like Reels; only the video on screen plays (looping, sound toggle), double tap likes.
+- **Enviar** (the yellow button at the top right): originals from the photo library with their own location and time, sent in the background (keeps going with the app closed), with the flight animation.
 - **Mapa:**
-  - MapLibre with the island style: polaroids, pins, people, trails, filters
+  - MapLibre with the island style: polaroids, pins, people, filters
+  - "Ir para onde estou": flies to you and shows the blue dot
   - check-in with a map picture
   - "Compartilhar local" while the app is open
 - **Roteiro:** days, boarding-pass stops, "Pedir Uber", Google Maps.
@@ -24,7 +26,7 @@ The plan's MVP is **done**:
   - profile photo with the circle framer, signed-in devices, sign out
   - the "Avisos e localização" switches
 - **In the background:**
-  - your path with the app closed (off by default)
+  - your position on the map with the app closed (off by default)
   - group activity notifications
   - itinerary reminders 30 min before each stop
   - "Chegou em …? Fazer check-in" near itinerary stops
@@ -37,7 +39,7 @@ Not built yet (PLAN.md §7): auto-import of the day's photos, widgets, Live Acti
 CuritibaTrip/
   App/            entry point, AppState (who's signed in), AppDelegate (background upload wake-ups)
   DesignSystem/   Theme.swift (generated tokens), fonts, icons, buttons, cards, chips, dock, flight animation
-  Features/       Login, Feed, Detail (pages + comments), Enviar, Mapa (map, markers, check-in, picker), Roteiro, More, Shell (tabs)
+  Features/       Login, Feed, Galeria (Reels), Detail (pages + comments), Enviar, Mapa (map, markers, check-in, picker with place search), Roteiro, More, Shell (tabs + top bar)
   Services/       API client, Keychain token, dates (Curitiba time), Uploader, LocationSharing, Notifier
   Models/         Codable types matching web/API.md
 ```

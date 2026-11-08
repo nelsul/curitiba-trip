@@ -7,7 +7,7 @@ import os
 /// - **Compartilhar local** (on the map): live updates while the app is open. Same throttle as the web: skip points
 ///   within 30 m and 3 min of the last one sent, and very imprecise ones.
 /// - **Com o app fechado** (switch in Mais, off by default): battery-friendly significant changes and visits,
-///   queued with their real times and sent to /api/locations/batch, so each day's trail draws itself.
+///   queued with their real times and sent to /api/locations/batch, so the map shows where you are.
 /// - **Chegada** areas around the next itinerary stops (needs "Sempre").
 @MainActor @Observable
 final class LocationSharing: NSObject {

@@ -24,27 +24,19 @@ enum MapStyle {
 	}
 }
 
-/// One person's path on one day.
-struct Trail: Hashable {
-	let userId: String
-	let color: String
-	let coordinates: [CLLocationCoordinate2D]
-
-	static func == (a: Trail, b: Trail) -> Bool { a.userId == b.userId && a.coordinates.count == b.coordinates.count }
-	func hash(into h: inout Hasher) { h.combine(userId); h.combine(coordinates.count) }
-}
-
-/// MapLibre map with the trip's markers (polaroids, check-in pins, people) and dotted trails.
+/// MapLibre map with the trip's markers (polaroids, check-in pins, people).
 struct TripMap: UIViewRepresentable {
 	let styleURL: URL
 	var items: [MapItem] = []
-	var trails: [Trail] = []
 	var people: [LatestLocation] = []
 	var colors: [String: Color] = [:]
 	/// Change this to make the map fit everything shown (filters changed, first load).
 	var fitToken = 0
-	/// Set to fly somewhere (a new check-in, a focused photo).
+	/// Set to fly somewhere (a new check-in, a focused photo). Bump `flyToken` to fly to the same place again.
 	var flyTo: CLLocationCoordinate2D?
+	var flyToken = 0
+	/// Shows the blue "you are here" dot (needs location permission).
+	var showsUser = false
 	var initialCenter: CLLocationCoordinate2D?
 	var initialZoom: Double = 12
 	var onOpen: (Route) -> Void = { _ in }
@@ -59,7 +51,9 @@ struct TripMap: UIViewRepresentable {
 		map.logoView.isHidden = true
 		map.attributionButtonPosition = .bottomRight
 		map.compassViewPosition = .topRight
+		map.compassViewMargins = CGPoint(x: 16, y: 76) // under the "go to where I am" button
 		map.backgroundColor = UIColor(Color.bg)
+		map.tintColor = UIColor(red: 0.231, green: 0.549, blue: 1, alpha: 1) // the blue "you are here" dot (web .me-dot)
 		map.setCenter(initialCenter ?? CLLocationCoordinate2D(latitude: -25.4284, longitude: -49.2733), zoomLevel: initialZoom, animated: false)
 		map.maximumZoomLevel = 19
 		context.coordinator.map = map
@@ -70,9 +64,11 @@ struct TripMap: UIViewRepresentable {
 		let c = context.coordinator
 		c.parent = self
 		c.sync()
-		if let flyTo, c.lastFly.map({ $0.latitude != flyTo.latitude || $0.longitude != flyTo.longitude }) ?? true {
+		if map.showsUserLocation != showsUser { map.showsUserLocation = showsUser }
+		if let flyTo, c.lastFlyToken != flyToken || (c.lastFly.map({ $0.latitude != flyTo.latitude || $0.longitude != flyTo.longitude }) ?? true) {
 			c.lastFly = flyTo
-			map.setCenter(flyTo, zoomLevel: 16, animated: true)
+			c.lastFlyToken = flyToken
+			map.setCenter(flyTo, zoomLevel: max(map.zoomLevel, 16), animated: true)
 		} else if c.lastFit != fitToken {
 			c.lastFit = fitToken
 			c.fitAll()
@@ -85,35 +81,18 @@ struct TripMap: UIViewRepresentable {
 		weak var map: MLNMapView?
 		var lastFit = -1
 		var lastFly: CLLocationCoordinate2D?
+		var lastFlyToken = 0
 		private var styleReady = false
 		/// A fit asked for before the map had its size and markers; done once it has finished loading.
 		private var pendingFit = false
 		private var shown: [String: Marker] = [:]
-		private var trailKey = 0
 
 		func mapView(_ map: MLNMapView, didFinishLoading style: MLNStyle) {
-			let source = MLNShapeSource(identifier: "trails", shape: nil)
-			style.addSource(source)
-			let glow = MLNLineStyleLayer(identifier: "trails-glow", source: source)
-			glow.lineColor = NSExpression(forConstantValue: UIColor(red: 1, green: 0.99, blue: 0.94, alpha: 1))
-			glow.lineWidth = NSExpression(forConstantValue: 8)
-			glow.lineOpacity = NSExpression(forConstantValue: 0.8)
-			glow.lineCap = NSExpression(forConstantValue: "round")
-			glow.lineJoin = NSExpression(forConstantValue: "round")
-			style.addLayer(glow)
-			let line = MLNLineStyleLayer(identifier: "trails", source: source)
-			line.lineColor = NSExpression(mglJSONObject: ["to-color", ["get", "color"]])
-			line.lineWidth = NSExpression(forConstantValue: 4)
-			line.lineDashPattern = NSExpression(forConstantValue: [0.1, 2])
-			line.lineCap = NSExpression(forConstantValue: "round")
-			line.lineJoin = NSExpression(forConstantValue: "round")
-			style.addLayer(line)
 			styleReady = true
-			trailKey = 0
 			sync()
 		}
 
-		/// Adds, moves and removes markers and redraws the trails to match `parent`.
+		/// Adds, moves and removes markers to match `parent`.
 		func sync() {
 			guard let map, let parent else { return }
 			var wanted: [String: Marker] = [:]
@@ -132,18 +111,6 @@ struct TripMap: UIViewRepresentable {
 			let added = wanted.filter { shown[$0.key] == nil }.map(\.value)
 			map.addAnnotations(added)
 			for m in added { shown[m.key] = m }
-
-			guard styleReady, let source = map.style?.source(withIdentifier: "trails") as? MLNShapeSource else { return }
-			let key = parent.trails.hashValue
-			guard key != trailKey else { return }
-			trailKey = key
-			let features = parent.trails.map { t -> MLNPolylineFeature in
-				var coords = t.coordinates
-				let f = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
-				f.attributes = ["color": t.color]
-				return f
-			}
-			source.shape = MLNShapeCollectionFeature(shapes: features)
 		}
 
 		func mapViewDidFinishLoadingMap(_ map: MLNMapView) {
