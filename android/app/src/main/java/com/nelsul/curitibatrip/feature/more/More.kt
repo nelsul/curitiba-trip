@@ -12,6 +12,17 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import android.Manifest
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import com.nelsul.curitibatrip.background.BackgroundLocation
+import com.nelsul.curitibatrip.background.Notifier
+import com.nelsul.curitibatrip.data.LocationOnce
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -136,6 +147,8 @@ fun MoreScreen(contentPadding: PaddingValues) {
 				if (devices.isEmpty()) Text("Só este celular.", style = body(14), color = Palette.muted)
 			}
 
+			AlertsCard()
+
 			if (app.me?.isAdmin == true) {
 				ChunkyButton("Gerenciar pessoas (site)", { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Api.base + "/admin"))) }, variant = ButtonVariant.Secondary, fullWidth = true)
 			}
@@ -157,5 +170,69 @@ fun MoreScreen(contentPadding: PaddingValues) {
 				} catch (e: Exception) { app.handle(e); error = e.message } finally { savingPhoto = false }
 			}
 		}, onCancel = { cropping = null })
+	}
+}
+
+/** Mais › "Avisos e localização": one switch per kind of notification, and the background location. */
+@Composable
+private fun AlertsCard() {
+	val context = LocalContext.current
+	var activity by remember { mutableStateOf(Notifier.isOn(context, Notifier.Kind.Activity)) }
+	var itinerary by remember { mutableStateOf(Notifier.isOn(context, Notifier.Kind.Itinerary)) }
+	var arrival by remember { mutableStateOf(Notifier.isOn(context, Notifier.Kind.Arrival)) }
+	var background by remember { mutableStateOf(BackgroundLocation.isOn(context) && BackgroundLocation.hasAlways(context)) }
+	var note by remember { mutableStateOf<String?>(null) }
+
+	fun turnOnBackground() {
+		BackgroundLocation.set(context, true)
+		background = true
+		note = null
+	}
+	// "Permitir o tempo todo" (Android 11+ shows it on the app's settings page)
+	val always = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+		if (ok) turnOnBackground() else note = "Para o caminho com o app fechado, escolha \"Permitir o tempo todo\" em Localização, nas configurações do app."
+	}
+	val foreground = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+		if (granted.values.none { it }) note = "Sem permissão de localização."
+		else if (Build.VERSION.SDK_INT >= 29) always.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) else turnOnBackground()
+	}
+
+	Column(Modifier.fillMaxWidth().card(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+		Text("Avisos e localização", style = display(20), color = Palette.ink)
+		SwitchRow("Novidades do grupo", "Fotos, check-ins, comentários e curtidas nos seus posts (confere de tempos em tempos).", activity) {
+			activity = it; Notifier.set(context, Notifier.Kind.Activity, it)
+		}
+		SwitchRow("Lembretes do roteiro", "30 minutos antes de cada parada com horário.", itinerary) {
+			itinerary = it; Notifier.set(context, Notifier.Kind.Itinerary, it)
+		}
+		Box(Modifier.fillMaxWidth().height(2.dp).background(Palette.line))
+		SwitchRow("Meu caminho com o app fechado", "O grupo vê no mapa por onde você passou, mesmo com o app fechado. Gasta pouca bateria. Precisa da localização \"o tempo todo\".", background) { on ->
+			if (!on) {
+				BackgroundLocation.set(context, false); background = false
+				if (arrival) { arrival = false; Notifier.set(context, Notifier.Kind.Arrival, false) }
+			} else if (BackgroundLocation.hasAlways(context) && LocationOnce.allowed(context)) turnOnBackground()
+			else if (!LocationOnce.allowed(context)) foreground.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+			else always.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+		}
+		SwitchRow("Avisar quando chegar", "Ao chegar num lugar do roteiro: \"Chegou? Fazer check-in\".", arrival, enabled = background) {
+			arrival = it; Notifier.set(context, Notifier.Kind.Arrival, it)
+		}
+		note?.let {
+			Text(it, style = body(13, FontWeight.Bold), color = Palette.danger)
+			ChunkyButton("Abrir configurações", {
+				context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+			}, variant = ButtonVariant.Sea, small = true)
+		}
+	}
+}
+
+@Composable
+private fun SwitchRow(title: String, detail: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+	Row(Modifier.alpha(if (enabled) 1f else 0.5f), verticalAlignment = Alignment.CenterVertically) {
+		Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+			Text(title, style = body(16, FontWeight.Bold), color = Palette.ink)
+			Text(detail, style = body(13), color = Palette.muted)
+		}
+		Switch(checked, onChange, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = Palette.leaf, checkedThumbColor = Color.White, uncheckedTrackColor = Palette.track))
 	}
 }

@@ -25,6 +25,7 @@ class TripApp : Application(), SingletonImageLoader.Factory {
 		state = AppState(this)
 		Uploads.init(this)
 		LocationSharing.init(this)
+		com.nelsul.curitibatrip.background.Notifier.createChannels(this)
 		MapLibre.getInstance(this)
 		val nm = getSystemService(NotificationManager::class.java)
 		nm.createNotificationChannel(NotificationChannel(CHANNEL_UPLOADS, "Envios", NotificationManager.IMPORTANCE_LOW).apply { description = "Progresso dos envios de fotos e vídeos" })

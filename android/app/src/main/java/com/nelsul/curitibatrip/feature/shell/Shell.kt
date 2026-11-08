@@ -15,6 +15,13 @@ import com.nelsul.curitibatrip.data.Route
 import com.nelsul.curitibatrip.LocalApp
 import com.nelsul.curitibatrip.feature.enviar.EnviarScreen
 import com.nelsul.curitibatrip.feature.mapa.MapaScreen
+import com.nelsul.curitibatrip.background.BackgroundLocation
+import com.nelsul.curitibatrip.background.Notifier
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.nelsul.curitibatrip.data.LocationSharing
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.nelsul.curitibatrip.upload.Uploads
@@ -83,11 +90,25 @@ fun Shell() {
 	val back: () -> Unit = { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
 	BackHandler(enabled = stack.isNotEmpty(), onBack = back)
 	BackHandler(enabled = stack.isEmpty() && tab != Tab.Diario) { tab = Tab.Diario }
-	// live sharing runs only while the app is open
+	// live sharing runs only while the app is open; leaving the app marks what's there as seen
 	LifecycleResumeEffect(Unit) {
 		LocationSharing.resume()
-		onPauseOrDispose { LocationSharing.pause() }
+		onPauseOrDispose { LocationSharing.pause(); Notifier.markSeen(context) }
 	}
+	// background check, reminders and (if on) background location; ask once for notifications
+	val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+	LaunchedEffect(Unit) {
+		Notifier.start(context)
+		BackgroundLocation.start(context)
+		if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+			notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+		}
+	}
+	// a tapped notification: the post on the Diário, or the map's check-in
+	LaunchedEffect(Notifier.openRoute) {
+		Notifier.openRoute?.let { r -> tab = Tab.Diario; stacks.getValue(Tab.Diario).add(r); Notifier.openRoute = null }
+	}
+	LaunchedEffect(Notifier.openCheckin) { if (Notifier.openCheckin > 0) { tab = Tab.Mapa; stacks.getValue(Tab.Mapa).clear() } }
 	// refresh the feed as uploads reach the server
 	val app = LocalApp.current
 	val arrivals by Uploads.arrivals.collectAsState()
@@ -105,7 +126,7 @@ fun Shell() {
 					Tab.Roteiro -> RoteiroScreen(DockSpace)
 					Tab.Mais -> MoreScreen(DockSpace)
 					Tab.Enviar -> EnviarScreen(DockSpace, open)
-					Tab.Mapa -> MapaScreen(DockSpace, open)
+					Tab.Mapa -> MapaScreen(DockSpace, open, Notifier.openCheckin)
 				}
 				AnimatedContent(
 					stack.lastOrNull(),

@@ -8,7 +8,7 @@ A native **Kotlin + Jetpack Compose** app for the trip, the Android twin of `ios
 
 | Done | Next |
 |---|---|
-| Project, design system (generated tokens and icons, fonts, buttons, cards, chips, top bar, dock), login (passport, "Quem é você?", email code), Diário (paged feed, carousels, likes, liked-by), photo/video and check-in pages (zoom, video, comments, captions, save the original to the gallery, delete), Roteiro (days, Uber, maps), Mais (profile photo with the circle framer, signed-in devices, sign out), Diário filters, Enviar (originals with their location, multipart upload with WorkManager that keeps going in the background and resumes, flight animation), Mapa (MapLibre with the island style, polaroids, pins, people, trails, filters, check-in with a map picture, live sharing while open, fixing a photo's location) | Background location, notifications |
+| Project, design system (generated tokens and icons, fonts, buttons, cards, chips, top bar, dock), login (passport, "Quem é você?", email code), Diário (paged feed, carousels, likes, liked-by), photo/video and check-in pages (zoom, video, comments, captions, save the original to the gallery, delete), Roteiro (days, Uber, maps), Mais (profile photo with the circle framer, signed-in devices, sign out), Diário filters, Enviar (originals with their location, multipart upload with WorkManager that keeps going in the background and resumes, flight animation), Mapa (MapLibre with the island style, polaroids, pins, people, trails, filters, check-in with a map picture, live sharing while open, fixing a photo's location), background location (batched, survives closing the app and reboots), local notifications (group activity, itinerary reminders, "Chegou? Fazer check-in" near itinerary stops), each switchable in Mais | Auto-import, widgets, offline queue (see ios/PLAN.md §7) |
 
 Screens not built yet show "Abrir no site".
 
@@ -24,6 +24,15 @@ cp local.properties.example local.properties   # once; set sdk.dir
 
 - **Emulator against your local web server** (no real emails): run the web app locally (`web/README.md`), then `adb reverse tcp:5174 tcp:5174` and set `apiBaseUrl=http://127.0.0.1:5174` in `local.properties`. Login codes show in the `npm run dev` terminal. `adb shell am start -n com.nelsul.curitibatrip.debug/com.nelsul.curitibatrip.MainActivity -e debugToken <token>` skips the login in debug builds.
 - The debug app is `com.nelsul.curitibatrip.debug` ("Viagem"), so it can sit next to the real one.
+
+## Release APK (for friends' phones)
+
+```bash
+cd android
+./gradlew :app:assembleRelease    # → app/build/outputs/apk/release/app-release.apk
+```
+
+It needs `keystore/release.jks` and `keystore.properties` (only on Nelson's Mac, git-ignored). **Back both up**: every update must be signed with the same key, or phones refuse to install it over the old version. Bump `versionCode` (and `versionName`) in `app/build.gradle.kts` for each new APK.
 
 ## Design parity
 

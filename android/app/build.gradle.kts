@@ -45,6 +45,8 @@ android {
 			applicationIdSuffix = ".debug"
 		}
 		release {
+			// real phones only (the emulator uses debug builds): a much smaller APK
+			ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
 			isMinifyEnabled = true
 			isShrinkResources = true
 			proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
