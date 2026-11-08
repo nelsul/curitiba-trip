@@ -1,6 +1,9 @@
 package com.nelsul.curitibatrip
 
+import android.content.Intent
 import android.os.Bundle
+import com.nelsul.curitibatrip.background.Notifier
+import com.nelsul.curitibatrip.data.Route
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -34,6 +37,7 @@ class MainActivity : ComponentActivity() {
 		if (BuildConfig.DEBUG) intent.getStringExtra("debugToken")?.takeIf { it.isNotBlank() }?.let { TokenStore.save(it) }
 		enableEdgeToEdge(SystemBarStyle.dark(Palette.bg.toArgb()), SystemBarStyle.dark(Palette.bg.toArgb()))
 		super.onCreate(savedInstanceState)
+		handleNotification(intent)
 		val app = (application as TripApp).state
 		setContent {
 			CompositionLocalProvider(LocalApp provides app) {
@@ -60,5 +64,18 @@ class MainActivity : ComponentActivity() {
 				}
 			}
 		}
+	}
+
+	override fun onNewIntent(intent: Intent) {
+		super.onNewIntent(intent)
+		handleNotification(intent)
+	}
+
+	/** A tapped notification: open the post, or the map's check-in. */
+	private fun handleNotification(intent: Intent?) {
+		intent ?: return
+		intent.getStringExtra("media")?.let { Notifier.openRoute = Route.Media(it) }
+		intent.getStringExtra("checkin")?.let { Notifier.openRoute = Route.Checkin(it) }
+		if (intent.getStringExtra("action") == "checkin") Notifier.openCheckin++
 	}
 }

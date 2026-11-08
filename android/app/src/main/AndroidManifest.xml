@@ -14,6 +14,9 @@
 	<!-- current position for photos without location, check-ins and the map -->
 	<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 	<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+	<!-- "Meu caminho com o app fechado" and arrival alerts (off by default, switch in Mais) -->
+	<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 	<!-- uploads that keep going with the app closed (WorkManager) -->
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -31,6 +34,7 @@
 		<activity
 			android:name=".MainActivity"
 			android:exported="true"
+			android:launchMode="singleTop"
 			android:screenOrientation="portrait"
 			android:windowSoftInputMode="adjustResize">
 			<intent-filter>
@@ -38,6 +42,18 @@
 				<category android:name="android.intent.category.LAUNCHER" />
 			</intent-filter>
 		</activity>
+		<receiver android:name=".background.LocationReceiver" android:exported="false">
+			<intent-filter>
+				<action android:name="com.nelsul.curitibatrip.LOCATION_UPDATES" />
+				<action android:name="com.nelsul.curitibatrip.AREAS" />
+			</intent-filter>
+		</receiver>
+		<receiver android:name=".background.BootReceiver" android:exported="true">
+			<intent-filter>
+				<action android:name="android.intent.action.BOOT_COMPLETED" />
+				<action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+			</intent-filter>
+		</receiver>
 		<!-- WorkManager runs long uploads as a data-sync foreground service (progress notification) -->
 		<service
 			android:name="androidx.work.impl.foreground.SystemForegroundService"
