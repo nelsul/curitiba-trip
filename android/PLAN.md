@@ -2,6 +2,8 @@
 
 A native **Kotlin + Jetpack Compose** app for the trip, the Android twin of the iOS app (`ios/`). Same API (`web/API.md`), same look as the web and iOS apps, same features.
 
+> Status: **built** (2026-11-08). How to build, test and release it is in [README.md](README.md).
+
 ## 1. Approach
 
 | | Choice | Why |
@@ -38,15 +40,15 @@ The signing key (`android/keystore/release.jks` + `android/keystore.properties`)
 
 ## 4. Steps
 
-| PR | What |
-|---|---|
-| 1 | Project, design system, login, Diário (feed, carousels, likes) |
-| 2 | Photo/check-in pages, comments, Roteiro, Mais (profile photo, devices) |
-| 3 | Enviar: gallery picker with location, background upload |
-| 4 | Mapa: MapLibre, markers, trails, check-in with map picture, live sharing |
-| 5 | Background location, notifications, itinerary reminders, arrival alerts |
+| Step | What | PR |
+|---|---|---|
+| 1 | Project, design system, login, Diário (feed, carousels, likes) | #11 ✔ |
+| 2 | Photo/check-in pages, comments, Roteiro, Mais (profile photo, devices) | #13 ✔ |
+| 3 | Diário filters; Enviar: gallery picker with location, background upload | #14 ✔ |
+| 4 | Mapa: MapLibre, markers, trails, check-in with map picture, live sharing | #15 ✔ |
+| 5 | Background location, notifications, itinerary reminders, arrival alerts | #16 ✔ |
 
-Each is tested in the Android emulator against the local web server (`http://10.0.2.2:5174` from the emulator) before merging.
+Each was tested in the Android emulator against the local web server before merging. The emulator reached it through `adb reverse`; `10.0.2.2` didn't connect in this setup.
 
 ## 5. Android specifics
 
@@ -54,3 +56,5 @@ Each is tested in the Android emulator against the local web server (`http://10.
 - **Full quality:** upload the original file from `MediaStore`, never a re-encoded copy.
 - **Background location** needs "Permitir o tempo todo", asked separately after "Durante o uso" (Android 11+ sends the person to Settings).
 - **Notifications** need the `POST_NOTIFICATIONS` permission (Android 13+).
+- **Map pictures for check-ins** are taken from the map on screen (`MapLibreMap.snapshot`), not with the off-screen `MapSnapshotter`, which depends on the GPU driver and never finished on the emulator.
+- **Release builds** ship only arm64-v8a and armeabi-v7a native code (MapLibre), which brings the APK down from ~67 MB to ~25 MB.

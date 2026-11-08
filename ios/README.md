@@ -1,16 +1,60 @@
 # iOS app
 
-A native **SwiftUI** app for the trip (iOS 17+), separate from the web app but following its design exactly.
+The native **SwiftUI** app for the trip (iOS 17+). It's separate from the website, but it follows the same design and uses the same API ([`web/API.md`](../web/API.md)).
 
-👉 **The full plan is in [PLAN.md](PLAN.md):** approach, installing without the App Store, design parity, backend changes, screens, native features, layout and timeline. The API it uses is documented in [`web/API.md`](../web/API.md).
+The original plan and decisions are in [PLAN.md](PLAN.md): install without the App Store, design parity, backend changes and native features.
 
 ## Status
 
-| Done | Next |
-|---|---|
-| Project (XcodeGen), design system (tokens, fonts, icons, buttons, cards, chips, top bar, dock), login (passport, "Quem é você?", email code), Diário (paged feed, carousels, likes, liked-by), photo/video and check-in pages (zoom, comments, captions, save original, delete), Roteiro (days, Uber, maps), Mais (profile photo framer, signed-in devices, sign out), Enviar (originals from the photo library with location, background multipart upload that survives closing the app, flight animation), Mapa (MapLibre: polaroids, pins, people, trails, day/person filters, check-in with a map picture, live location sharing while the app is open, fixing a photo's location), background location (significant changes and visits, sent in batches), local notifications (group activity, itinerary reminders, "Chegou? Fazer check-in" near itinerary stops), each switchable in Mais | Auto-import of the day's photos, widgets, Live Activity, offline queue (see PLAN.md §7) |
+The plan's MVP is **done**:
 
-Screens not built yet show "Abrir no site".
+- **Login:** passport card, "Quem é você?", 6-digit email code.
+- **Diário:** paged feed with day/person filters, carousels, double-tap and heart likes, "Curtido por", check-in posts.
+- **Photo/video and check-in pages:**
+  - zoom, video, likes, comments, caption/note editing, delete
+  - "Salvar original nas Fotos"
+  - "Corrigir" a photo's location on the map
+- **Enviar:** originals from the photo library with their own location and time, sent in the background (keeps going with the app closed), with the flight animation.
+- **Mapa:**
+  - MapLibre with the island style: polaroids, pins, people, trails, filters
+  - check-in with a map picture
+  - "Compartilhar local" while the app is open
+- **Roteiro:** days, boarding-pass stops, "Pedir Uber", Google Maps.
+- **Mais:**
+  - profile photo with the circle framer, signed-in devices, sign out
+  - the "Avisos e localização" switches
+- **In the background:**
+  - your path with the app closed (off by default)
+  - group activity notifications
+  - itinerary reminders 30 min before each stop
+  - "Chegou em …? Fazer check-in" near itinerary stops
+
+Not built yet (PLAN.md §7): auto-import of the day's photos, widgets, Live Activity, the share extension, an offline queue. Managing people stays on the website (`/admin`).
+
+## How it's organized
+
+```
+CuritibaTrip/
+  App/            entry point, AppState (who's signed in), AppDelegate (background upload wake-ups)
+  DesignSystem/   Theme.swift (generated tokens), fonts, icons, buttons, cards, chips, dock, flight animation
+  Features/       Login, Feed, Detail (pages + comments), Enviar, Mapa (map, markers, check-in, picker), Roteiro, More, Shell (tabs)
+  Services/       API client, Keychain token, dates (Curitiba time), Uploader, LocationSharing, Notifier
+  Models/         Codable types matching web/API.md
+```
+
+How the native parts work:
+- **Uploads** (`Services/Uploader.swift`):
+  - The original is copied out of PhotoKit and cut into 16 MB part files.
+  - The parts go to R2 with a background `URLSession`, so iOS keeps sending them while the app is suspended or closed.
+  - Progress is saved to disk and resumed on launch, and `clientAssetId` stops duplicates.
+- **Location** (`Services/LocationSharing.swift`):
+  - With the app open, live updates (30 m / 3 min throttle) go to `/api/locations`.
+  - With the app closed, significant-change and visit updates are queued with their real times and sent to `/api/locations/batch`. This needs "Sempre".
+  - Arrival areas (150 m) cover the next itinerary stops.
+- **Notifications** (`Services/Notifier.swift`): local only, with no push server.
+  - A background refresh calls `/api/activity`; background location wake-ups check it too.
+  - Itinerary reminders are scheduled from `/api/itinerary`.
+  - Tapping a notification opens the post, or the map's check-in.
 
 ## Build and run
 
@@ -23,15 +67,41 @@ open CuritibaTrip.xcodeproj
 ```
 
 - **Simulator:** pick an iPhone and press Run. By default the app talks to `https://viagem.nelsul.com`.
-- **Against your local web server** (no real emails): run the web app locally (`web/README.md`, with `npm run dev:db`), then set `API_BASE_URL = http:/$()/127.0.0.1:5173` in `Config/Local.xcconfig`. Login codes show in the `npm run dev` terminal.
-- **Real iPhones** (free Apple ID, Developer Mode): see PLAN.md §3. Set `DEVELOPMENT_TEAM` in `Config/Local.xcconfig`.
+- **Against your local web server** (no real emails):
+  1. Run the web app locally (`web/README.md`).
+  2. Set `API_BASE_URL = http:/$()/127.0.0.1:5173` (or your port) in `Config/Local.xcconfig`.
+  3. Sign in as a local test person. The login code shows in the server's terminal.
+  4. Debug builds can skip the login: `SIMCTL_CHILD_DEBUG_TOKEN=<token> xcrun simctl launch booted com.nelsul.curitibatrip`.
+- **Command-line build for the simulator** (ad-hoc signing, so the Keychain works):
+  ```bash
+  xcodebuild -project CuritibaTrip.xcodeproj -scheme CuritibaTrip -destination 'platform=iOS Simulator,name=iPhone 17' \
+    CODE_SIGN_STYLE=Manual 'CODE_SIGN_IDENTITY=-' DEVELOPMENT_TEAM= build
+  ```
+
+### Simulator tips
+
+- Add test photos and videos with `xcrun simctl addmedia booted <files>`, and set a position with `xcrun simctl location booted set <lat>,<lng>`.
+- Toggles ignore very short taps from automation; use a slightly longer press.
+- The simulator doesn't open the app from a tapped notification, and doesn't fire arrival areas after a location jump. Test those on a real iPhone.
+
+## Installing on friends' iPhones
+
+There's no App Store and no paid account: each iPhone is connected to Nelson's Mac and the app is installed with his free Apple ID (PLAN.md §3).
+
+1. Set `DEVELOPMENT_TEAM` in `Config/Local.xcconfig`.
+2. Connect the iPhone, turn on Developer Mode, choose it in Xcode, and press Run.
+3. On the iPhone, trust the developer in Settings › General › VPN & Device Management.
+
+Free signing expires after **7 days**. Re-install before then (planned around 11/10 and 11/15). App data stays.
+
+To force everyone onto a new version, raise `MARKETING_VERSION` in `project.yml` and `MIN_APP_VERSION` in `web/src/lib/server/me.ts`. Older apps then show "Nova versão".
 
 ## Design parity
 
-- Colors, radii and fonts come from `design/tokens.json`. After changing it, run `node design/build-tokens.mjs`; it regenerates `DesignSystem/Theme.swift` and the web's `tokens.css`, and CI fails if they're out of date.
+- Colors, radii and fonts come from `design/tokens.json`. After changing it, run `node design/build-tokens.mjs`. It regenerates `DesignSystem/Theme.swift`, the web's `tokens.css` and Android's `Tokens.kt`, and CI fails if they're out of date.
 - Icons come from the web's `Icon.svelte`. Run `node design/build-icons.mjs` after changing them.
 - Fonts: Fredoka and Nunito static weights in `DesignSystem/Fonts` (SIL Open Font License; the license files are next to them).
-- The app icon is drawn in `design/app-icon.svg`; the web favicon uses the same design.
+- The app icon is drawn in `design/app-icon.svg`. The web favicon and the Android icon use the same design.
 
 ## Secrets
 
