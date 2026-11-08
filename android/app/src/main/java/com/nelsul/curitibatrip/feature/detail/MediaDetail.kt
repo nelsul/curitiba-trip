@@ -59,6 +59,9 @@ import com.nelsul.curitibatrip.LocalApp
 import com.nelsul.curitibatrip.data.Api
 import com.nelsul.curitibatrip.data.Gallery
 import com.nelsul.curitibatrip.data.LikeBody
+import com.nelsul.curitibatrip.data.LatLngBody
+import com.nelsul.curitibatrip.feature.mapa.LocationPicker
+import org.maplibre.android.geometry.LatLng
 import com.nelsul.curitibatrip.data.LikeResponse
 import com.nelsul.curitibatrip.data.MediaDetail
 import com.nelsul.curitibatrip.data.MediaItem
@@ -97,6 +100,7 @@ fun MediaDetailScreen(id: String, contentPadding: PaddingValues, onBack: () -> U
 	var confirmDelete by remember { mutableStateOf(false) }
 	var zoom by remember { mutableStateOf(false) }
 	var saving by remember { mutableStateOf<String?>(null) }
+	var placing by remember { mutableStateOf(false) }
 
 	suspend fun load() {
 		try { detail = Api.get("/api/media/$id"); error = null } catch (e: Exception) { app.handle(e); error = e.message }
@@ -165,9 +169,11 @@ fun MediaDetailScreen(id: String, contentPadding: PaddingValues, onBack: () -> U
 						Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 							Icon(IconName.Pin, Palette.sea, size = 18.dp)
 							Text(locationLabel(item.locationSource), style = body(14), color = Palette.muted, modifier = Modifier.weight(1f))
+							if (mine) TextLink("Corrigir", { placing = true })
 							TextLink("Google Maps", { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}"))) })
 						}
 					}
+					else if (mine) ChunkyButton("Marcar no mapa", { placing = true }, variant = ButtonVariant.Secondary, small = true, icon = IconName.Pin)
 					Text(fileLine(context, item), style = body(13), color = Palette.muted)
 					Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 						ChunkyButton(saving ?: "Salvar original na galeria", {
@@ -192,6 +198,11 @@ fun MediaDetailScreen(id: String, contentPadding: PaddingValues, onBack: () -> U
 						}
 					}
 					if (zoom) ZoomViewer(item.display ?: item.medium) { zoom = false }
+					if (placing) LocationPicker(if (item.lat != null && item.lng != null) LatLng(item.lat, item.lng) else null, { placing = false }) { c ->
+						val updated: MediaItem = Api.patch("/api/media/$id", LatLngBody(c.latitude, c.longitude))
+						detail = detail?.copy(item = updated)
+						app.feedChanged()
+					}
 				}
 				error != null -> EmptyState(error!!, retry = { scope.launch { load() } })
 				else -> Box(Modifier.fillMaxWidth().padding(top = 80.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Palette.sea) }

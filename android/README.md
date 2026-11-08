@@ -8,7 +8,7 @@ A native **Kotlin + Jetpack Compose** app for the trip, the Android twin of `ios
 
 | Done | Next |
 |---|---|
-| Project, design system (generated tokens and icons, fonts, buttons, cards, chips, top bar, dock), login (passport, "Quem é você?", email code), Diário (paged feed, carousels, likes, liked-by), photo/video and check-in pages (zoom, video, comments, captions, save the original to the gallery, delete), Roteiro (days, Uber, maps), Mais (profile photo with the circle framer, signed-in devices, sign out), Diário filters, Enviar (originals with their location, multipart upload with WorkManager that keeps going in the background and resumes, flight animation) | Mapa, background location, notifications |
+| Project, design system (generated tokens and icons, fonts, buttons, cards, chips, top bar, dock), login (passport, "Quem é você?", email code), Diário (paged feed, carousels, likes, liked-by), photo/video and check-in pages (zoom, video, comments, captions, save the original to the gallery, delete), Roteiro (days, Uber, maps), Mais (profile photo with the circle framer, signed-in devices, sign out), Diário filters, Enviar (originals with their location, multipart upload with WorkManager that keeps going in the background and resumes, flight animation), Mapa (MapLibre with the island style, polaroids, pins, people, trails, filters, check-in with a map picture, live sharing while open, fixing a photo's location) | Background location, notifications |
 
 Screens not built yet show "Abrir no site".
 

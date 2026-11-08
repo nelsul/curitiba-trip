@@ -14,6 +14,9 @@ import androidx.compose.runtime.remember
 import com.nelsul.curitibatrip.data.Route
 import com.nelsul.curitibatrip.LocalApp
 import com.nelsul.curitibatrip.feature.enviar.EnviarScreen
+import com.nelsul.curitibatrip.feature.mapa.MapaScreen
+import com.nelsul.curitibatrip.data.LocationSharing
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.nelsul.curitibatrip.upload.Uploads
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -80,6 +83,11 @@ fun Shell() {
 	val back: () -> Unit = { if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) }
 	BackHandler(enabled = stack.isNotEmpty(), onBack = back)
 	BackHandler(enabled = stack.isEmpty() && tab != Tab.Diario) { tab = Tab.Diario }
+	// live sharing runs only while the app is open
+	LifecycleResumeEffect(Unit) {
+		LocationSharing.resume()
+		onPauseOrDispose { LocationSharing.pause() }
+	}
 	// refresh the feed as uploads reach the server
 	val app = LocalApp.current
 	val arrivals by Uploads.arrivals.collectAsState()
@@ -97,7 +105,7 @@ fun Shell() {
 					Tab.Roteiro -> RoteiroScreen(DockSpace)
 					Tab.Mais -> MoreScreen(DockSpace)
 					Tab.Enviar -> EnviarScreen(DockSpace, open)
-					else -> ComingSoon(tab, "/mapa", openWeb)
+					Tab.Mapa -> MapaScreen(DockSpace, open)
 				}
 				AnimatedContent(
 					stack.lastOrNull(),

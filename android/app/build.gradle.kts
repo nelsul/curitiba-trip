@@ -79,4 +79,5 @@ dependencies {
 	implementation(libs.androidx.work)
 	implementation(libs.androidx.exifinterface)
 	implementation(libs.play.location)
+	implementation(libs.maplibre)
 }

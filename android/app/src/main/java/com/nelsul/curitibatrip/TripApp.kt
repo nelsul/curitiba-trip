@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import coil3.video.VideoFrameDecoder
 import com.nelsul.curitibatrip.upload.Uploads
+import com.nelsul.curitibatrip.data.LocationSharing
+import org.maplibre.android.MapLibre
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -22,6 +24,8 @@ class TripApp : Application(), SingletonImageLoader.Factory {
 		TokenStore.init(this)
 		state = AppState(this)
 		Uploads.init(this)
+		LocationSharing.init(this)
+		MapLibre.getInstance(this)
 		val nm = getSystemService(NotificationManager::class.java)
 		nm.createNotificationChannel(NotificationChannel(CHANNEL_UPLOADS, "Envios", NotificationManager.IMPORTANCE_LOW).apply { description = "Progresso dos envios de fotos e vídeos" })
 	}
