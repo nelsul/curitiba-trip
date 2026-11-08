@@ -10,12 +10,13 @@ struct ShellView: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
-			TopBar()
+			TopBar(sending: tab == .enviar) { tab = .enviar }
 			ZStack {
 				// each tab keeps its own navigation stack (detail pages push inside it)
 				switch tab {
 				case .diario: Stacked(open: $notifier.openRoute) { FeedView() }
 				case .mapa: Stacked { MapaView() }
+				case .galeria: Stacked { GaleriaView() }
 				case .enviar: Stacked { EnviarView() }
 				case .roteiro: Stacked { RoteiroView() }
 				case .mais: Stacked { MoreView() }

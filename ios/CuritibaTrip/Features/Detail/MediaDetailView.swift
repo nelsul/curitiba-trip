@@ -129,7 +129,7 @@ struct MediaDetailView: View {
 				.frame(maxWidth: .infinity, minHeight: 220)
 				.background(Color.black)
 			} else if item.isVideo, let url = item.video {
-				VideoPlayer(player: AVPlayer(url: url)).aspectRatio(ratio, contentMode: .fit)
+				DetailVideo(url: url).aspectRatio(ratio, contentMode: .fit)
 			} else {
 				RemoteImage(url: item.display ?? item.medium, contentMode: .fit)
 					.aspectRatio(ratio, contentMode: .fit)
@@ -393,5 +393,19 @@ enum PhotoSaver {
 			opts.shouldMoveFile = true
 			req.addResource(with: isVideo ? .video : .photo, fileURL: file, options: opts)
 		}
+	}
+}
+
+/// The video on a photo/video page: one player for the page's lifetime, paused as soon as the page is
+/// covered or left (another tab, a pushed page, the app in the background).
+private struct DetailVideo: View {
+	let url: URL
+	@State private var player: AVPlayer?
+
+	var body: some View {
+		VideoPlayer(player: player)
+			.onAppear { if player == nil { player = AVPlayer(url: url) } }
+			.onDisappear { player?.pause() }
+			.onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in player?.pause() }
 	}
 }
