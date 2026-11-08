@@ -115,3 +115,27 @@ data class Itinerary(val transport: Map<String, Transport> = emptyMap(), val day
 // ── Devices ──
 
 @Serializable data class Device(val id: String, val deviceName: String? = null, val lastUsedAt: String? = null, val createdAt: String? = null, val current: Boolean = false)
+
+// ── Map (GET /api/map) ──
+
+/** A located post (`type` "media") or check-in ("checkin"). */
+@Serializable
+data class MapItem(
+	val type: String,
+	val id: String,
+	val userId: String,
+	val at: String,
+	val day: String,
+	val lat: Double? = null,
+	val lng: Double? = null,
+	val kind: String? = null,
+	val thumb: String? = null,
+) { val isVideo get() = kind == "video" }
+
+@Serializable data class MapPing(val userId: String, val lat: Double, val lng: Double, val at: String, val day: String)
+@Serializable data class LatestLocation(val userId: String, val name: String, val color: String, val photo: String? = null, val lat: Double, val lng: Double, val at: String)
+@Serializable data class MapData(val items: List<MapItem> = emptyList(), val pings: List<MapPing> = emptyList(), val latest: List<LatestLocation> = emptyList())
+@Serializable data class Created(val id: String)
+@Serializable data class PositionBody(val lat: Double, val lng: Double, val accuracy: Double? = null)
+@Serializable data class CheckinBody(val lat: Double, val lng: Double, val accuracy: Double, val note: String)
+@Serializable data class LatLngBody(val lat: Double, val lng: Double)
