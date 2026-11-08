@@ -18,7 +18,12 @@
 		download: 'M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14',
 		play: 'M8 5v14l11-7z',
 		leaf: 'M5 19C5 10 11 4 20 4c0 9-6 15-15 15zm0 0 8-8',
-		expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'
+		expand: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+		gallery: 'M6 3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3zM3 8h18M8 3l3 5M14 3l3 5M10 11.5v6l5-3z',
+		search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
+		locate: 'M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 2v4M12 18v4M2 12h4M18 12h4M12 13.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
+		sound: 'M4 9h4l5-4v14l-5-4H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12',
+		mute: 'M4 9h4l5-4v14l-5-4H4zM16 9.5l5 5M21 9.5l-5 5'
 	} as const;
 	export type IconName = keyof typeof ICONS;
 </script>

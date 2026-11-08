@@ -4,6 +4,7 @@
 	import LikeButton from './LikeButton.svelte';
 	import LikedBy from './LikedBy.svelte';
 	import { fmtDuration, fmtTime } from '$lib/format';
+	import { visiblePlayback } from '$lib/video';
 	import type { FeedMedia, Person } from '$lib/types';
 
 	let { items, persons, meId }: { items: FeedMedia[]; persons: Map<string, Person>; meId: string } = $props();
@@ -69,7 +70,7 @@
 						<div class="ph">{m.status === 'failed' ? 'Não foi possível processar' : m.kind === 'video' ? 'Preparando o vídeo…' : 'Processando…'}</div>
 					{:else if m.kind === 'video' && m.video}
 						<!-- svelte-ignore a11y_media_has_caption -->
-						<video src={m.video} poster={m.image ?? undefined} controls playsinline preload="none"></video>
+						<video src={m.video} poster={m.image ?? undefined} controls playsinline preload="none" use:visiblePlayback></video>
 					{:else if m.image}
 						<img src={m.image} alt={m.caption || `Foto de ${p?.name ?? ''}`} loading="lazy" draggable="false" />
 					{/if}
