@@ -1,6 +1,6 @@
 # iOS app: plan
 
-> Status: **planning, decisions made** · Updated 2026-11-06 · The trip runs 11–18/11/2026, with the wedding on 11/14.
+> Status: **MVP built** (2026-11-07, PRs #5–#12). What exists and how to build, test and install it is in [README.md](README.md); this file keeps the plan and its reasoning. The trip runs 11–18/11/2026, with the wedding on 11/14.
 
 **Decided by Nelson:**
 - **Full SwiftUI** native app.
@@ -13,7 +13,7 @@
 3. Friends install it **from Nelson's Mac**, no App Store and no paid account (§3).
 4. A first version on everyone's phone **before the flights** (install session Tue 11/10). The website stays the fallback.
 
-Out of scope for now: Android (see §12) and the App Store.
+Out of scope: the App Store. Android got its own app later (see §12).
 
 ## 2. Approach
 
@@ -273,7 +273,7 @@ This is aggressive. If something slips, the website covers it, and the app gets 
 
 ## 12. Android?
 
-SwiftUI is iOS-only. For an Android friend, the website keeps working. A native Android app would be a separate Kotlin/Compose project on the same API from §5. Publishing on Google Play needs a **one-time US$25** developer registration. You could also just share the APK file directly, with no fee and no store.
+Built: a separate Kotlin/Compose app in [`android/`](../android) on the same API, shared as a signed APK file (no Play Store, no fee). See [`android/README.md`](../android/README.md).
 
 ## 13. Still to confirm
 

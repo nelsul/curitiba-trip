@@ -1,10 +1,10 @@
-# API (for the iOS app)
+# API (for the iOS and Android apps)
 
 Base URL: `https://viagem.nelsul.com`. JSON in and out. Errors are `{ "message": "…" }` with a 4xx/5xx status, and the message is in Portuguese, ready to show to the person.
 
 ## Auth
 
-The website uses a session cookie. The iOS app sends **`Authorization: Bearer <token>`** on every request. Both map to the same `sessions` table, which stores only a SHA-256 of the token. Sessions last 60 days and are extended while in use.
+The website uses a session cookie. The iOS and Android apps send **`Authorization: Bearer <token>`** on every request (and `x-app-version`). Both map to the same `sessions` table, which stores only a SHA-256 of the token. Sessions last 60 days and are extended while in use.
 
 | Method | Path | Auth | Body → Response |
 |---|---|---|---|
@@ -17,11 +17,11 @@ The website uses a session cookie. The iOS app sends **`Authorization: Bearer <t
 | GET | `/api/devices` | ✔ | → `[{ id, deviceName, lastUsedAt, createdAt, current }]`: my signed-in apps (`id` is a short handle, not the token) |
 | DELETE | `/api/devices/:id` | ✔ | → `{ ok }`; signs that device out |
 
-Store the token in the **Keychain**. On `401`, clear it and show the login. If the app's version is lower than `minAppVersion`, show "Nova versão disponível: fale com o Nelson para atualizar".
+Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on Android. On `401`, clear it and show the login. If the app's version is lower than `minAppVersion`, show "Nova versão disponível: fale com o Nelson para atualizar".
 
 `photo` URLs are presigned R2 links, valid for about 1–2 days. Cache the images, but refresh the URLs from the API.
 
-## Existing endpoints (already work with Bearer)
+## Uploads, likes, check-ins, locations, avatars
 
 | Method | Path | Notes |
 |---|---|---|
@@ -63,3 +63,7 @@ Store the token in the **Keychain**. On `401`, clear it and show the login. If t
 ## Not in the API yet
 
 The admin endpoints (`/api/admin/users`); the app opens `/admin` on the website meanwhile.
+
+## Changing the API
+
+Phones keep running the version they have until they're reinstalled, so add fields and endpoints instead of renaming or removing them. If old apps must stop working, raise `MIN_APP_VERSION` in `src/lib/server/me.ts`: `/api/me` and `/api/auth/verify` return it, and older apps show "Nova versão".

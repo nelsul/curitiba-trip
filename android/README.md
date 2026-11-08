@@ -1,16 +1,65 @@
 # Android app
 
-A native **Kotlin + Jetpack Compose** app for the trip, the Android twin of `ios/`, following the same design.
+The native **Kotlin + Jetpack Compose** app for the trip (Android 8+). It's the Android twin of [`ios/`](../ios): same design, same features, same API ([`web/API.md`](../web/API.md)).
 
-👉 **The plan is in [PLAN.md](PLAN.md)** (approach, installing without the Play Store, design parity, steps). The API it uses is documented in [`web/API.md`](../web/API.md).
+The plan and the Android-specific decisions are in [PLAN.md](PLAN.md).
 
 ## Status
 
-| Done | Next |
-|---|---|
-| Project, design system (generated tokens and icons, fonts, buttons, cards, chips, top bar, dock), login (passport, "Quem é você?", email code), Diário (paged feed, carousels, likes, liked-by), photo/video and check-in pages (zoom, video, comments, captions, save the original to the gallery, delete), Roteiro (days, Uber, maps), Mais (profile photo with the circle framer, signed-in devices, sign out), Diário filters, Enviar (originals with their location, multipart upload with WorkManager that keeps going in the background and resumes, flight animation), Mapa (MapLibre with the island style, polaroids, pins, people, trails, filters, check-in with a map picture, live sharing while open, fixing a photo's location), background location (batched, survives closing the app and reboots), local notifications (group activity, itinerary reminders, "Chegou? Fazer check-in" near itinerary stops), each switchable in Mais | Auto-import, widgets, offline queue (see ios/PLAN.md §7) |
+**Done**, matching the iPhone app:
 
-Screens not built yet show "Abrir no site".
+- **Login:** passport card, "Quem é você?", 6-digit email code. The token is encrypted with an Android Keystore key.
+- **Diário:** paged feed with day/person filters, carousels, double-tap and heart likes, "Curtido por", check-in posts, pull to refresh.
+- **Photo/video and check-in pages:**
+  - pinch-zoom, video, likes, comments, caption/note editing, delete
+  - "Salvar original na galeria" (a "Viagem" album)
+  - "Corrigir" a photo's location on the map
+- **Enviar:** originals with their own location and time, sent in the background with WorkManager (resumes after network loss or the app closing), with the flight animation.
+- **Mapa:**
+  - MapLibre with the island style: polaroids, pins, people, trails, filters
+  - check-in with a map picture
+  - "Compartilhar local" while the app is open
+- **Roteiro:** days, boarding-pass stops, "Pedir Uber", Google Maps.
+- **Mais:**
+  - profile photo (system photo picker + circle framer), signed-in devices, sign out
+  - the "Avisos e localização" switches
+- **In the background:**
+  - your path with the app closed (off by default; restarted after reboots)
+  - group activity notifications
+  - itinerary reminders 30 min before each stop
+  - "Chegou em …? Fazer check-in" near itinerary stops
+
+Not built yet: auto-import, widgets, an offline queue. Managing people stays on the website (`/admin`).
+
+## How it's organized
+
+```
+app/src/main/java/com/nelsul/curitibatrip/
+  MainActivity, TripApp, AppState   start-up, who's signed in, notification taps
+  data/          Api (OkHttp + kotlinx.serialization), TokenStore (Keystore), models, TripTime, Gallery, Location, LocationSharing
+  ui/            theme (Tokens.kt generated, fonts, motion) and components (buttons, cards, chips, dock, forms, flight animation)
+  feature/       login, feed, detail (pages + comments), enviar, mapa (map, markers, check-in, picker), roteiro, more, shell (tabs)
+  upload/        Uploads (job store), UploadWorker (R2 multipart), MediaReader (original + GPS from the gallery)
+  background/    Notifier (activity, reminders, arrivals), BackgroundLocation (+ receivers)
+```
+
+How the native parts work:
+- **Photo location:**
+  - The system photo picker strips GPS.
+  - With gallery access plus `ACCESS_MEDIA_LOCATION`, the app reads and uploads the untouched MediaStore original instead.
+  - Without access it still works, just without the photo's location.
+- **Uploads:**
+  - Each file is a WorkManager job that sends 16 MB parts straight from the gallery file to R2.
+  - Progress is saved after every part. Big files run as a foreground job with a progress notification.
+- **Map pictures:** taken from the map on screen, centered on the check-in. MapLibre's off-screen snapshotter depends on the GPU driver.
+- **Background location:**
+  - Batched fused updates arrive at a receiver even with the app closed. They're queued and sent to `/api/locations/batch`.
+  - Geofences cover the next itinerary stops.
+  - This needs "Permitir o tempo todo", which Android 11+ grants on the app's settings page.
+- **Notifications:** local only.
+  - WorkManager checks `/api/activity` every ~15 min.
+  - Itinerary reminders are delayed jobs.
+  - Tapping a notification opens the post or the map's check-in.
 
 ## Build and run
 
@@ -22,24 +71,47 @@ cp local.properties.example local.properties   # once; set sdk.dir
 ./gradlew :app:assembleDebug                    # or press Run in Android Studio
 ```
 
-- **Emulator against your local web server** (no real emails): run the web app locally (`web/README.md`), then `adb reverse tcp:5174 tcp:5174` and set `apiBaseUrl=http://127.0.0.1:5174` in `local.properties`. Login codes show in the `npm run dev` terminal. `adb shell am start -n com.nelsul.curitibatrip.debug/com.nelsul.curitibatrip.MainActivity -e debugToken <token>` skips the login in debug builds.
-- The debug app is `com.nelsul.curitibatrip.debug` ("Viagem"), so it can sit next to the real one.
+The debug app is `com.nelsul.curitibatrip.debug`, so it can sit next to the real one.
+
+### Against your local web server (no real emails)
+
+1. Run the web app locally on a fixed port (`web/README.md`), e.g. 5174.
+2. Run `adb reverse tcp:5174 tcp:5174`, and set `apiBaseUrl=http://127.0.0.1:5174` in `local.properties`. In this setup the emulator didn't reach the Mac at `10.0.2.2`.
+3. Sign in as a local test person. The login code shows in the server's terminal.
+4. Debug builds can skip the login:
+   ```bash
+   adb shell am start -n com.nelsul.curitibatrip.debug/com.nelsul.curitibatrip.MainActivity -e debugToken <token>
+   ```
+
+### Emulator tips
+
+- **Test media:** `adb push` files to `/sdcard/Pictures`, then trigger a media scan (`am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/<file>`).
+- **Position:** set it with `adb emu geo fix <lng> <lat>`.
+- **Permissions:** grant them with `adb shell pm grant com.nelsul.curitibatrip.debug android.permission.<NAME>` to skip the dialogs.
+- **Installing over a running app:** force-stop it first. Otherwise Android may get stuck on its "Updating…" screen.
+- **Slow emulator:** the emulator is slow when the Mac is busy, so taps during start-up get lost. Wait for the screen first.
 
 ## Release APK (for friends' phones)
 
 ```bash
 cd android
-./gradlew :app:assembleRelease    # → app/build/outputs/apk/release/app-release.apk
+./gradlew :app:assembleRelease    # → app/build/outputs/apk/release/app-release.apk (arm64 + armv7, ~25 MB)
 ```
 
-It needs `keystore/release.jks` and `keystore.properties` (only on Nelson's Mac, git-ignored). **Back both up**: every update must be signed with the same key, or phones refuse to install it over the old version. Bump `versionCode` (and `versionName`) in `app/build.gradle.kts` for each new APK.
+- **Signing:** it's signed with `keystore/release.jks` and `keystore.properties`, which exist only on Nelson's Mac and are git-ignored. **Keep a backup of both.** Every update must be signed with the same key, or phones refuse to install it over the old version.
+- **For each new APK:**
+  - Raise `versionCode` (and `versionName`) in `app/build.gradle.kts`.
+  - To force everyone to update, also raise `MIN_APP_VERSION` in `web/src/lib/server/me.ts`.
+- **Installing:** send the APK (WhatsApp, Drive…), open it on the phone, and allow "Instalar apps desconhecidos" once. Updates install over the old version and keep the data. Unlike free iPhone signing, it doesn't expire.
+- **Server:** release builds always talk to `https://viagem.nelsul.com`.
 
 ## Design parity
 
 - Colors, radii and depths come from `design/tokens.json` → `ui/theme/Tokens.kt` (`node design/build-tokens.mjs`; CI fails if stale).
 - Icons come from the web's `Icon.svelte` → `res/drawable/ic_*.xml` (`node design/build-icons.mjs`).
+- The launcher icon is an adaptive version of `design/app-icon.svg`.
 - Fonts: Fredoka and Nunito (SIL Open Font License, see `app/licenses`).
 
 ## Secrets
 
-Never commit `local.properties`, `keystore.properties` or any `.jks`/`.keystore` file; the root `.gitignore` excludes them.
+Never commit `local.properties`, `keystore.properties` or any `.jks`/`.keystore`/`.apk` file. The root `.gitignore` excludes them.
