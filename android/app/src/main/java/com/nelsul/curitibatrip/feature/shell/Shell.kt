@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import com.nelsul.curitibatrip.data.Route
 import com.nelsul.curitibatrip.LocalApp
 import com.nelsul.curitibatrip.feature.enviar.EnviarScreen
+import com.nelsul.curitibatrip.feature.galeria.GaleriaScreen
 import com.nelsul.curitibatrip.feature.mapa.MapaScreen
 import com.nelsul.curitibatrip.background.BackgroundLocation
 import com.nelsul.curitibatrip.background.Notifier
@@ -118,13 +119,14 @@ fun Shell() {
 
 	Box(Modifier.fillMaxSize()) {
 		Column(Modifier.fillMaxSize()) {
-			Box(Modifier.statusBarsPadding()) { TopBar() }
+			Box(Modifier.statusBarsPadding()) { TopBar(tab == Tab.Enviar) { stacks.getValue(Tab.Enviar).clear(); tab = Tab.Enviar } }
 			Box(Modifier.weight(1f).fillMaxWidth()) {
 				// the tab's main screen stays alive under its pages, so it keeps its scroll position
 				when (tab) {
 					Tab.Diario -> FeedScreen(DockSpace, open)
 					Tab.Roteiro -> RoteiroScreen(DockSpace)
 					Tab.Mais -> MoreScreen(DockSpace)
+					Tab.Galeria -> GaleriaScreen(DockSpace, open, covered = stack.isNotEmpty())
 					Tab.Enviar -> EnviarScreen(DockSpace, open)
 					Tab.Mapa -> MapaScreen(DockSpace, open, Notifier.openCheckin)
 				}

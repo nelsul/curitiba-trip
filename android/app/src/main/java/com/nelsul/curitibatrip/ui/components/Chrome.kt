@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -61,9 +62,9 @@ private fun Modifier.tile(fill: Color, edge: Color, radius: Float, depth: Float)
 	drawRoundRect(fill, cornerRadius = r)
 }
 
-/** Top bar: plane tile + "Curitiba" + the dates stamp, with the dashed bottom edge. */
+/** Top bar: plane tile + "Curitiba" + the dates stamp, with the dashed bottom edge, and the yellow "Enviar" button on the right. */
 @Composable
-fun TopBar() {
+fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}) {
 	Row(
 		Modifier
 			.fillMaxWidth()
@@ -73,16 +74,48 @@ fun TopBar() {
 				drawLine(Palette.line, Offset(0f, size.height - w / 2), Offset(size.width, size.height - w / 2), w,
 					pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx())))
 			}
-			.padding(horizontal = 16.dp, vertical = 10.dp)
-			.semantics(mergeDescendants = true) { contentDescription = "Viagem a Curitiba, 11 a 18 de novembro" },
+			.padding(horizontal = 16.dp, vertical = 10.dp),
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(8.dp),
 	) {
-		Box(Modifier.rotate(-8f).size(36.dp).tile(Palette.sea, Palette.seaDark, 12f, 3f), contentAlignment = Alignment.Center) {
-			Icon(IconName.Plane, Color.White, Modifier.rotate(90f), size = 18.dp)
+		Row(
+			Modifier.semantics(mergeDescendants = true) { contentDescription = "Viagem a Curitiba, 11 a 18 de novembro" },
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+		) {
+			Box(Modifier.rotate(-8f).size(36.dp).tile(Palette.sea, Palette.seaDark, 12f, 3f), contentAlignment = Alignment.Center) {
+				Icon(IconName.Plane, Color.White, Modifier.rotate(90f), size = 18.dp)
+			}
+			Text("Curitiba", style = display(24), color = Palette.ink)
+			Stamp("11–18/11", size = 12)
 		}
-		Text("Curitiba", style = display(24), color = Palette.ink)
-		Stamp("11–18/11", size = 12)
+		Spacer(Modifier.weight(1f))
+		SendButton(sending, onSend)
+	}
+}
+
+/** "Enviar": the raised yellow pill at the top right (web header). */
+@Composable
+private fun SendButton(active: Boolean, onClick: () -> Unit) {
+	val tilt by animateFloatAsState(if (active) -3f else 0f, snappy(), label = "send")
+	Row(
+		Modifier
+			.rotate(tilt)
+			.pressable(onClick)
+			.heightIn(min = 44.dp)
+			.drawBehind {
+				val r = CornerRadius(size.height / 2)
+				drawRoundRect(Palette.shadow, topLeft = Offset(0f, 3.dp.toPx()), size = size, cornerRadius = r)
+				drawRoundRect(Palette.sunDark, cornerRadius = r)
+				drawRoundRect(Palette.sun, size = Size(size.width, size.height - 3.dp.toPx()), cornerRadius = r)
+			}
+			.padding(start = 12.dp, end = 16.dp)
+			.semantics(mergeDescendants = true) { contentDescription = "Enviar fotos e vídeos"; selected = active },
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.spacedBy(6.dp),
+	) {
+		Icon(IconName.Upload, Palette.onSun, size = 22.dp)
+		Text("Enviar", style = display(17), color = Palette.onSun)
 	}
 }
 
@@ -121,12 +154,18 @@ fun DaySign(text: String, modifier: Modifier = Modifier) {
 enum class Tab(val label: String, val icon: IconName, val color: Color) {
 	Diario("Diário", IconName.Journal, Palette.leaf),
 	Mapa("Mapa", IconName.Map, Palette.sea),
-	Enviar("Enviar", IconName.Upload, Palette.sun),
+	Galeria("Galeria", IconName.Gallery, Palette.sun),
 	Roteiro("Roteiro", IconName.Ticket, Palette.coral),
 	Mais("Mais", IconName.User, Palette.plum),
+	/** Opened from the top bar's button, not the dock. */
+	Enviar("Enviar", IconName.Upload, Palette.sun);
+
+	companion object {
+		val dock = listOf(Diario, Mapa, Galeria, Roteiro, Mais)
+	}
 }
 
-/** The floating dock with colored icon tiles; "Enviar" is the raised yellow coin (same as the web and iOS). */
+/** The floating dock with colored icon tiles (same as the web and iOS). */
 @Composable
 fun Dock(selection: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
 	val haptics = LocalHapticFeedback.current
@@ -135,16 +174,15 @@ fun Dock(selection: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier)
 			.padding(horizontal = 10.dp)
 			.widthIn(max = 520.dp)
 			.fillMaxWidth()
-			// fill, border and shadow all behind the tabs, so the border never cuts through the raised coin
 			.shadow(12.dp, RoundedCornerShape(28.dp), ambientColor = Color.Black.copy(alpha = 0.12f), spotColor = Color.Black.copy(alpha = 0.12f), clip = false)
 			.chunky(Palette.surface, Palette.shadow, 28.dp, 5.dp, border = Palette.line)
 			.padding(vertical = 8.dp),
 	) {
-		Tab.entries.forEach { tab ->
+		Tab.dock.forEach { tab ->
 			val active = tab == selection
-			val lift by animateDpAsState(if (active && tab != Tab.Enviar) (-4).dp else 0.dp, snappy(), label = "lift")
-			val tilt by animateFloatAsState(if (active && tab != Tab.Enviar) -6f else 0f, snappy(), label = "tilt")
-			val grow by animateFloatAsState(if (active) (if (tab == Tab.Enviar) 1.06f else 1.08f) else 1f, snappy(), label = "grow")
+			val lift by animateDpAsState(if (active) (-4).dp else 0.dp, snappy(), label = "lift")
+			val tilt by animateFloatAsState(if (active) -6f else 0f, snappy(), label = "tilt")
+			val grow by animateFloatAsState(if (active) 1.08f else 1f, snappy(), label = "grow")
 			Column(
 				Modifier
 					.weight(1f)
@@ -156,37 +194,15 @@ fun Dock(selection: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier)
 				horizontalAlignment = Alignment.CenterHorizontally,
 				verticalArrangement = Arrangement.spacedBy(2.dp),
 			) {
-				if (tab == Tab.Enviar) {
-					// same 38 dp slot as the other tabs (labels line up); the raised coin floats above it
-					Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
-						Box(
-							Modifier
-								.requiredSize(56.dp)
-								.offset(y = (-12).dp)
-								.scale(grow)
-								.drawBehind {
-									// navy drop like the dock, then the coin with its darker gold band inside the bottom edge
-									drawCircle(Palette.shadow, center = center + Offset(0f, 4.dp.toPx()))
-									clipPath(Path().apply { addOval(Rect(Offset.Zero, size)) }) {
-										drawRect(Palette.sunDark)
-										drawCircle(Palette.sun, radius = size.minDimension / 2, center = center - Offset(0f, 4.dp.toPx()))
-									}
-								}
-								.border(4.dp, Palette.surface, CircleShape),
-							contentAlignment = Alignment.Center,
-						) { Icon(tab.icon, Palette.onSun, size = 26.dp) }
-					}
-				} else {
-					Box(
-						Modifier
-							.offset(y = lift)
-							.rotate(tilt)
-							.scale(grow)
-							.size(38.dp)
-							.tile(tab.color, Color.Black.copy(alpha = 0.18f), 14f, 3f),
-						contentAlignment = Alignment.Center,
-					) { Icon(tab.icon, Color.White, size = 22.dp) }
-				}
+				Box(
+					Modifier
+						.offset(y = lift)
+						.rotate(tilt)
+						.scale(grow)
+						.size(38.dp)
+						.tile(tab.color, Color.Black.copy(alpha = 0.18f), 14f, 3f),
+					contentAlignment = Alignment.Center,
+				) { Icon(tab.icon, Color.White, size = 22.dp) }
 				Text(tab.label, style = body(11, FontWeight.ExtraBold), color = if (active) Palette.ink else Palette.muted)
 			}
 		}

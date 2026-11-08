@@ -284,7 +284,7 @@ private fun Sparks(trigger: Int) {
 
 /** The big white heart over a double-tapped photo. */
 @Composable
-private fun BigHeart(trigger: Int) {
+internal fun BigHeart(trigger: Int) {
 	val scale = remember { Animatable(0f) }
 	val alpha = remember { Animatable(0f) }
 	androidx.compose.runtime.LaunchedEffect(trigger) {

@@ -72,22 +72,10 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.expressions.Expression
-import org.maplibre.android.style.layers.LineLayer
-import org.maplibre.android.style.layers.Property
-import org.maplibre.android.style.layers.PropertyFactory
-import org.maplibre.android.style.sources.GeoJsonSource
-import org.maplibre.geojson.Feature
-import org.maplibre.geojson.FeatureCollection
-import org.maplibre.geojson.LineString
-import org.maplibre.geojson.Point
 import java.time.Duration
 import java.time.Instant
 import kotlin.math.abs
 import kotlin.random.Random
-
-/** One person's path on one day. */
-data class Trail(val userId: String, val color: String, val points: List<LatLng>)
 
 /** What the map controller can be asked to do (the screen sets these). */
 class MapController {
@@ -95,8 +83,8 @@ class MapController {
 	internal var view: MapView? = null
 
 	/**
-	 * Flies to `p`, waits until the map there is fully drawn, and returns a picture of the visible map without the
-	 * trails (the check-in picture). Uses the on-screen map, which works on every phone (off-screen snapshots
+	 * Flies to `p`, waits until the map there is fully drawn, and returns a picture of the visible map (the check-in
+	 * picture). Uses the on-screen map, which works on every phone (off-screen snapshots
 	 * depend on the GPU driver).
 	 */
 	suspend fun captureAt(p: LatLng): android.graphics.Bitmap? {
@@ -108,9 +96,7 @@ class MapController {
 				override fun onFinish() { if (c.isActive) c.resume(Unit) {} }
 			})
 		}
-		val layers = listOf("trails", "trails-glow").mapNotNull { m.style?.getLayer(it) }
-		layers.forEach { it.setProperties(PropertyFactory.visibility(Property.NONE)) }
-		try {
+		run {
 			kotlinx.coroutines.withTimeoutOrNull(10_000) {
 				kotlinx.coroutines.suspendCancellableCoroutine<Unit> { c ->
 					val l = object : MapView.OnDidFinishRenderingMapListener {
@@ -124,8 +110,6 @@ class MapController {
 				}
 			}
 			return kotlinx.coroutines.suspendCancellableCoroutine { c -> m.snapshot { b -> if (c.isActive) c.resume(b) {} } }
-		} finally {
-			layers.forEach { it.setProperties(PropertyFactory.visibility(Property.VISIBLE)) }
 		}
 	}
 
@@ -141,11 +125,12 @@ class MapController {
 	}
 	fun flyTo(p: LatLng, zoom: Double = 16.0) { map?.animateCamera(CameraUpdateFactory.newLatLngZoom(p, zoom), 1200) }
 	val center: LatLng? get() = map?.cameraPosition?.target
+	val zoom: Double? get() = map?.cameraPosition?.zoom
 }
 
 /**
  * MapLibre with the trip's markers (polaroids, check-in pins, people) drawn as Compose views on top, so they
- * look and animate exactly like the iOS and web markers, and dotted trails as a map layer.
+ * look and animate exactly like the iOS and web markers, and the blue "you are here" dot.
  */
 @Composable
 fun TripMap(
@@ -153,7 +138,8 @@ fun TripMap(
 	controller: MapController,
 	modifier: Modifier = Modifier,
 	items: List<MapItem> = emptyList(),
-	trails: List<Trail> = emptyList(),
+	/** Where I am (after "Ir para onde estou"): drawn as the blue dot. */
+	me: LatLng? = null,
 	people: List<LatestLocation> = emptyList(),
 	initial: LatLng = LatLng(-25.4284, -49.2733),
 	initialZoom: Double = 12.0,
@@ -178,15 +164,6 @@ fun TripMap(
 				m.addOnCameraMoveListener { tick++ }
 				m.addOnCameraIdleListener { tick++; onCameraIdle(m.cameraPosition.target ?: initial) }
 				m.setStyle(Style.Builder().fromJson(styleJson)) { s ->
-					val src = GeoJsonSource("trails")
-					s.addSource(src)
-					s.addLayer(LineLayer("trails-glow", "trails").withProperties(
-						PropertyFactory.lineColor("#fffcf0"), PropertyFactory.lineWidth(8f), PropertyFactory.lineOpacity(0.8f),
-						PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
-					s.addLayer(LineLayer("trails", "trails").withProperties(
-						PropertyFactory.lineColor(Expression.toColor(Expression.get("color"))), PropertyFactory.lineWidth(4f),
-						PropertyFactory.lineDasharray(arrayOf(0.1f, 2f)),
-						PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
 					style = s
 					tick++
 					onReady()
@@ -214,14 +191,6 @@ fun TripMap(
 			controller.view = null
 		}
 	}
-	// trails as a GeoJSON line layer
-	LaunchedEffect(style, trails) {
-		val src = style?.getSourceAs<GeoJsonSource>("trails") ?: return@LaunchedEffect
-		src.setGeoJson(FeatureCollection.fromFeatures(trails.map { t ->
-			Feature.fromGeometry(LineString.fromLngLats(t.points.map { Point.fromLngLat(it.longitude, it.latitude) })).apply { addStringProperty("color", t.color) }
-		}))
-	}
-
 	Box(modifier) {
 		AndroidView({ mapView }, Modifier.fillMaxSize())
 		val map = controller.map
@@ -244,7 +213,21 @@ fun TripMap(
 					PolaroidMarker(it, colorFor(it.userId), Modifier.pressable({ onOpenItem(it) }).semantics { contentDescription = if (it.isVideo) "Vídeo" else "Foto" })
 				}
 			}
+			me?.let { Anchored(at(it.latitude, it.longitude), 48.dp, 48.dp, bottom = false, density) { MeDot() } }
 		}
+	}
+}
+
+/** The pulsing blue "you are here" dot (web .me-dot). */
+@Composable
+private fun MeDot() {
+	val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "me")
+	val p by pulse.animateFloat(0f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(2000)), label = "pulse")
+	val blue = Color(0xFF3B8CFF)
+	androidx.compose.foundation.Canvas(Modifier.size(48.dp).semantics { contentDescription = "Você está aqui" }) {
+		drawCircle(blue.copy(alpha = 0.5f * (1f - p)), radius = (9.dp + 16.dp * p).toPx())
+		drawCircle(Color.White, radius = 12.dp.toPx())
+		drawCircle(blue, radius = 9.dp.toPx())
 	}
 }
 
