@@ -190,7 +190,7 @@ private fun AlertsCard() {
 	}
 	// "Permitir o tempo todo" (Android 11+ shows it on the app's settings page)
 	val always = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-		if (ok) turnOnBackground() else note = "Para o caminho com o app fechado, escolha \"Permitir o tempo todo\" em Localização, nas configurações do app."
+		if (ok) turnOnBackground() else note = "Para mostrar sua posição com o app fechado, escolha \"Permitir o tempo todo\" em Localização, nas configurações do app."
 	}
 	val foreground = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
 		if (granted.values.none { it }) note = "Sem permissão de localização."
@@ -206,7 +206,7 @@ private fun AlertsCard() {
 			itinerary = it; Notifier.set(context, Notifier.Kind.Itinerary, it)
 		}
 		Box(Modifier.fillMaxWidth().height(2.dp).background(Palette.line))
-		SwitchRow("Meu caminho com o app fechado", "O grupo vê no mapa por onde você passou, mesmo com o app fechado. Gasta pouca bateria. Precisa da localização \"o tempo todo\".", background) { on ->
+		SwitchRow("Minha posição com o app fechado", "O grupo vê no mapa onde você está, mesmo com o app fechado. Gasta pouca bateria. Precisa da localização \"o tempo todo\".", background) { on ->
 			if (!on) {
 				BackgroundLocation.set(context, false); background = false
 				if (arrival) { arrival = false; Notifier.set(context, Notifier.Kind.Arrival, false) }

@@ -21,13 +21,15 @@ The interface is 100% in Portuguese (pt-BR). Code, comments and commit messages 
 |---|---|---|---|
 | Login: pick your name, 6-digit code by email | ✔ | ✔ | ✔ |
 | **Diário:** feed newest first, carousels, likes, comments, day/person filters | ✔ | ✔ | ✔ |
-| **Enviar:** originals in full quality with their own location and time | ✔ | ✔ (keeps sending with the app closed) | ✔ (keeps sending with the app closed) |
-| **Mapa:** polaroids, check-ins, trails, live sharing, check-in with a map picture | ✔ | ✔ | ✔ |
+| **Galeria:** every photo and video full screen, swipe up like Reels; only the video on screen plays | ✔ | ✔ | ✔ |
+| **Enviar** (yellow button, top right): originals in full quality with their own location and time | ✔ | ✔ (keeps sending with the app closed) | ✔ (keeps sending with the app closed) |
+| **Mapa:** polaroids, check-ins, live sharing, "go to where I am", check-in with a map picture | ✔ | ✔ | ✔ |
+| Mark or fix a photo's location: search a place by name, or pick it on the map | ✔ | ✔ | ✔ |
 | **Roteiro:** the itinerary with Uber and Google Maps buttons | ✔ | ✔ | ✔ |
 | **Mais:** profile photo with a circle framer | ✔ | ✔ | ✔ |
 | Signed-in devices (sign one out) | — | ✔ | ✔ |
 | Save the original photo/video to the phone | download | Fotos | galeria |
-| Path on the map with the app closed (off by default) | — | ✔ | ✔ |
+| Your position on the map with the app closed (off by default) | — | ✔ | ✔ |
 | Notifications: group activity, itinerary reminders, "Chegou? Fazer check-in" | — | ✔ | ✔ |
 | Admin: manage people | ✔ (`/admin`) | opens the site | opens the site |
 

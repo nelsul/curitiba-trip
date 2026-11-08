@@ -13,10 +13,12 @@ The plan and the Android-specific decisions are in [PLAN.md](PLAN.md).
 - **Photo/video and check-in pages:**
   - pinch-zoom, video, likes, comments, caption/note editing, delete
   - "Salvar original na galeria" (a "Viagem" album)
-  - "Corrigir" a photo's location on the map
-- **Enviar:** originals with their own location and time, sent in the background with WorkManager (resumes after network loss or the app closing), with the flight animation.
+  - "Corrigir" a photo's location: search a place by name or drag the map
+- **Galeria:** every photo and video full screen, swiping up like Reels; only the video on screen plays (looping, sound toggle), double tap likes.
+- **Enviar** (the yellow button at the top right): originals with their own location and time, sent in the background with WorkManager (resumes after network loss or the app closing), with the flight animation.
 - **Mapa:**
-  - MapLibre with the island style: polaroids, pins, people, trails, filters
+  - MapLibre with the island style: polaroids, pins, people, filters
+  - "Ir para onde estou": flies to you and shows the blue dot
   - check-in with a map picture
   - "Compartilhar local" while the app is open
 - **Roteiro:** days, boarding-pass stops, "Pedir Uber", Google Maps.
@@ -24,7 +26,7 @@ The plan and the Android-specific decisions are in [PLAN.md](PLAN.md).
   - profile photo (system photo picker + circle framer), signed-in devices, sign out
   - the "Avisos e localização" switches
 - **In the background:**
-  - your path with the app closed (off by default; restarted after reboots)
+  - your position on the map with the app closed (off by default; restarted after reboots)
   - group activity notifications
   - itinerary reminders 30 min before each stop
   - "Chegou em …? Fazer check-in" near itinerary stops
@@ -38,7 +40,7 @@ app/src/main/java/com/nelsul/curitibatrip/
   MainActivity, TripApp, AppState   start-up, who's signed in, notification taps
   data/          Api (OkHttp + kotlinx.serialization), TokenStore (Keystore), models, TripTime, Gallery, Location, LocationSharing
   ui/            theme (Tokens.kt generated, fonts, motion) and components (buttons, cards, chips, dock, forms, flight animation)
-  feature/       login, feed, detail (pages + comments), enviar, mapa (map, markers, check-in, picker), roteiro, more, shell (tabs)
+  feature/       login, feed, galeria (Reels), detail (pages + comments), enviar, mapa (map, markers, check-in, picker with place search), roteiro, more, shell (tabs)
   upload/        Uploads (job store), UploadWorker (R2 multipart), MediaReader (original + GPS from the gallery)
   background/    Notifier (activity, reminders, arrivals), BackgroundLocation (+ receivers)
 ```

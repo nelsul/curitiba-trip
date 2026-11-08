@@ -15,7 +15,7 @@ One monorepo, three clients sharing one API and one look:
 | `android/` | Native Android app (Android 8+, target 37) | Kotlin, Jetpack Compose, OkHttp + kotlinx.serialization, Coil 3, WorkManager, MapLibre Android |
 | `design/` | Single source of the look | `tokens.json`, `build-tokens.mjs`, `build-icons.mjs`, `app-icon.svg` |
 
-The iOS and Android apps are twins: same screens (Login, Diário, Enviar, Mapa, Roteiro, Mais), same behavior, same API. A feature added to one usually belongs in the other, and often on the website too. The feature table in README.md shows what exists where.
+The iOS and Android apps are twins: same screens (Login, Diário, Mapa, Galeria, Roteiro, Mais, and Enviar from the top bar), same behavior, same API. A feature added to one usually belongs in the other, and often on the website too. The feature table in README.md shows what exists where.
 
 ## Where to read more
 
@@ -108,5 +108,6 @@ There are no automated test suites; verification is the type check, the builds, 
 - **Android location:** the system photo picker strips GPS; the app reads the MediaStore original with `ACCESS_MEDIA_LOCATION` + `setRequireOriginal`. `getCurrentLocation` can hang, so it has a timeout and a last-known fallback.
 - **iOS simulator:** switches ignore very short automated taps; tapped notifications don't open the app, and arrival areas don't fire after a location jump (test those on a real phone). Code touching `CLLocationManager.monitoredRegions` must tolerate concurrent refreshes (see `LocationSharing.updateArrivalRegions`).
 - **iOS concurrency:** Photos/PhotoKit callbacks run off the main actor; keep such helpers `nonisolated` to avoid crashes.
+- **No location trails:** they were removed because background positions weren't reliable. `/api/map` still returns `pings` (always `[]`) so installed apps keep decoding it; don't bring trails back without asking.
 - **Background work is local only:** there is no push server. Notifications come from polling `/api/activity`; background location is batched to `/api/locations/batch`.
 - **Installs:** iOS apps are signed with a free Apple ID and expire after 7 days (reinstalled from Nelson's Mac). Android ships as a signed APK; every update must use the same release key.

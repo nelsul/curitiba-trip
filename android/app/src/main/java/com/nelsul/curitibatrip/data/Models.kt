@@ -139,3 +139,6 @@ data class MapItem(
 @Serializable data class PositionBody(val lat: Double, val lng: Double, val accuracy: Double? = null)
 @Serializable data class CheckinBody(val lat: Double, val lng: Double, val accuracy: Double, val note: String)
 @Serializable data class LatLngBody(val lat: Double, val lng: Double)
+
+/** GET /api/places */
+@Serializable data class PlaceResult(val name: String, val detail: String = "", val lat: Double, val lng: Double)

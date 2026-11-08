@@ -37,9 +37,9 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * "Meu caminho com o app fechado" (off by default, switch in Mais): battery-friendly location updates delivered
+ * "Minha posição com o app fechado" (off by default, switch in Mais): battery-friendly location updates delivered
  * to a receiver even when the app is closed, queued with their real times and sent to /api/locations/batch, so
- * each day's trail draws itself. Also watches areas around the next itinerary stops ("Chegou? Fazer check-in").
+ * the map shows where you are. Also watches areas around the next itinerary stops ("Chegou? Fazer check-in").
  * Needs "Permitir o tempo todo".
  */
 object BackgroundLocation {
