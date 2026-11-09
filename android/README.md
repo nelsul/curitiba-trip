@@ -15,7 +15,7 @@ The plan and the Android-specific decisions are in [PLAN.md](PLAN.md).
   - "Salvar original na galeria" (a "Viagem" album)
   - "Corrigir" a photo's location: search a place by name or drag the map
 - **Diário + Reels:** tapping a post opens every photo and video full screen, swiping up like Reels (only the video on screen plays, double tap likes, share in a frame, owner/admin delete). "Todas as fotos" shows them in a grid; pick up to 9 photos to make one image with a frame (Polaroid, Passaporte, Noite, Casamento; post or story) and share it.
-- **Cotinha:** split what someone paid; their Pix key to copy, "Já paguei", the payer's "Cobrar quem falta" (a notification), a badge with what you owe.
+- **Cotinha:** split what someone paid (your Pix key is remembered); "Por pessoa" adds up what you owe each person, with "Paguei tudo" to settle them at once; their Pix key to copy, "Já paguei", the payer's "Cobrar quem falta" (a notification), a badge with what you owe.
 - **Retrospectiva:** wedding countdown on the Diário; afterwards the admin's picks as stories.
 - **Noivos:** a one-time special effect when the bride or groom liked your post.
 - **@menções** in comments, **previsão do tempo** hora a hora in the Roteiro, a **page per place**, and **Tirar foto / Gravar vídeo** in Enviar.

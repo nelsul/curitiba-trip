@@ -23,7 +23,7 @@ The interface is 100% in Portuguese (pt-BR). Code, comments and commit messages 
 | **Diário:** feed newest first, carousels, likes, comments, day/person filters | ✔ | ✔ | ✔ |
 | **Reels:** tap a post in the Diário for every photo and video full screen, swiping up; only the video on screen plays | ✔ | ✔ | ✔ |
 | **Todas as fotos:** grid of every photo/video; pick up to 9 for one image with a frame, shared to Instagram/WhatsApp | ✔ | ✔ | ✔ |
-| **Cotinha:** split purchases, the payer's Pix key, mark paid, reminders | ✔ | ✔ | ✔ |
+| **Cotinha:** split purchases, the payer's Pix key (remembered), mark paid, reminders; "Por pessoa" totals with "Paguei tudo" | ✔ | ✔ | ✔ |
 | **Retrospectiva:** wedding countdown, then the admin's picks as stories | ✔ | ✔ | ✔ |
 | **@menções** in comments (notify the person) | ✔ | ✔ | ✔ |
 | Special effect when the bride/groom like your post | ✔ | ✔ | ✔ |
