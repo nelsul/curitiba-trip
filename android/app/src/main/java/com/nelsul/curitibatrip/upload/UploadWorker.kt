@@ -1,5 +1,6 @@
 package com.nelsul.curitibatrip.upload
 
+import com.nelsul.curitibatrip.BuildConfig
 import android.app.Notification
 import android.content.Context
 import android.content.pm.ServiceInfo
@@ -63,14 +64,39 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 		return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ForegroundInfo(nid, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else ForegroundInfo(nid, n)
 	}
 
+	/** The job was handed back to WorkManager to wait for Wi-Fi. */
+	private class WaitForWifi : Exception()
+
+	private fun onWifi(): Boolean {
+		val cm = applicationContext.getSystemService(android.net.ConnectivityManager::class.java)
+		val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+		return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) && !(BuildConfig.DEBUG && forceNoWifi())
+	}
+
+	/** Emulator testing only: `adb shell setprop debug.curitiba.nowifi 1` acts as if the phone were off Wi-Fi. */
+	private fun forceNoWifi() = runCatching {
+		Runtime.getRuntime().exec(arrayOf("getprop", "debug.curitiba.nowifi")).inputStream.bufferedReader().readText().trim() == "1"
+	}.getOrDefault(false)
+
+	/** A ~720 px JPEG of the photo (or the video's first frame) for the preview. */
+	private fun preview(job: UploadJob): ByteArray? = runCatching {
+		val uri = Uri.parse(job.sourceUri)
+		val bitmap = if (Build.VERSION.SDK_INT >= 29) applicationContext.contentResolver.loadThumbnail(uri, android.util.Size(720, 720), null)
+		else if (job.isVideo) android.media.MediaMetadataRetriever().run { setDataSource(applicationContext, uri); getFrameAtTime(0).also { release() } }
+		else applicationContext.contentResolver.openInputStream(uri)!!.use { android.graphics.BitmapFactory.decodeStream(it, null, android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }) }
+		java.io.ByteArrayOutputStream().also { bitmap!!.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, it) }.toByteArray()
+	}.getOrNull()
+
 	override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
 		val id = inputData.getString(JOB) ?: return@withContext Result.failure()
 		val job = Uploads.get(id) ?: return@withContext Result.failure()
 		if (job.state == UploadJob.State.Done) return@withContext Result.success()
 		// big files: show a progress notification and ask Android to keep us running
-		if (job.size > 8 * 1024 * 1024) runCatching { setForeground(foreground(0)) }
+		if (job.size > 8 * 1024 * 1024 && !(job.wifiOnly && !job.previewSent)) runCatching { setForeground(foreground(0)) }
 		try {
 			run(id)
+			Result.success()
+		} catch (e: WaitForWifi) {
 			Result.success()
 		} catch (e: ApiError) {
 			Uploads.setSent(id, null)
@@ -110,6 +136,22 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 			Uploads.update(id) { it.copy(mediaId = started.id, partSize = started.partSize ?: 0, partCount = started.partCount ?: 0, state = UploadJob.State.Uploading) }
 			job = Uploads.get(id)!!
 		} else Uploads.update(id) { it.copy(state = UploadJob.State.Uploading, error = null) }
+
+		// "só no Wi-Fi" on mobile data: a low-res preview goes to the diary now; the original waits for Wi-Fi
+		if (job.wifiOnly && !job.previewSent && !onWifi()) {
+			preview(job)?.let { jpeg ->
+				runCatching { Api.put<kotlinx.serialization.json.JsonObject>("/api/uploads/${job.mediaId}/preview", jpeg, "image/jpeg") }.onSuccess {
+					Uploads.update(id) { it.copy(previewSent = true) }
+					Uploads.arrived()
+				}
+			}
+			if (Uploads.get(id)?.previewSent == true) {
+				Uploads.enqueue(id) // again, now waiting for an unmetered network
+				throw WaitForWifi()
+			}
+		}
+		// emulator test of "no Wi-Fi": keep waiting until "Enviar agora"
+		if (BuildConfig.DEBUG && Uploads.get(id)!!.let { it.wifiOnly && it.previewSent } && forceNoWifi()) throw WaitForWifi()
 
 		val missing = (1..job.partCount).filter { it !in job.etags }
 		var urls = emptyMap<Int, String>()

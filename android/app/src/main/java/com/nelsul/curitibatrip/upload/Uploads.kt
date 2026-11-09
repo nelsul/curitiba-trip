@@ -44,6 +44,9 @@ data class UploadJob(
 	val etags: Map<Int, String> = emptyMap(),
 	val error: String? = null,
 	val duplicate: Boolean = false,
+	/** Send the original only on Wi-Fi (a low-res preview goes to the diary first). */
+	val wifiOnly: Boolean = false,
+	val previewSent: Boolean = false,
 ) {
 	enum class State { Waiting, Uploading, Finishing, Done, Failed }
 	val active get() = state == State.Waiting || state == State.Uploading || state == State.Finishing
@@ -66,6 +69,8 @@ object Uploads {
 		file = File(context.filesDir, "uploads.json")
 		work = WorkManager.getInstance(context)
 		_jobs.value = runCatching { Api.json.decodeFromString<List<UploadJob>>(file.readText()) }.getOrDefault(emptyList())
+		prefs = context.getSharedPreferences("envio", Context.MODE_PRIVATE)
+		wifiOnly.value = prefs.getBoolean("envio-so-wifi", false)
 	}
 
 	@Synchronized
@@ -93,6 +98,12 @@ object Uploads {
 		enqueue(job.id)
 	}
 
+	/** "Enviar agora": stop waiting for Wi-Fi and send this one over any connection. */
+	fun sendNow(id: String) {
+		update(id) { it.copy(wifiOnly = false) }
+		enqueue(id)
+	}
+
 	fun retry(id: String) {
 		update(id) { it.copy(state = UploadJob.State.Waiting, error = null) }
 		enqueue(id)
@@ -109,16 +120,23 @@ object Uploads {
 	fun clearFinished() = synchronized(this) { _jobs.update { it.filterNot { j -> j.state == UploadJob.State.Done } }; save() }
 
 	/** One unique work per file; WorkManager keeps it across app restarts and retries it when the network returns. */
-	private fun enqueue(id: String) {
+	fun enqueue(id: String) {
+		// "só no Wi-Fi": the preview goes first (any network); the worker then waits for an unmetered one
+		val wifiOnly = get(id)?.let { it.wifiOnly && it.previewSent } == true
 		val req = OneTimeWorkRequestBuilder<UploadWorker>()
 			.setInputData(workDataOf(UploadWorker.JOB to id))
-			.setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+			.setConstraints(Constraints.Builder().setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build())
 			.setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.SECONDS)
 			.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
 			.addTag("upload")
 			.build()
 		work.enqueueUniqueWork(id, ExistingWorkPolicy.REPLACE, req)
 	}
+
+	/** "Enviar só no Wi-Fi" (Enviar screen), remembered. */
+	private lateinit var prefs: android.content.SharedPreferences
+	val wifiOnly = MutableStateFlow(false)
+	fun setWifiOnly(on: Boolean) { wifiOnly.value = on; prefs.edit().putBoolean("envio-so-wifi", on).apply() }
 
 	fun newId() = UUID.randomUUID().toString()
 }

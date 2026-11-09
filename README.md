@@ -29,6 +29,8 @@ The interface is 100% in Portuguese (pt-BR). Code, comments and commit messages 
 | Special effect when the bride/groom like your post | ✔ | ✔ | ✔ |
 | Hour-by-hour weather in the Roteiro; a page per place | ✔ | ✔ | ✔ |
 | Take a photo / record a video in Enviar | ✔ | ✔ | ✔ |
+| Notifications page (the bell next to Enviar, with an unread count) | ✔ | ✔ | ✔ |
+| "Enviar só no Wi‑Fi": a low-res preview right away, the original when on Wi‑Fi ("Enviar agora" to force) | shows previews | ✔ | ✔ |
 | Admins delete anyone's photos, videos, check-ins and comments | ✔ | ✔ | ✔ |
 | **Enviar** (yellow button, top right): originals in full quality with their own location and time | ✔ | ✔ (keeps sending with the app closed) | ✔ (keeps sending with the app closed) |
 | **Mapa:** polaroids, check-ins, live sharing, "go to where I am", check-in with a map picture | ✔ | ✔ | ✔ |

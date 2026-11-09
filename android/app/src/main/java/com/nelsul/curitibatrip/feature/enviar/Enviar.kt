@@ -180,6 +180,17 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 				ChunkyButton("Tirar foto", { capture(false) }, Modifier.weight(1f), variant = ButtonVariant.Secondary, fullWidth = true, icon = IconName.Camera)
 				ChunkyButton("Gravar vídeo", { capture(true) }, Modifier.weight(1f), variant = ButtonVariant.Secondary, fullWidth = true, icon = IconName.Video)
 			}
+			// "Enviar só no Wi-Fi": the originals wait for Wi-Fi (a low-res preview goes to the diary right away)
+			val wifiOnly by Uploads.wifiOnly.collectAsState()
+			Row(Modifier.fillMaxWidth().card(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+				Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+					Text("Enviar só no Wi‑Fi", style = body(16, FontWeight.Bold), color = Palette.ink)
+					Text("Fora do Wi‑Fi, vai para o diário uma prévia leve; o original sobe sozinho quando o celular entrar no Wi‑Fi. Dá para mandar um agora em “Enviar agora”.",
+						style = body(13), color = Palette.muted)
+				}
+				androidx.compose.material3.Switch(wifiOnly, { Uploads.setWifiOnly(it) },
+					colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Palette.leaf, checkedThumbColor = Color.White))
+			}
 			if (noOriginals) Column(Modifier.fillMaxWidth().card(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text("Sem acesso às fotos: o local da foto não vem junto. Para enviar o original com o local, permita o acesso a fotos e vídeos.",
 					style = body(15, FontWeight.Bold), color = Palette.ink)
@@ -202,6 +213,7 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 						name = m.name, mime = m.mime, size = m.size, isVideo = m.isVideo, takenAt = m.takenAt?.toString(),
 						lat = if (useHere) here.first else m.lat, lng = if (useHere) here.second else m.lng,
 						locationSource = if (m.hasLocation) "device-library" else if (useHere) "device" else null,
+						wifiOnly = Uploads.wifiOnly.value,
 					))
 				}
 				drafts.clear()
@@ -311,7 +323,15 @@ private fun JobRow(job: UploadJob, inFlight: Long?, open: (Route) -> Unit) {
 			Text(Formatter.formatShortFileSize(context, job.size) + if (job.lat != null) " · com local" else " · sem local", style = body(13), color = Palette.muted)
 			if (job.caption.isNotEmpty()) Text("“${job.caption}”", style = body(14), color = Palette.ink, maxLines = 2)
 			if (job.state != UploadJob.State.Waiting) UploadFlight(pct, done = job.state == UploadJob.State.Done, failed = job.state == UploadJob.State.Failed)
-			when (job.state) {
+			val waitingWifi = job.wifiOnly && job.previewSent && inFlight == null &&
+				(job.state == UploadJob.State.Waiting || job.state == UploadJob.State.Uploading)
+			if (waitingWifi) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+					Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+						Icon(IconName.Clock, Palette.sky, size = 14.dp)
+						Text("Esperando Wi‑Fi · a prévia já está no diário", style = body(13, FontWeight.Bold), color = Palette.sky)
+					}
+					ChunkyButton("Enviar agora", { Uploads.sendNow(job.id) }, variant = ButtonVariant.Secondary, small = true)
+			} else when (job.state) {
 				UploadJob.State.Waiting -> Text("Na fila (espera internet)", style = body(13), color = Palette.muted)
 				UploadJob.State.Uploading -> Text("Voando… ${(pct * 100).toInt()}%", style = body(13), color = Palette.muted)
 				UploadJob.State.Finishing -> Text("Pousando…", style = body(13), color = Palette.muted)

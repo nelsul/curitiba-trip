@@ -29,6 +29,8 @@ export const users = pgTable('users', {
 	seenCoupleLike: bigint('seen_couple_like', { mode: 'number' }).notNull().default(0),
 	/** the Pix key this person uses in the Cotinha (remembered for their next ones) */
 	pixKey: text('pix_key').notNull().default(''),
+	/** last time this person opened the notifications page (newer ones count as unread) */
+	notificationsSeenAt: timestamp('notifications_seen_at', { withTimezone: true }),
 	createdAt: createdAt()
 });
 
@@ -100,6 +102,8 @@ export const media = pgTable(
 		posterKey: text('poster_key'),
 		videoKey: text('video_key'),
 		caption: text('caption').notNull().default(''),
+		/** low-res picture sent first when the app waits for Wi-Fi to send the original; shown until it's processed */
+		previewKey: text('preview_key'),
 		/** the iPhone photo-library ID (iOS app): one post per photo per person, so retries never duplicate */
 		clientAssetId: text('client_asset_id'),
 		error: text('error'),

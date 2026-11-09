@@ -4,6 +4,7 @@
 	import { restoreSharing, loc } from '$lib/location.svelte';
 	import { ICONS } from '$lib/components/Icon.svelte';
 	import CoupleLove from '$lib/components/CoupleLove.svelte';
+	import { refreshUnread, unread } from '$lib/notifications.svelte';
 	let { children, data } = $props();
 
 	const items = [
@@ -15,7 +16,12 @@
 	];
 	const active = (href: string) => (href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href));
 
-	onMount(restoreSharing);
+	onMount(() => {
+		restoreSharing();
+		refreshUnread();
+		const t = setInterval(refreshUnread, 60_000);
+		return () => clearInterval(t);
+	});
 </script>
 
 <header class="top">
@@ -32,6 +38,11 @@
 		{/each}
 	</nav>
 	{#if loc.sharing}<span class="live" title="Compartilhando sua localização"><span class="dot"></span>Ao vivo</span>{/if}
+	<a href="/notificacoes" class="bell" aria-current={active('/notificacoes') ? 'page' : undefined}
+		aria-label={unread.count ? `Notificações, ${unread.count} novas` : 'Notificações'}>
+		<svg viewBox="0 0 24 24" aria-hidden="true"><path d={ICONS.bell} /></svg>
+		{#if unread.count}<span class="badge" aria-hidden="true">{unread.count > 99 ? '99+' : unread.count}</span>{/if}
+	</a>
 	<a href="/enviar" class="send" aria-current={active('/enviar') ? 'page' : undefined} aria-label="Enviar fotos e vídeos">
 		<svg viewBox="0 0 24 24" aria-hidden="true"><path d={ICONS.upload} /></svg><span>Enviar</span>
 	</a>
@@ -70,6 +81,18 @@
 	.desktop a[aria-current='page'] { background: var(--surface); border-color: var(--line); box-shadow: 0 3px 0 var(--shadow); }
 	.desktop svg { width: 20px; height: 20px; fill: none; stroke: var(--c); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 	.live { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 800; color: var(--leaf); background: var(--surface); padding: 4px 10px; border-radius: 999px; border: 2px solid var(--line); }
+	.bell {
+		position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; flex: none;
+		background: var(--surface); border: 2.5px solid var(--line); color: var(--ink); box-shadow: 0 3px 0 var(--shadow);
+		transition: transform 0.2s var(--bounce); -webkit-tap-highlight-color: transparent;
+	}
+	.bell svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+	.bell[aria-current='page'] { border-color: var(--sea); color: var(--sea); }
+	.bell:active { transform: scale(0.92); }
+	.badge {
+		position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
+		background: var(--coral); color: #fff; font-size: 0.72rem; font-weight: 800; display: grid; place-items: center; border: 2px solid var(--bg);
+	}
 	/* Enviar: the raised yellow button, always top right */
 	.send {
 		display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 16px 0 12px;
@@ -99,6 +122,8 @@
 	.dock a[aria-current='page'] { color: var(--ink); }
 	.dock a[aria-current='page'] .tile { transform: translateY(-4px) rotate(-6deg) scale(1.08); }
 	.dock a:active .tile { transform: scale(0.9); }
+	/* the dates stamp makes room for the bell on phones */
+	@media (max-width: 420px) { .brand .stamp { display: none; } }
 	@media (max-width: 440px) {
 		/* small phones: "Ao vivo" becomes just the dot, so Enviar always fits */
 		.live { font-size: 0; gap: 0; padding: 8px; }

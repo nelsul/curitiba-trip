@@ -1,4 +1,4 @@
-import { asc, ne, sql } from 'drizzle-orm';
+import { asc, isNotNull, ne, or, sql } from 'drizzle-orm';
 import { checkins, comments, db, likes, media, users } from './db';
 import { mediaUrl } from './r2';
 import { dayKey } from '$lib/format';
@@ -35,7 +35,8 @@ export async function feedUnsigned(): Promise<Unsigned> {
 			.select({ m: media, n: counts.n })
 			.from(media)
 			.leftJoin(counts, sql`${counts.mediaId} = ${media.id}`)
-			.where(ne(media.status, 'uploading')),
+			// waiting for Wi-Fi: shown with its low-res preview
+			.where(or(ne(media.status, 'uploading'), isNotNull(media.previewKey))),
 		db()
 			.select({ c: checkins, n: counts.n })
 			.from(checkins)
@@ -52,8 +53,8 @@ export async function feedUnsigned(): Promise<Unsigned> {
 	const mItems: FeedMedia[] = mRows.map(({ m, n }) => {
 		const at = (m.takenAt ?? m.createdAt).toISOString();
 		keys.set(m.id, {
-			thumb: m.thumbKey,
-			image: m.mediumKey ?? m.displayKey ?? m.posterKey,
+			thumb: m.thumbKey ?? m.previewKey,
+			image: m.mediumKey ?? m.displayKey ?? m.posterKey ?? m.previewKey,
 			video: m.kind === 'video' ? m.videoKey : null
 		});
 		return {
@@ -63,7 +64,7 @@ export async function feedUnsigned(): Promise<Unsigned> {
 			at,
 			day: dayKey(at),
 			kind: m.kind,
-			status: m.status as FeedMedia['status'],
+			status: (m.status === 'uploading' ? 'preview' : m.status) as FeedMedia['status'],
 			thumb: null,
 			image: null,
 			video: null,

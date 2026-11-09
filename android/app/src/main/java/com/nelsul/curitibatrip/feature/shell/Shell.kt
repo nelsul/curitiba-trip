@@ -1,5 +1,7 @@
 package com.nelsul.curitibatrip.feature.shell
 
+import com.nelsul.curitibatrip.feature.notifications.NotificationsBadge
+import com.nelsul.curitibatrip.feature.notifications.NotificationsScreen
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -111,9 +113,12 @@ fun Shell() {
 		scope.launch {
 			if (coupleLikes.isEmpty()) runCatching { Api.get<CoupleLikes>("/api/couple-likes") }.getOrNull()?.let { coupleLikes = it.likes }
 			CotinhaBadge.refresh(app.me?.id)
+			NotificationsBadge.refresh()
 		}
 		onPauseOrDispose { LocationSharing.pause(); Notifier.markSeen(context) }
 	}
+	// the bell's count, every minute while the app is open
+	LaunchedEffect(Unit) { while (true) { NotificationsBadge.refresh(); kotlinx.coroutines.delay(60_000) } }
 	LaunchedEffect(Notifier.openCotinha) { if (Notifier.openCotinha > 0) { tab = Tab.Cotinha; stacks.getValue(Tab.Cotinha).clear() } }
 	// background check, reminders and (if on) background location; ask once for notifications
 	val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
@@ -137,7 +142,11 @@ fun Shell() {
 
 	Box(Modifier.fillMaxSize()) {
 		Column(Modifier.fillMaxSize()) {
-			Box(Modifier.statusBarsPadding()) { TopBar(tab == Tab.Enviar) { stacks.getValue(Tab.Enviar).clear(); tab = Tab.Enviar } }
+			Box(Modifier.statusBarsPadding()) {
+				TopBar(tab == Tab.Enviar, { stacks.getValue(Tab.Enviar).clear(); tab = Tab.Enviar },
+					bellActive = tab == Tab.Notificacoes, unread = NotificationsBadge.unread,
+					onBell = { stacks.getValue(Tab.Notificacoes).clear(); tab = Tab.Notificacoes })
+			}
 			Box(Modifier.weight(1f).fillMaxWidth()) {
 				// the tab's main screen stays alive under its pages, so it keeps its scroll position
 				when (tab) {
@@ -145,6 +154,9 @@ fun Shell() {
 					Tab.Roteiro -> RoteiroScreen(DockSpace, open)
 					Tab.Mais -> MoreScreen(DockSpace, open)
 					Tab.Cotinha -> CotinhaScreen(DockSpace)
+					Tab.Notificacoes -> NotificationsScreen(DockSpace) { route ->
+						if (route == null) tab = Tab.Cotinha else { tab = Tab.Diario; stacks.getValue(Tab.Diario).add(route) }
+					}
 					Tab.Enviar -> EnviarScreen(DockSpace, open)
 					Tab.Mapa -> MapaScreen(DockSpace, open, Notifier.openCheckin)
 				}

@@ -109,7 +109,16 @@ private struct MediaSlide: View {
 
 	var body: some View {
 		ZStack {
-			if media.status != "ready" {
+			if media.status == "preview" || media.status == "processing", media.image != nil {
+				// waiting for Wi-Fi on the sender's phone (or the original is being processed): the low-res picture for now
+				RemoteImage(url: media.image)
+				Label { Text(media.status == "preview" ? "\(media.isVideo ? "Vídeo completo" : "Foto completa") chega quando estiver no Wi‑Fi" : "Processando o original…") } icon: { Icon(.clock, size: 13) }
+					.font(.text(12, .extraBold)).foregroundStyle(.white)
+					.padding(.horizontal, 10).padding(.vertical, 5)
+					.background(RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.6)))
+					.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+					.padding(8)
+			} else if media.status != "ready" {
 				Text(media.status == "failed" ? "Não foi possível processar" : media.isVideo ? "Preparando o vídeo…" : "Processando…")
 					.font(.text(15, .extraBold)).foregroundStyle(.white.opacity(0.85))
 			} else {

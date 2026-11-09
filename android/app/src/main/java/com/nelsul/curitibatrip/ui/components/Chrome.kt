@@ -1,5 +1,6 @@
 package com.nelsul.curitibatrip.ui.components
 
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.core.animateDpAsState
@@ -66,7 +67,7 @@ private fun Modifier.tile(fill: Color, edge: Color, radius: Float, depth: Float)
 
 /** Top bar: plane tile + "Curitiba" + the dates stamp, with the dashed bottom edge, and the yellow "Enviar" button on the right. */
 @Composable
-fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}) {
+fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}, bellActive: Boolean = false, unread: Int = 0, onBell: () -> Unit = {}) {
 	Row(
 		Modifier
 			.fillMaxWidth()
@@ -88,11 +89,31 @@ fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}) {
 			Box(Modifier.rotate(-8f).size(36.dp).tile(Palette.sea, Palette.seaDark, 12f, 3f), contentAlignment = Alignment.Center) {
 				Icon(IconName.Plane, Color.White, Modifier.rotate(90f), size = 18.dp)
 			}
-			Text("Curitiba", style = display(24), color = Palette.ink)
-			Stamp("11–18/11", size = 12)
+			Text("Curitiba", style = display(24), color = Palette.ink, maxLines = 1)
+			// the dates stamp gives way on narrow phones (the bell and "Enviar" always fit)
+			if (LocalConfiguration.current.screenWidthDp >= 400) Stamp("11–18/11", size = 12)
 		}
 		Spacer(Modifier.weight(1f))
+		BellButton(bellActive, unread, onBell)
 		SendButton(sending, onSend)
+	}
+}
+
+/** The bell left of "Enviar": opens the notifications, with a red count of unread ones. */
+@Composable
+private fun BellButton(active: Boolean, unread: Int, onClick: () -> Unit) {
+	Box(
+		Modifier.size(44.dp).background(Palette.shadow, CircleShape).padding(bottom = 3.dp)
+			.background(Palette.surface, CircleShape).border(2.5.dp, if (active) Palette.sea else Palette.line, CircleShape)
+			.pressable(onClick).semantics { contentDescription = if (unread > 0) "Notificações, $unread novas" else "Notificações"; selected = active },
+		contentAlignment = Alignment.Center,
+	) {
+		Icon(IconName.Bell, if (active) Palette.sea else Palette.ink, size = 22.dp)
+		if (unread > 0) Box(
+			Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).sizeIn(minWidth = 20.dp, minHeight = 20.dp)
+				.background(Palette.coral, CircleShape).border(2.dp, Palette.bg, CircleShape).padding(horizontal = 4.dp),
+			contentAlignment = Alignment.Center,
+		) { Text(if (unread > 99) "99+" else "$unread", style = body(11, FontWeight.ExtraBold), color = Color.White) }
 	}
 }
 
@@ -160,7 +181,9 @@ enum class Tab(val label: String, val icon: IconName, val color: Color) {
 	Roteiro("Roteiro", IconName.Ticket, Palette.coral),
 	Mais("Mais", IconName.User, Palette.plum),
 	/** Opened from the top bar's button, not the dock. */
-	Enviar("Enviar", IconName.Upload, Palette.sun);
+	Enviar("Enviar", IconName.Upload, Palette.sun),
+	/** Opened from the top bar's bell. */
+	Notificacoes("Notificações", IconName.Bell, Palette.plum);
 
 	companion object {
 		val dock = listOf(Diario, Mapa, Cotinha, Roteiro, Mais)

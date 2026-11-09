@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
-import { GetObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../src/lib/server/shared/db';
 import { media, type Media } from '../src/lib/server/db/schema';
@@ -204,8 +204,10 @@ export async function processMedia(ctx: Ctx, mediaId: string) {
 
 		await ctx.db
 			.update(media)
-			.set({ ...patch, status: 'ready', error: null, processedAt: new Date() })
+			.set({ ...patch, status: 'ready', error: null, processedAt: new Date(), previewKey: null })
 			.where(eq(media.id, m.id));
+		// the low-res picture sent while waiting for Wi-Fi isn't needed anymore
+		if (m.previewKey) await ctx.s3.send(new DeleteObjectCommand({ Bucket: ctx.bucket, Key: m.previewKey })).catch(() => {});
 		const size = (await stat(src)).size;
 		ctx.log(`ready ${m.kind} ${m.id} (${(size / 1e6).toFixed(1)} MB) in ${((Date.now() - t0) / 1000).toFixed(1)}s; gps=${gps ? 'yes' : 'no'} taken=${taken ? 'exif' : 'kept'}`);
 	} catch (e) {

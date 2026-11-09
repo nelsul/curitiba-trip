@@ -7,7 +7,8 @@ export type FeedMedia = {
 	at: string;
 	day: string;
 	kind: 'photo' | 'video';
-	status: 'processing' | 'ready' | 'failed';
+	/** 'preview': only a low-res picture so far; the original arrives when the sender's phone is on Wi-Fi */
+	status: 'preview' | 'processing' | 'ready' | 'failed';
 	thumb: string | null;
 	/** big feed image: medium (1080px) → display → video poster */
 	image: string | null;

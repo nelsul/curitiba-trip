@@ -27,6 +27,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 |---|---|---|
 | POST | `/api/uploads` | Start a multipart upload: `{ name, size, type, takenAt, takenAtSource, lat, lng, locationSource, caption }` → `{ id, partSize, partCount }` |
 | POST | `/api/uploads/:id/parts` | `{ parts: [1, 2, …] }` (max 50 per call) → `{ urls: { "1": "https://…r2…" } }`. `PUT` each chunk (`partSize` bytes, the last one shorter) to its URL and keep the `ETag` response header. |
+| PUT | `/api/uploads/:id/preview` | Body: a small JPEG/WebP/PNG (≤ 1.5 MB; the apps send ~720 px) while the original waits for Wi‑Fi. The post shows up in the feed right away with `status: 'preview'` and this picture; the processed original replaces it. Starting the same `clientAssetId` again restarts the original upload in place (same id, likes and comments kept; the reply has `preview: true`). |
 | POST | `/api/uploads/:id/complete` | `{ parts: [{ n, etag }] }` → `{ ok }`; the worker then processes it |
 | DELETE | `/api/uploads/:id` | Cancel an unfinished upload |
 | POST | `/api/likes` | `{ mediaId \| checkinId, liked }` → `{ likers: [userId] }` |
@@ -40,7 +41,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/feed?limit=20&before=&day=&person=` | → `{ posts, nextCursor, days }`. Newest first. Each post is `{ type: 'media', key, userId, day, at, items: [FeedMedia] }` (a carousel: same person, same day, ≤30 min apart, oldest→newest inside) or `{ type: 'checkin', key, userId, day, at, item }`. Pass `nextCursor` as `before` for the next page (`null` = end). `limit` is 1–50. `days` lists every day that has posts (whatever the filters), for the day chips. The web feed uses the same grouping (`$lib/feed-group`). |
+| GET | `/api/feed?limit=20&before=&day=&person=` | → `{ posts, nextCursor, days }`. A media item can have `status: 'preview'` (only the low-res picture so far, the original waits for the sender's Wi‑Fi). Newest first. Each post is `{ type: 'media', key, userId, day, at, items: [FeedMedia] }` (a carousel: same person, same day, ≤30 min apart, oldest→newest inside) or `{ type: 'checkin', key, userId, day, at, item }`. Pass `nextCursor` as `before` for the next page (`null` = end). `limit` is 1–50. `days` lists every day that has posts (whatever the filters), for the day chips. The web feed uses the same grouping (`$lib/feed-group`). |
 | GET | `/api/map?day=` | → `{ items, pings, latest }`: located posts and check-ins, and everyone's latest position. `day` (YYYY-MM-DD, Curitiba time) limits the items. `pings` is always `[]`: trails were removed (background positions weren't reliable enough); the field stays for older apps. |
 | GET | `/api/media/:id` | → `{ item, comments, likers }`. `item` has `display` (2048 px), `medium` (1080 px), `video`, `poster` and `original` (download) URLs. |
 | PATCH | `/api/media/:id` | Owner: `{ caption?, lat?, lng? }` (lat+lng = manual location) → the updated item |
@@ -96,6 +97,13 @@ Where people sleep. Everyone reads them in `GET /api/roteiro`; only admins chang
 | GET | `/api/admin/stays` | → `{ stays: [{ id, name, kind: hotel\|airbnb\|casa, lat, lng, address, link, checkIn, checkOut, note, guests: [userId] }] }` |
 | POST | `/api/admin/stays` | Stay fields (name, lat, lng required; `guests` = user ids) → `{ id }` (201) |
 | PUT / DELETE | `/api/admin/stays/:id` | Replace (guest list included), or delete |
+
+## Notifications
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/notifications` | → `{ items: [{ id, kind: post\|checkin\|comment\|like\|mention\|split\|paid, userId, text, body, at, mediaId, checkinId, cotinha, image, unread }], unread }`: the last 14 days of what other people did that concerns me, newest first (max 150), texts ready to show. Posts and likes are one line per person per day. `?count=1` → only `{ unread }` (the bell's badge). |
+| POST | `/api/notifications/seen` | Opening the page: everything until now is read |
 
 ## For the app's background work
 
