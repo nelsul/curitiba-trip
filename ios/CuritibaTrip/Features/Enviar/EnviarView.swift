@@ -1,3 +1,4 @@
+import CoreLocation
 import Photos
 import PhotosUI
 import SwiftUI
@@ -18,6 +19,7 @@ struct EnviarView: View {
 	}
 	@State private var message: String?
 	@State private var needsAccess = false
+	@State private var camera: CameraPicker.Mode?
 	@Environment(\.openURL) private var openURL
 	private var uploader: Uploader { .shared }
 
@@ -35,6 +37,15 @@ struct EnviarView: View {
 					PickerTile()
 				}
 				.buttonStyle(.plain)
+
+				if UIImagePickerController.isSourceTypeAvailable(.camera) {
+					HStack(spacing: 10) {
+						Button { camera = .photo } label: { Label { Text("Tirar foto") } icon: { Icon(.camera, size: 20) } }
+							.buttonStyle(.chunky(.secondary, fullWidth: true))
+						Button { camera = .video } label: { Label { Text("Gravar vídeo") } icon: { Icon(.video, size: 20) } }
+							.buttonStyle(.chunky(.secondary, fullWidth: true))
+					}
+				}
 
 				if needsAccess {
 					VStack(alignment: .leading, spacing: 8) {
@@ -77,6 +88,13 @@ struct EnviarView: View {
 			.frame(maxWidth: .infinity)
 		}
 		.scrollDismissesKeyboard(.interactively)
+		.fullScreenCover(item: $camera) { mode in
+			CameraPicker(mode: mode) { result in
+				camera = nil
+				if let result { Task { await addCaptured(result) } }
+			}
+			.ignoresSafeArea()
+		}
 		.onChange(of: picked) { _, items in
 			guard !items.isEmpty else { return }
 			Task { await add(items) }
@@ -115,6 +133,42 @@ struct EnviarView: View {
 				for i in drafts.indices { drafts[i].useHere = false }
 			}
 		}
+	}
+
+	/// A photo/video just taken in the app: saved to the phone's Photos (with where and when it was taken), then sent
+	/// like any other picked item, so the original and its location go along.
+	private func addCaptured(_ result: CameraPicker.Result) async {
+		message = nil
+		let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+		guard status == .authorized || status == .limited else { needsAccess = true; return }
+		let location = try? await LocationOnce.current()
+		do {
+			let id = try await Self.saveToPhotos(result, location: location)
+			guard let id, let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else {
+				message = "Não foi possível salvar a foto."
+				return
+			}
+			if let l = location { here = (l.coordinate.latitude, l.coordinate.longitude) }
+			withAnimation { drafts.append(Draft(asset: asset, useHere: false)) }
+		} catch {
+			message = "Não foi possível salvar nas Fotos: \(error.localizedDescription)"
+		}
+	}
+
+	nonisolated private static func saveToPhotos(_ result: CameraPicker.Result, location: CLLocation?) async throws -> String? {
+		final class Box: @unchecked Sendable { var id: String? }
+		let box = Box()
+		try await PHPhotoLibrary.shared().performChanges {
+			let req: PHAssetChangeRequest?
+			switch result {
+			case .photo(let img): req = PHAssetChangeRequest.creationRequestForAsset(from: img)
+			case .video(let url): req = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+			}
+			req?.creationDate = Date()
+			req?.location = location
+			box.id = req?.placeholderForCreatedAsset?.localIdentifier
+		}
+		return box.id
 	}
 
 	/// Looks the draft up by id on every access (index-based bindings crash when the list shrinks).
@@ -323,5 +377,39 @@ struct AssetThumb: View {
 				if !degraded { c.finish() }
 			}
 		}
+	}
+}
+
+/// The system camera, for a photo or a video.
+struct CameraPicker: UIViewControllerRepresentable {
+	enum Mode: String, Identifiable { case photo, video; var id: String { rawValue } }
+	enum Result: @unchecked Sendable { case photo(UIImage), video(URL) }
+	let mode: Mode
+	let done: (Result?) -> Void
+
+	func makeUIViewController(context: Context) -> UIImagePickerController {
+		let c = UIImagePickerController()
+		c.sourceType = .camera
+		c.mediaTypes = [mode == .photo ? "public.image" : "public.movie"]
+		c.cameraCaptureMode = mode == .photo ? .photo : .video
+		c.videoQuality = .typeHigh
+		c.delegate = context.coordinator
+		return c
+	}
+
+	func updateUIViewController(_ c: UIImagePickerController, context: Context) {}
+	func makeCoordinator() -> Coordinator { Coordinator(done: done) }
+
+	final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+		let done: (Result?) -> Void
+		init(done: @escaping (Result?) -> Void) { self.done = done }
+
+		func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+			if let url = info[.mediaURL] as? URL { done(.video(url)) }
+			else if let img = info[.originalImage] as? UIImage { done(.photo(img)) }
+			else { done(nil) }
+		}
+
+		func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { done(nil) }
 	}
 }

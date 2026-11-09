@@ -19,6 +19,7 @@ final class Notifier: NSObject {
 	/// Where a tapped notification wants to go (the shell picks these up).
 	var openRoute: Route?
 	var openCheckin = false
+	var openCotinha = false
 	private(set) var authorized = false
 
 	private let center = UNUserNotificationCenter.current()
@@ -115,13 +116,28 @@ final class Notifier: NSObject {
 				let n = rows.count
 				await post(id: "likes-\(userId)-\(a.now)", title: "\(name(userId)) curtiu \(n == 1 ? "seu post" : "\(n) posts seus") ❤️", body: "", route: route)
 			}
+			// @mentions (skip the ones already notified as a comment on my post)
+			let commented = Set(a.comments.map(\.id))
+			for c in a.mentions ?? [] where !commented.contains(c.id) {
+				let route: Route? = c.mediaId.map(Route.media) ?? c.checkinId.map(Route.checkin)
+				await post(id: "mention-\(c.id)", title: "\(name(c.userId)) marcou você num comentário", body: c.body, route: route)
+			}
+			// cotinha: new ones I owe, the payer's reminders, and who paid me
+			for s in a.splits ?? [] {
+				let pix = s.pixKey.isEmpty ? "" : " · Pix: \(s.pixKey)"
+				let title = s.kind == "reminder" ? "\(name(s.payerId)) está cobrando: \(s.title)" : "\(name(s.payerId)) criou uma cotinha: \(s.title)"
+				await post(id: "split-\(s.id)-\(s.at)", title: title, body: "Sua parte: \(Money.brl(s.amountCents))\(pix)", route: nil, action: "cotinha")
+			}
+			for p in a.splitPaid ?? [] {
+				await post(id: "paid-\(p.id)-\(p.userId)", title: "\(name(p.userId)) pagou \(Money.brl(p.amountCents))", body: "Cotinha: \(p.title)", route: nil, action: "cotinha")
+			}
 			UserDefaults.standard.set(a.now, forKey: Self.sinceKey)
 		} catch {
 			log.error("activity check failed: \(error.localizedDescription, privacy: .public)")
 		}
 	}
 
-	private func post(id: String, title: String, body: String, route: Route?, checkin: Bool = false, at date: Date? = nil) async {
+	private func post(id: String, title: String, body: String, route: Route?, checkin: Bool = false, action: String? = nil, at date: Date? = nil) async {
 		let content = UNMutableNotificationContent()
 		content.title = title
 		content.body = body
@@ -133,6 +149,7 @@ final class Notifier: NSObject {
 		case nil: break
 		}
 		if checkin { info["action"] = "checkin" }
+		if let action { info["action"] = action }
 		content.userInfo = info
 		let trigger = date.map { UNCalendarNotificationTrigger(dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: $0), repeats: false) }
 		try? await center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
@@ -192,6 +209,7 @@ extension Notifier: @preconcurrency UNUserNotificationCenterDelegate {
 	func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse) async {
 		let info = r.notification.request.content.userInfo
 		if info["action"] as? String == "checkin" { openCheckin = true }
+		else if info["action"] as? String == "cotinha" { openCotinha = true }
 		else if let id = info["media"] as? String { openRoute = .media(id) }
 		else if let id = info["checkin"] as? String { openRoute = .checkin(id) }
 	}
@@ -208,4 +226,10 @@ struct Activity: Decodable, Sendable {
 	let checkins: [Checkin]
 	let comments: [Comment]
 	let likes: [Like]
+	struct Split: Decodable, Sendable { let id: String; let title: String; let payerId: String; let pixKey: String; let amountCents: Int; let kind: String; let at: String }
+	struct Paid: Decodable, Sendable { let id: String; let title: String; let userId: String; let amountCents: Int }
+	/// newer servers only
+	var mentions: [Comment]?
+	var splits: [Split]?
+	var splitPaid: [Paid]?
 }

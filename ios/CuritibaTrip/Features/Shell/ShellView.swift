@@ -7,6 +7,12 @@ struct ShellView: View {
 	@State private var keyboardUp = false
 	@Environment(AppState.self) private var app
 	@Bindable private var notifier = Notifier.shared
+	@State private var coupleLikes: [CoupleLike] = []
+
+	private func checkCoupleLikes() async {
+		guard coupleLikes.isEmpty, let r: CoupleLikes = try? await API.shared.get("/api/couple-likes"), !r.likes.isEmpty else { return }
+		withAnimation { coupleLikes = r.likes }
+	}
 
 	var body: some View {
 		VStack(spacing: 0) {
@@ -16,7 +22,7 @@ struct ShellView: View {
 				switch tab {
 				case .diario: Stacked(open: $notifier.openRoute) { FeedView() }
 				case .mapa: Stacked { MapaView() }
-				case .galeria: Stacked { GaleriaView() }
+				case .cotinha: Stacked { CotinhaView() }
 				case .enviar: Stacked { EnviarView() }
 				case .roteiro: Stacked { RoteiroView() }
 				case .mais: Stacked { MoreView() }
@@ -32,7 +38,20 @@ struct ShellView: View {
 		.task {
 			Uploader.shared.start()
 			LocationSharing.shared.restore()
+			await checkCoupleLikes()
 			await Notifier.shared.start()
+		}
+		// the bride or groom liked one of my posts: the special effect, once
+		.overlay {
+			if !coupleLikes.isEmpty {
+				CoupleLoveView(likes: coupleLikes) { route in
+					let upTo = coupleLikes.map(\.id).max() ?? 0
+					withAnimation { coupleLikes = [] }
+					Task { let _: OK? = try? await API.shared.post("/api/couple-likes/seen", SeenBody(upTo: upTo)) }
+					if let route { tab = .diario; notifier.openRoute = route }
+				}
+				.transition(.opacity)
+			}
 		}
 		// a tapped notification: open the post, or the map's check-in
 		.onChange(of: notifier.openRoute) { _, r in if r != nil { tab = .diario } }
@@ -42,7 +61,14 @@ struct ShellView: View {
 			Notifier.shared.scheduleRefresh()
 			LocationSharing.shared.pause()
 		}
-		.onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in LocationSharing.shared.resume() }
+		.onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+			LocationSharing.shared.resume()
+			Task {
+				await checkCoupleLikes()
+				if let me = app.me?.id { await CotinhaBadge.shared.refresh(me: me) }
+			}
+		}
+		.onChange(of: notifier.openCotinha) { _, on in if on { tab = .cotinha; notifier.openCotinha = false } }
 		.onChange(of: Uploader.shared.arrivals) { app.feedChanged() }
 		.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
 		.onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }

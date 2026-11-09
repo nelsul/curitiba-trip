@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The web app's icon set (exported by design/build-icons.mjs into Assets.xcassets/Icons).
 enum IconName: String, CaseIterable {
-	case journal, map, upload, ticket, user, calendar, people, pin, camera, plane, car, island, chat, check, heart, download, play, leaf, expand, gallery, search, locate, sound, mute, home
+	case journal, map, upload, ticket, user, calendar, people, pin, camera, plane, car, island, chat, check, heart, download, play, leaf, expand, gallery, search, locate, sound, mute, home,
+		wallet, grid, sun, partly, cloud, fog, rain, storm, share, trash, close, sparkle, copy, bell, video, up, down, plus, clock, ring, external, frame
 }
 
 struct Icon: View {

@@ -61,6 +61,7 @@ struct RoteiroView: View {
 			}
 		}
 		.task { await load() }
+		.task { await WeatherStore.shared.load() }
 		.sheet(item: $editingDay) { e in
 			DayEditor(day: e.day, places: places, takenDates: days.map(\.date), suggestedDate: e.suggested,
 					  saved: { date in Task { await load(); if let date { selected = date } } },
@@ -185,6 +186,7 @@ struct RoteiroView: View {
 					Label { Text(d.who) } icon: { Icon(.people, size: 16) }.font(.text(14, .bold)).foregroundStyle(Color.muted)
 				}
 				if !d.lead.isEmpty { Text(d.lead).font(.text(17)).foregroundStyle(Color.ink) }
+				if let w = WeatherStore.shared.days[d.date] { WeatherCard(day: w) }
 				if !pts.isEmpty, let style {
 					RouteMap(styleURL: style, date: d.date, points: pts.map(\.point), homes: homes,
 							 onPick: { scrollTo = "parada-\($0)" }, onPickHome: { scrollTo = "casa-\($0)" })
@@ -295,7 +297,15 @@ struct RoteiroView: View {
 								.background(RoundedRectangle(cornerRadius: 10).fill(visited ? Color.leaf : Color.sun))
 						}
 					}
-					Text(p?.name ?? s.label).font(.display(19)).foregroundStyle(Color.ink).fixedSize(horizontal: false, vertical: true)
+					if let p {
+						NavigationLink { PlaceDetailView(place: p, days: days) } label: {
+							(Text(p.name).foregroundStyle(Color.ink) + Text(" ›").foregroundStyle(Color.sea))
+								.font(.display(19)).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+						}
+						.buttonStyle(.plain)
+					} else {
+						Text(s.label).font(.display(19)).foregroundStyle(Color.ink).fixedSize(horizontal: false, vertical: true)
+					}
 					HStack(spacing: 6) {
 						badge(t.label, t.color)
 						if let p { badge(p.categoryInfo.label, p.categoryInfo.color) }
@@ -570,7 +580,10 @@ private struct PlaceCard: View {
 			.clipped()
 
 			VStack(alignment: .leading, spacing: 6) {
-				Text(place.name).font(.display(20)).foregroundStyle(Color.ink)
+				NavigationLink { PlaceDetailView(place: place, days: days) } label: {
+					(Text(place.name).foregroundStyle(Color.ink) + Text(" ›").foregroundStyle(Color.sea)).font(.display(20)).multilineTextAlignment(.leading)
+				}
+				.buttonStyle(.plain)
 				if !place.address.isEmpty {
 					Label { Text(place.address) } icon: { Icon(.pin, size: 14) }.font(.text(13)).foregroundStyle(Color.muted)
 				}
@@ -578,16 +591,19 @@ private struct PlaceCard: View {
 				if !place.price.isEmpty || place.priceLevel != nil {
 					row("Preço", Text("\(Text(Roteiro.priceSigns(place.priceLevel)).foregroundStyle(Color.sun).bold()) \(place.price)"))
 				}
-				if !place.description.isEmpty { Text(place.description).font(.text(15)).foregroundStyle(Color.ink) }
+				if !place.description.isEmpty { Text(place.description).font(.text(15)).foregroundStyle(Color.ink).lineLimit(3) }
 				if !usedOn.isEmpty {
 					Label { Text("No roteiro: " + usedOn.map { "\(TripTime.shortWeekday($0)) \($0.suffix(2))" }.joined(separator: ", ")) } icon: { Icon(.ticket, size: 14) }
 						.font(.text(13, .bold)).foregroundStyle(Color.leaf)
 				}
 				HStack(spacing: 8) {
-					Button { openURL(place.uberURL) } label: { Label { Text("Pedir Uber") } icon: { Icon(.car, size: 18) } }
+					NavigationLink { PlaceDetailView(place: place, days: days) } label: { Text("Detalhes") }
+						.buttonStyle(.chunky(.sea, small: true))
+					Button { openURL(place.uberURL) } label: { Label { Text("Uber") } icon: { Icon(.car, size: 18) } }
 						.buttonStyle(.chunky(.uber, small: true))
-					Button { openURL(place.mapsURL) } label: { Label { Text("Maps") } icon: { Icon(.map, size: 18) } }
+					Button { openURL(place.mapsURL) } label: { Icon(.map, size: 18) }
 						.buttonStyle(.chunky(.secondary, small: true))
+						.accessibilityLabel("Abrir no Google Maps")
 					if let url = place.linkURL {
 						Button { openURL(url) } label: { Icon(.expand, size: 16) }
 							.buttonStyle(.chunky(.secondary, small: true))

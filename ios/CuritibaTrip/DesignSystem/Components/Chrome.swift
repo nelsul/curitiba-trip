@@ -102,15 +102,15 @@ struct DaySign: View {
 }
 
 enum Tab: String, CaseIterable, Identifiable {
-	case diario, mapa, galeria, roteiro, mais, enviar
+	case diario, mapa, cotinha, roteiro, mais, enviar
 	var id: String { rawValue }
 	/// The dock's tabs ("Enviar" lives in the top bar).
-	static let dock: [Tab] = [.diario, .mapa, .galeria, .roteiro, .mais]
+	static let dock: [Tab] = [.diario, .mapa, .cotinha, .roteiro, .mais]
 	var label: String {
 		switch self {
 		case .diario: "Diário"
 		case .mapa: "Mapa"
-		case .galeria: "Galeria"
+		case .cotinha: "Cotinha"
 		case .roteiro: "Roteiro"
 		case .mais: "Mais"
 		case .enviar: "Enviar"
@@ -120,7 +120,7 @@ enum Tab: String, CaseIterable, Identifiable {
 		switch self {
 		case .diario: .journal
 		case .mapa: .map
-		case .galeria: .gallery
+		case .cotinha: .wallet
 		case .roteiro: .ticket
 		case .mais: .user
 		case .enviar: .upload
@@ -130,7 +130,7 @@ enum Tab: String, CaseIterable, Identifiable {
 		switch self {
 		case .diario: .leaf
 		case .mapa: .sea
-		case .galeria, .enviar: .sun
+		case .cotinha, .enviar: .sun
 		case .roteiro: .coral
 		case .mais: .plum
 		}
@@ -157,13 +157,21 @@ struct Dock: View {
 							.rotationEffect(.degrees(active ? -6 : 0))
 							.scaleEffect(active ? 1.08 : 1)
 							.offset(y: active ? -4 : 0)
+							.overlay(alignment: .topTrailing) {
+								// cotinhas I still owe
+								if tab == .cotinha && CotinhaBadge.shared.owing > 0 {
+									Text("\(CotinhaBadge.shared.owing)").font(.text(11, .extraBold)).foregroundStyle(.white)
+										.frame(minWidth: 18, minHeight: 18).background(Circle().fill(Color.coral))
+										.offset(x: 6, y: -6)
+								}
+							}
 						Text(tab.label).font(.text(11, .extraBold)).foregroundStyle(active ? Color.ink : Color.muted)
 					}
 					.frame(maxWidth: .infinity)
 					.contentShape(Rectangle())
 				}
 				.buttonStyle(.plain)
-				.accessibilityLabel(tab.label)
+				.accessibilityLabel(tab == .cotinha && CotinhaBadge.shared.owing > 0 ? "\(tab.label), \(CotinhaBadge.shared.owing) para pagar" : tab.label)
 				.accessibilityAddTraits(active ? .isSelected : [])
 			}
 		}

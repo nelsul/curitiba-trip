@@ -61,6 +61,8 @@ struct MoreView: View {
 
 				AlertsCard()
 
+				NavigationLink { RetroView() } label: { Label { Text("Retrospectiva") } icon: { Icon(.sparkle, size: 18) } }
+					.buttonStyle(.chunky(.secondary, fullWidth: true))
 				if app.me?.isAdmin == true {
 					Button { openURL(API.shared.base.appending(path: "/admin")) } label: { Text("Gerenciar pessoas (site)") }
 						.buttonStyle(.chunky(.secondary, fullWidth: true))
@@ -228,7 +230,7 @@ private struct AlertsCard: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 12) {
 			Text("Avisos e localização").font(.display(20)).foregroundStyle(Color.ink)
-			row("Novidades do grupo", "Fotos, check-ins, comentários e curtidas nos seus posts (confere de tempos em tempos).", $activity) { on in
+			row("Novidades do grupo", "Fotos, check-ins, comentários, curtidas, quando te marcam e as cotinhas (confere de tempos em tempos).", $activity) { on in
 				Task { await Notifier.shared.set(.activity, on) }
 			}
 			row("Lembretes do roteiro", "30 minutos antes de cada parada com horário.", $itinerary) { on in
