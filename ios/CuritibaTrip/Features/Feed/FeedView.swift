@@ -154,7 +154,7 @@ struct FeedView: View {
 				}
 				ForEach(Array(model.posts.enumerated()), id: \.element.id) { i, post in
 					if i == 0 || model.posts[i - 1].day != post.day {
-						DaySign(text: TripTime.longDay(post.day)).padding(.top, i == 0 ? 0 : 8)
+						DaySign(text: TripTime.longDay(post.day)).padding(.top, i == 0 ? 8 : 14)
 					}
 					Group {
 						switch post {

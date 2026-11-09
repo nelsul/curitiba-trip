@@ -73,6 +73,8 @@ private val cream = Color(0xFFFFFCF0)
 fun RouteMap(
 	styleJson: String, date: String, points: List<RoutePoint>, modifier: Modifier = Modifier, homes: List<RouteHome> = emptyList(),
 	onPick: (Int) -> Unit = {}, onPickHome: (String) -> Unit = {},
+	/** the selected stop: the leg to it stands out, the others fade */
+	active: Int? = null,
 ) {
 	val context = LocalContext.current
 	val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -115,6 +117,15 @@ fun RouteMap(
 						PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
 						PropertyFactory.lineDasharray(arrayOf(0f, 2f)),
 					).apply { setFilter(Expression.eq(Expression.get("back"), Expression.literal(true))) })
+					// the leg to the selected stop, wider and coral, on top
+					s.addLayer(LineLayer("route-hot-casing", "route").withProperties(
+						PropertyFactory.lineColor("#fffcf0"), PropertyFactory.lineWidth(13f),
+						PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+					).apply { setFilter(Expression.eq(Expression.get("to"), Expression.literal(-1))) })
+					s.addLayer(LineLayer("route-hot", "route").withProperties(
+						PropertyFactory.lineColor("#%06x".format(Palette.coral.toArgb() and 0xFFFFFF)), PropertyFactory.lineWidth(7f),
+						PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+					).apply { setFilter(Expression.eq(Expression.get("to"), Expression.literal(-1))) })
 					map = m
 					style = s
 				}
@@ -164,9 +175,21 @@ fun RouteMap(
 				addStringProperty("color", "#%06x".format(t.color.toArgb() and 0xFFFFFF))
 				addBooleanProperty("dashed", !leg.routed || t == RoteiroTransport.Pe)
 				addBooleanProperty("back", leg.back)
+				addNumberProperty("to", leg.to ?: -1)
 			}
 		}
 		s.getSourceAs<GeoJsonSource>("route")?.setGeoJson(FeatureCollection.fromFeatures(features))
+	}
+
+	// highlight the way to the selected stop (web RouteMap does the same)
+	LaunchedEffect(style, active) {
+		val s = style ?: return@LaunchedEffect
+		val on = Expression.eq(Expression.get("to"), Expression.literal(active ?: -1))
+		(s.getLayer("route-hot-casing") as? LineLayer)?.setFilter(on)
+		(s.getLayer("route-hot") as? LineLayer)?.setFilter(on)
+		val fade = if (active == null) 1f else 0.35f
+		for (id in listOf("route", "route-dashed", "route-back")) s.getLayer(id)?.setProperties(PropertyFactory.lineOpacity(fade))
+		s.getLayer("route-casing")?.setProperties(PropertyFactory.lineOpacity(0.85f * fade))
 	}
 
 	Box(modifier) {
