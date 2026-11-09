@@ -517,6 +517,9 @@
 	.home-stop h3 { margin-bottom: 2px; }
 	.home-stop .stop-text p { margin: 0; }
 	.stays-tab { max-width: 1000px; margin-inline: auto; display: grid; gap: 12px; }
+	/* the empty state (and a single stay) sit in the middle, under the tabs */
+	.stays > .empty-card { grid-column: 1 / -1; justify-self: center; width: min(100%, 520px); }
+	@media (min-width: 760px) { .stays > .stay:only-child { grid-column: 1 / -1; justify-self: center; width: min(100%, 520px); } }
 	.intro { margin: 0; text-align: center; }
 	.add-stay { justify-self: center; }
 	.warn { margin: 0; text-align: center; color: var(--coral); font-weight: 800; }
