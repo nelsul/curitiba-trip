@@ -146,6 +146,17 @@
 		<span class="small muted">Pode escolher vários de uma vez</span>
 	</label>
 
+	<div class="cams">
+		<label class="btn secondary cam" class:disabled={running}>
+			<input type="file" accept="image/*" capture="environment" onchange={pick} disabled={running} class="sr-only" />
+			<Icon name="camera" size={20} /> Tirar foto
+		</label>
+		<label class="btn secondary cam" class:disabled={running}>
+			<input type="file" accept="video/*" capture="environment" onchange={pick} disabled={running} class="sr-only" />
+			<Icon name="video" size={20} /> Gravar vídeo
+		</label>
+	</div>
+
 	<details class="tip small">
 		<summary>Dica para iPhone</summary>
 		<p>Na tela de escolher fotos, se aparecer o botão <strong>Opções</strong>, deixe o formato em <strong>Atual</strong> para enviar o arquivo original, sem conversão.</p>
@@ -226,6 +237,10 @@
 </main>
 
 <style>
+	.cams { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+	.cam { cursor: pointer; justify-content: center; }
+	.cam:focus-within { outline: 3px solid var(--sea); outline-offset: 2px; }
+	.cam.disabled { opacity: 0.5; pointer-events: none; }
 	.picker {
 		display: grid; justify-items: center; gap: 6px; padding: 26px 16px; margin: 16px 0; border: 3px dashed var(--sea);
 		border-radius: var(--radius); background: var(--surface); cursor: pointer; text-align: center; font-family: var(--font-display);

@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
-import { and, asc, eq, gt, inArray, lte, ne, or } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, lte, ne, or } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
-import { checkins, comments, db, likes, media } from '$lib/server/db';
+import { checkins, commentMentions, comments, db, likes, media, splitShares, splits } from '$lib/server/db';
 import type { RequestHandler } from './$types';
 
 const MAX_WINDOW_MS = 7 * 86_400_000;
@@ -54,6 +54,41 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 			: []
 	]);
 
+	const [mentions, myShares, paidToMe] = await Promise.all([
+		// comments that @mention me (anywhere, not only on my posts)
+		db()
+			.select({ id: comments.id, userId: comments.userId, body: comments.body, mediaId: comments.mediaId, checkinId: comments.checkinId, at: comments.createdAt })
+			.from(commentMentions)
+			.innerJoin(comments, eq(comments.id, commentMentions.commentId))
+			.where(and(eq(commentMentions.userId, me), ne(comments.userId, me), gt(comments.createdAt, from), lte(comments.createdAt, now)))
+			.orderBy(asc(comments.createdAt)),
+		// cotinhas I still owe: new ones, and the payer's reminders
+		db()
+			.select({ id: splits.id, title: splits.title, payerId: splits.payerId, pixKey: splits.pixKey, amountCents: splitShares.amountCents, createdAt: splits.createdAt, remindedAt: splits.remindedAt })
+			.from(splitShares)
+			.innerJoin(splits, eq(splits.id, splitShares.splitId))
+			.where(
+				and(
+					eq(splitShares.userId, me),
+					ne(splits.payerId, me),
+					isNull(splitShares.paidAt),
+					or(and(gt(splits.createdAt, from), lte(splits.createdAt, now)), and(gt(splits.remindedAt, from), lte(splits.remindedAt, now)))
+				)
+			),
+		// someone marked that they paid me
+		db()
+			.select({ id: splits.id, title: splits.title, userId: splitShares.userId, amountCents: splitShares.amountCents, at: splitShares.paidAt })
+			.from(splitShares)
+			.innerJoin(splits, eq(splits.id, splitShares.splitId))
+			.where(and(eq(splits.payerId, me), ne(splitShares.userId, me), eq(splitShares.paidBy, splitShares.userId), gt(splitShares.paidAt, from), lte(splitShares.paidAt, now)))
+	]);
+	const inWindow = (d: Date | null) => !!d && d > from && d <= now;
+	const splitEvents = myShares.map(({ createdAt, remindedAt, ...s }) => ({
+		...s,
+		kind: inWindow(remindedAt) ? ('reminder' as const) : ('new' as const),
+		at: (inWindow(remindedAt) ? remindedAt! : createdAt).toISOString()
+	}));
+
 	// new posts summarized per person: "Bruna postou 5 fotos e 1 vídeo"
 	const byPerson = new Map<string, { userId: string; photos: number; videos: number; latestAt: string; firstId: string }>();
 	for (const m of newMedia) {
@@ -70,6 +105,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		posts: [...byPerson.values()],
 		checkins: iso(newCheckins),
 		comments: iso(newComments),
-		likes: iso(newLikes)
+		likes: iso(newLikes),
+		mentions: iso(mentions),
+		splits: splitEvents,
+		splitPaid: paidToMe.map((p) => ({ ...p, at: p.at!.toISOString() }))
 	});
 };

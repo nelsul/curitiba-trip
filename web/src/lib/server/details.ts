@@ -85,13 +85,16 @@ export async function updateMedia(id: string, userId: string, patch: { caption?:
 	if (Object.keys(set).length) await db().update(media).set(set).where(eq(media.id, m.id));
 }
 
-/** Owner delete: the row (comments and likes cascade) and every file in R2. */
-export async function deleteMedia(id: string, userId: string) {
-	const m = await ownedMedia(id, userId);
+export type Actor = { id: string; isAdmin: boolean };
+
+/** Owner (or admin) delete: the row (comments and likes cascade) and every file in R2. */
+export async function deleteMedia(id: string, user: Actor) {
+	const { m } = await mediaRow(id);
+	if (m.userId !== user.id && !user.isAdmin) error(403, 'Só quem enviou pode apagar.');
 	const keys = [m.originalKey, m.displayKey, m.mediumKey, m.thumbKey, m.posterKey, m.videoKey].filter(Boolean) as string[];
 	const { s3, bucket } = r2();
 	await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys.map((Key) => ({ Key })) } }));
-	await db().delete(media).where(and(eq(media.id, m.id), eq(media.userId, userId)));
+	await db().delete(media).where(eq(media.id, m.id));
 }
 
 async function checkinRow(id: string) {
@@ -126,12 +129,12 @@ export async function updateCheckinNote(id: string, userId: string, note: unknow
 	await db().update(checkins).set({ note: clip(note, 2000) }).where(eq(checkins.id, c.id));
 }
 
-/** Owner only; comments, likes and the map picture go with it. Returns false if it wasn't theirs. */
-export async function deleteCheckin(id: string, userId: string) {
+/** Owner (or admin); comments, likes and the map picture go with it. Returns false if it wasn't theirs. */
+export async function deleteCheckin(id: string, user: Actor) {
 	if (!UUID.test(id)) return false;
 	const [c] = await db()
 		.delete(checkins)
-		.where(and(eq(checkins.id, id), eq(checkins.userId, userId)))
+		.where(user.isAdmin ? eq(checkins.id, id) : and(eq(checkins.id, id), eq(checkins.userId, user.id)))
 		.returning({ snapshotKey: checkins.snapshotKey });
 	if (!c) return false;
 	await deleteObject(c.snapshotKey);

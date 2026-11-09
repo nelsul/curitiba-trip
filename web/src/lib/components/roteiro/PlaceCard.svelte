@@ -65,7 +65,7 @@
 	</div>
 
 	<div class="body">
-		<h3>{place.name}</h3>
+		<h3><a class="name" href="/roteiro/lugar/{place.id}">{place.name}</a></h3>
 		{#if place.address}<p class="small muted addr"><Icon name="pin" size={14} /> {place.address}</p>{/if}
 		<dl>
 			{#if place.hours}<div><dt>Horário</dt><dd>{place.hours}</dd></div>{/if}
@@ -80,6 +80,7 @@
 		{/if}
 
 		<div class="actions">
+			<a class="btn small sea" href="/roteiro/lugar/{place.id}">Ver detalhes</a>
 			<a class="btn small uber" href={uberUrl(place)} target="_blank" rel="noopener"><Icon name="car" size={18} /> Pedir Uber</a>
 			<a class="btn small secondary" href={placeUrl(place)} target="_blank" rel="noopener"><Icon name="map" size={18} /> Google Maps</a>
 			{#if place.link}<a class="btn small secondary" href={place.link} target="_blank" rel="noopener"><Icon name="expand" size={16} /> {linkLabel}</a>{/if}
@@ -128,7 +129,9 @@
 	dt { font-weight: 800; color: var(--muted); font-size: 0.85rem; padding-top: 1px; }
 	dd { margin: 0; }
 	.signs { color: var(--sun); letter-spacing: 0.05em; }
-	.desc { margin: 2px 0 0; white-space: pre-wrap; }
+	.desc { margin: 2px 0 0; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+	.name { color: inherit; text-decoration: none; }
+	.name:hover, .name:focus-visible { text-decoration: underline; }
 	.used { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; color: var(--leaf); }
 	.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 	.btn.uber { --b: #1b1b1b; --b-dark: #000; --b-ink: #fff; }

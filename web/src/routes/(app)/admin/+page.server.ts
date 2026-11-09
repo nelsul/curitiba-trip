@@ -8,8 +8,8 @@ import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
-	const rows = await db().execute<{ id: string; name: string; email: string; color: string; is_admin: boolean; avatar_key: string | null; items: number }>(sql`
-		select u.id, u.name, u.email, u.color, u.is_admin, u.avatar_key,
+	const rows = await db().execute<{ id: string; name: string; email: string; color: string; is_admin: boolean; couple: string | null; avatar_key: string | null; items: number }>(sql`
+		select u.id, u.name, u.email, u.color, u.is_admin, u.couple, u.avatar_key,
 			(select count(*) from media m where m.user_id = u.id)::int + (select count(*) from checkins c where c.user_id = u.id)::int as items
 		from users u order by u.name`);
 	return { users: await Promise.all([...rows].map(async ({ avatar_key, ...u }) => ({ ...u, photo: await mediaUrl(avatar_key) }))) };
@@ -36,6 +36,13 @@ export const actions: Actions = {
 		const color = String(f.get('color') ?? '');
 		if (!name || !COLOR.test(color)) return fail(400, { error: 'Dados inválidos.' });
 		await db().update(users).set({ name, color }).where(eq(users.id, id));
+		return { saved: true };
+	},
+	noivos: async ({ request }) => {
+		const f = await request.formData();
+		const id = String(f.get('id') ?? '');
+		const v = String(f.get('couple') ?? '');
+		await db().update(users).set({ couple: v === 'noivo' || v === 'noiva' ? v : null }).where(eq(users.id, id));
 		return { saved: true };
 	},
 	remover: async ({ request, locals }) => {

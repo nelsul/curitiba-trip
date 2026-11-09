@@ -12,6 +12,6 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 };
 
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	await deleteMedia(params.id, locals.user!.id);
+	await deleteMedia(params.id, locals.user!);
 	return json({ ok: true });
 };

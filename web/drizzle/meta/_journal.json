@@ -71,6 +71,13 @@
       "when": 1794196603448,
       "tag": "0009_roteiro_sem_eventos_fixos",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794237119731,
+      "tag": "0010_feed_cotinha_retro",
+      "breakpoints": true
     }
   ]
 }

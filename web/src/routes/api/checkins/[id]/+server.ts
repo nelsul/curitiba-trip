@@ -12,8 +12,8 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	return json((await checkinDetail(params.id)).item);
 };
 
-/** Only the person who checked in can delete it (comments, likes and the map picture go with it). */
+/** The person who checked in (or an admin) can delete it (comments, likes and the map picture go with it). */
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!(await deleteCheckin(params.id, locals.user!.id))) error(403, 'Só quem fez o check-in pode apagar.');
+	if (!(await deleteCheckin(params.id, locals.user!))) error(403, 'Só quem fez o check-in pode apagar.');
 	return json({ ok: true });
 };

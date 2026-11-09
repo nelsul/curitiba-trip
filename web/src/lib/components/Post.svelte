@@ -7,7 +7,12 @@
 	import { visiblePlayback } from '$lib/video';
 	import type { FeedMedia, Person } from '$lib/types';
 
-	let { items, persons, meId }: { items: FeedMedia[]; persons: Map<string, Person>; meId: string } = $props();
+	let {
+		items,
+		persons,
+		meId,
+		onopen
+	}: { items: FeedMedia[]; persons: Map<string, Person>; meId: string; /** opens the reels at this item */ onopen?: (id: string) => void } = $props();
 
 	const p = $derived(persons.get(items[0].userId));
 	let index = $state(0);
@@ -37,15 +42,21 @@
 	let likeBtn: LikeButton;
 	let bigHeart = $state(0);
 	let lastTap = 0;
-	/** Double tap / double click on a photo likes it, with the big heart. */
+	let single: ReturnType<typeof setTimeout> | undefined;
+	/** Double tap / double click on a photo likes it, with the big heart; a single tap opens the reels. */
 	function tap(e: PointerEvent, m: FeedMedia) {
-		if (m.kind === 'video') return;
+		if (m.kind === 'video' || m.status !== 'ready') return;
 		const now = e.timeStamp;
 		if (now - lastTap < 320) {
+			clearTimeout(single);
 			likeBtn.set(true);
 			bigHeart++;
 			lastTap = 0;
-		} else lastTap = now;
+		} else {
+			lastTap = now;
+			clearTimeout(single);
+			if (onopen) single = setTimeout(() => onopen(m.id), 320);
+		}
 	}
 </script>
 
@@ -92,7 +103,11 @@
 	<div class="actions">
 		<LikeButton bind:this={likeBtn} target={{ mediaId: cur.id }} likers={likes[cur.id] ?? []} {meId} onchange={(l) => (likes[cur.id] = l)} />
 		<a class="act" href="/m/{cur.id}#comentarios" aria-label="Comentários"><Icon name="chat" size={26} /></a>
-		<a class="act" href="/m/{cur.id}" aria-label="Abrir em tela cheia"><Icon name="expand" size={24} /></a>
+		{#if onopen && cur.status === 'ready'}
+			<button class="act" onclick={() => onopen(cur.id)} aria-label="Abrir em tela cheia"><Icon name="expand" size={24} /></button>
+		{:else}
+			<a class="act" href="/m/{cur.id}" aria-label="Abrir em tela cheia"><Icon name="expand" size={24} /></a>
+		{/if}
 		{#if items.length > 1}
 			<span class="dots" aria-hidden="true">
 				{#each items as m, i (m.id)}<i class:on={i === index}></i>{/each}
@@ -119,7 +134,7 @@
 	.media { position: relative; background: #111; border-top: 2.5px solid var(--line); border-bottom: 2.5px solid var(--line); }
 	.track { display: flex; width: 100%; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
 	.track::-webkit-scrollbar { display: none; }
-	.slide { position: relative; flex: 0 0 100%; height: 100%; scroll-snap-align: center; user-select: none; -webkit-user-select: none; touch-action: pan-x pan-y; }
+	.slide { cursor: pointer; position: relative; flex: 0 0 100%; height: 100%; scroll-snap-align: center; user-select: none; -webkit-user-select: none; touch-action: pan-x pan-y; }
 	.slide img, .slide video { width: 100%; height: 100%; object-fit: cover; display: block; }
 	.slide video { object-fit: contain; background: #000; }
 	.ph { position: absolute; inset: 0; display: grid; place-items: center; color: #ddd; font-weight: 800; text-align: center; padding: 16px; background: repeating-linear-gradient(135deg, #222 0 14px, #2a2a2a 14px 28px); }
@@ -138,6 +153,7 @@
 	.next { right: 8px; }
 	@media (hover: hover) { .nav { display: grid; place-items: center; } }
 	.actions { display: flex; align-items: center; gap: 2px; padding: 4px 6px 0; position: relative; }
+	button.act { border: 0; background: none; cursor: pointer; padding: 0; }
 	.act { display: grid; place-items: center; min-width: 44px; min-height: 44px; color: var(--ink); }
 	.dots { position: absolute; left: 50%; translate: -50% 0; display: flex; gap: 5px; }
 	.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background 0.2s, transform 0.2s; }
