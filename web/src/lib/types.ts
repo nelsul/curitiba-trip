@@ -1,5 +1,7 @@
 export type Person = { id: string; name: string; color: string; photo: string | null };
 
+export type PreviewComment = { id: string; userId: string; body: string };
+
 export type FeedMedia = {
 	type: 'media';
 	id: string;
@@ -20,6 +22,8 @@ export type FeedMedia = {
 	lng: number | null;
 	caption: string;
 	comments: number;
+	/** the first (oldest) two comments, shown under the post */
+	firstComments: PreviewComment[];
 	durationS: number | null;
 };
 
@@ -35,6 +39,8 @@ export type FeedCheckin = {
 	/** map picture made at check-in time (null until generated) */
 	snapshot: string | null;
 	comments: number;
+	/** the first (oldest) two comments, shown under the post */
+	firstComments: PreviewComment[];
 	likers: string[];
 };
 

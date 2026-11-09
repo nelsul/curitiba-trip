@@ -112,6 +112,7 @@
 		selected = date && data.days.some((d) => d.date === date) ? date : (data.days[0]?.date ?? '');
 	}
 	function scrollToStop(n: number) {
+		hovered = n;
 		document.getElementById(`parada-${n}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 	}
 
@@ -274,12 +275,16 @@
 									{@const p = s.placeId ? byId.get(s.placeId) : undefined}
 									{@const n = numberOf.get(s.id)}
 									{@const v = visitOf(s)}
+									<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions (tapping a card highlights its leg on the map; keyboard users get it from focus) -->
 									<li style:animation-delay="{120 + i * 70}ms" id={n ? `parada-${n}` : undefined} class:hot={n != null && hovered === n} class:visited={!!v.visitedAt}
-										onmouseenter={() => (hovered = n ?? null)} onmouseleave={() => (hovered = null)}>
+										onmouseenter={() => (hovered = n ?? null)} onmouseleave={() => (hovered = null)} onclick={() => (hovered = n ?? null)} onfocusin={() => (hovered = n ?? null)}>
 										<div class="stop card">
+											{#if p?.photos[0]}
+												<a class="cover" href="/roteiro/lugar/{p.id}" tabindex="-1" aria-hidden="true"><img src={p.photos[0].url} alt="" loading="lazy" /></a>
+											{/if}
 											<div class="stop-top">
 												{#if p?.photos[0]}
-													<a class="thumb-link" href="/roteiro/lugar/{p.id}" tabindex="-1" aria-hidden="true"><img class="thumb" src={p.photos[0].url} alt="" loading="lazy" /></a>
+													<!-- the photo is the cover above -->
 												{:else if p && !admin}
 													<span class="thumb empty" style:--c={CATEGORY[p.category].color} aria-hidden="true"><Icon name="pin" size={22} /></span>
 												{:else if p}
@@ -454,7 +459,6 @@
 	.place-link { color: inherit; text-decoration: none; }
 	.place-link:hover, .place-link:focus-visible { text-decoration: underline; }
 	.place-link::after { content: ' ›'; color: var(--sea); }
-	.thumb-link { flex: none; display: block; }
 
 	.ticket { background: var(--surface); border: 2.5px solid var(--line); border-radius: var(--radius); box-shadow: 0 5px 0 var(--shadow); overflow: hidden; }
 	.ticket.wedding { border-color: var(--berry); }
@@ -492,7 +496,11 @@
 		font: 600 0.85rem var(--font-display); background: var(--sun); color: #4a3410;
 		border-radius: 10px; padding: 2px 10px; box-shadow: 0 2px 0 var(--sun-dark);
 	}
-	.stop { padding: 12px 14px; box-shadow: 0 3px 0 var(--shadow); }
+	.stop { padding: 12px 14px; box-shadow: 0 3px 0 var(--shadow); overflow: hidden; }
+	/* the place's photo across the top of the card */
+	.cover { display: block; margin: -12px -14px 12px; aspect-ratio: 16 / 9; max-height: 240px; width: calc(100% + 28px); border-bottom: 2px solid var(--line); background: var(--surface-2); }
+	.cover img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
+	.cover:hover img { transform: scale(1.03); }
 	.stop p { margin: 6px 0 0; }
 	.stop-top { display: flex; gap: 10px; align-items: flex-start; }
 	.thumb { flex: none; width: 76px; height: 76px; border-radius: 14px; object-fit: cover; border: 2px solid var(--line); }

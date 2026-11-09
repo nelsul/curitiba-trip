@@ -41,16 +41,16 @@
 {/if}
 
 <style>
-	.count { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; text-decoration: none; color: var(--ink); background: linear-gradient(135deg, color-mix(in srgb, var(--berry) 30%, var(--surface)), var(--surface)); border-color: color-mix(in srgb, var(--berry) 60%, var(--line)); }
+	.count { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 16px 20px; margin-bottom: 16px; text-decoration: none; color: var(--ink); background: linear-gradient(135deg, color-mix(in srgb, var(--berry) 30%, var(--surface)), var(--surface)); border-color: color-mix(in srgb, var(--berry) 60%, var(--line)); }
 	.ring { flex: none; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--berry); color: #fff; animation: bob 3s ease-in-out infinite; }
 	.big .ring { width: 72px; height: 72px; }
-	.txt { display: grid; gap: 2px; min-width: 0; }
+	.txt { display: grid; gap: 6px; min-width: 0; justify-items: center; text-align: center; }
 	.k { font-weight: 800; color: var(--berry); }
-	.nums { display: flex; gap: 10px; }
+	.nums { display: flex; gap: 16px; justify-content: center; }
 	.nums span { display: grid; justify-items: center; line-height: 1; }
-	.nums strong { font: 600 1.6rem var(--font-display); font-variant-numeric: tabular-nums; }
+	.nums strong { font: 600 1.8rem var(--font-display); font-variant-numeric: tabular-nums; }
 	.big .nums strong { font-size: 2.4rem; }
-	.nums i { font-style: normal; font-size: 0.7rem; color: var(--muted); font-weight: 800; margin-top: 2px; }
+	.nums i { font-style: normal; font-size: 0.72rem; color: var(--muted); font-weight: 800; margin-top: 4px; }
 	.t { font: 600 1.2rem var(--font-display); }
 	.done { background: linear-gradient(135deg, color-mix(in srgb, var(--sun) 30%, var(--surface)), color-mix(in srgb, var(--berry) 25%, var(--surface))); }
 	.done .ring { background: var(--sun); color: var(--on-sun); }

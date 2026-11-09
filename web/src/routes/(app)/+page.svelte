@@ -298,8 +298,9 @@
 	.empty p { margin: 0; max-width: 32ch; }
 	.empty-art { color: var(--sea); animation: bob 3s ease-in-out infinite; }
 	.day { margin-bottom: 28px; }
+	.day:first-of-type { margin-top: 8px; }
 	.day-title {
-		position: sticky; top: calc(64px + env(safe-area-inset-top)); z-index: 5; display: block; width: fit-content; margin: 0 auto 14px;
+		position: sticky; top: calc(80px + env(safe-area-inset-top)); z-index: 5; display: block; width: fit-content; margin: 0 auto 14px;
 		font-size: 1.15rem; padding: 6px 22px; color: #fff8e6;
 		background: linear-gradient(#b07a4a, #9a6638); border-radius: 12px; box-shadow: 0 4px 0 #6e4626;
 		border: 2.5px solid #7e522c; text-shadow: 0 1px 0 #6e4626;
