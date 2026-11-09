@@ -257,7 +257,7 @@ private fun Viewer(item: MediaItem, onZoom: () -> Unit) {
 private fun ZoomViewer(url: String?, onClose: () -> Unit) {
 	var scale by remember { mutableFloatStateOf(1f) }
 	var offset by remember { mutableStateOf(Offset.Zero) }
-	val state = rememberTransformableState { zoom, pan, _ ->
+	val state = rememberTransformableState { _, zoom, pan, _ ->
 		scale = (scale * zoom).coerceIn(1f, 6f)
 		offset = if (scale > 1f) offset + pan else Offset.Zero
 	}

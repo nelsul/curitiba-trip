@@ -61,6 +61,12 @@ object Notifier {
 	private fun prefs(c: Context) = c.getSharedPreferences("avisos", Context.MODE_PRIVATE)
 	fun isOn(c: Context, k: Kind) = prefs(c).getBoolean(k.pref, k.default)
 
+	/** The itinerary was edited: reschedule the 30-min reminders and the arrival areas on this phone. */
+	fun itineraryChanged(c: Context) {
+		WorkManager.getInstance(c).enqueueUniqueWork("lembretes", ExistingWorkPolicy.REPLACE, OneTimeWorkRequestBuilder<ReminderScheduler>().build())
+		BackgroundLocation.refreshAreas(c)
+	}
+
 	fun set(c: Context, k: Kind, on: Boolean) {
 		prefs(c).edit().putBoolean(k.pref, on).apply()
 		when (k) {

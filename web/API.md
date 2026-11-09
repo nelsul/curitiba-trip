@@ -49,9 +49,23 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 | PATCH | `/api/checkins/:id` | Owner: `{ note }` → the updated item |
 | GET / POST | `/api/media/:id/comments`, `/api/checkins/:id/comments` | List, or `{ body }` → the new comment (201) |
 | DELETE | `/api/comments/:id` | Only your own |
-| GET | `/api/itinerary` | → `{ transport, days }`, where each stop has `place` (name, lat, lng, hours, `mapsUrl`, `uberUrl`) and each day has a `routeUrl` |
+| GET | `/api/itinerary` | → `{ transport, days }`, where each stop has `place` (name, lat, lng, hours, `mapsUrl`, `uberUrl`, plus `category`, `price`, `photo`) and `visited`, and each day has a `routeUrl`. Built from the editable Roteiro below; used by the apps for reminders and arrival alerts. |
 | GET | `/api/places?q=&lat=&lng=` | Place search for marking where a photo/video was taken → `[{ name, detail, lat, lng }]` (max 10). `q` is 2–100 chars; results are ranked near `lat`/`lng` (send the map's center; default Curitiba), itinerary places first. OpenStreetMap data via Photon; `502` if it doesn't answer. |
 | GET | `/api/map-style.json` | The island night MapLibre style (the same as the web map). Cache for an hour. |
+
+## Roteiro (the same for everyone, anyone can edit)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/roteiro` | → `{ places, days }`. Place: `{ id, name, category: comer\|passeio\|outro, lat, lng, address, hours, price, priceLevel (0–4 or null), description, link, googlePlaceId, photos: [{ id, url }] }`. Day: `{ date, title, who, lead, wedding, stops: [{ id, time, placeId, label, transport, note, visitedAt, visitedBy }] }` |
+| POST | `/api/roteiro/places` | Place fields (name, category, lat, lng required) → `{ id }` (201) |
+| PATCH / DELETE | `/api/roteiro/places/:id` | Edit, or delete (stops that used it keep its name as `label`) |
+| POST | `/api/roteiro/places/:id/photos` | Body: one image (JPG/PNG/WebP, ≤ 2 MB; the apps send 1600 px JPEG) → `{ id, url }`. Max 12 per place. |
+| DELETE | `/api/roteiro/places/:id/photos/:photoId` | |
+| PUT | `/api/roteiro/days/:date` | `{ title, who, lead, wedding, stops: [{ id?, time, placeId \| label, transport, note }] }` replaces the day, stops in the order sent. Send each existing stop's `id` so its "Fomos!" tick is kept. Times like `9h35` or `14h` get the apps' 30-min reminder. |
+| DELETE | `/api/roteiro/days/:date` | |
+| GET | `/api/roteiro/days/:date/route` | → `{ legs: [{ transport, coordinates: [[lng, lat]…], routed }] }`: the street route between consecutive stops with places (OpenStreetMap routing; `routed: false` = straight line) |
+| POST | `/api/roteiro/stops/:id/visited` | `{ visited }` → `{ visitedAt, visitedBy }`. "Fomos!": one tick counts for the whole group. |
 
 ## For the app's background work
 

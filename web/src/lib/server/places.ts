@@ -1,15 +1,16 @@
-import { PLACES } from '$lib/itinerary';
+import { db, places } from './db';
 
 export type PlaceResult = { name: string; detail: string; lat: number; lng: number };
 
 const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
-/** Itinerary places whose name contains every word of the query (accents ignored). */
-function itineraryMatches(q: string): PlaceResult[] {
+/** The trip's own places (Roteiro) whose name contains every word of the query (accents ignored). */
+async function itineraryMatches(q: string): Promise<PlaceResult[]> {
 	const words = fold(q).split(/\s+/).filter(Boolean);
-	return Object.values(PLACES)
+	const all = await db().select({ name: places.name, address: places.address, lat: places.lat, lng: places.lng }).from(places);
+	return all
 		.filter((p) => words.every((w) => fold(p.name).includes(w)))
-		.map((p) => ({ name: p.name, detail: 'Roteiro da viagem', lat: p.lat, lng: p.lng }));
+		.map((p) => ({ name: p.name, detail: p.address || 'Lugar da viagem', lat: p.lat, lng: p.lng }));
 }
 
 type PhotonFeature = {
@@ -58,14 +59,16 @@ async function photon(q: string, near: { lat: number; lng: number }): Promise<Pl
 }
 
 export async function searchPlaces(q: string, near: { lat: number; lng: number }): Promise<PlaceResult[]> {
-	const mine = itineraryMatches(q);
+	const mine = await itineraryMatches(q);
 	let found: PlaceResult[] = [];
 	try {
 		found = await photon(q, near);
 	} catch (e) {
 		if (!mine.length) throw e;
 	}
-	// itinerary first, without repeating the same spot
 	const close = (a: PlaceResult, b: PlaceResult) => Math.abs(a.lat - b.lat) < 0.001 && Math.abs(a.lng - b.lng) < 0.001;
-	return [...mine, ...found.filter((f) => !mine.some((m) => close(m, f)))].slice(0, 10);
+	// itinerary first; the same place can come back twice from OpenStreetMap (a building and its shop)
+	const out: PlaceResult[] = [];
+	for (const r of [...mine, ...found]) if (!out.some((o) => close(o, r) && fold(o.name) === fold(r.name))) out.push(r);
+	return out.slice(0, 10);
 }

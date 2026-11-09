@@ -16,6 +16,7 @@ struct MoreView: View {
 			VStack(alignment: .leading, spacing: 16) {
 				TitleRow(icon: .user, title: "Mais")
 				if let me = app.me {
+					let saving = savingPhoto // the picker's label is built off the main actor
 					HStack(spacing: 16) {
 						PhotosPicker(selection: $pick, matching: .images) {
 							AvatarView(name: me.name, color: me.tint, photo: me.photo, size: 88)
@@ -24,8 +25,8 @@ struct MoreView: View {
 										.frame(width: 32, height: 32)
 										.background(Circle().fill(Color.sun))
 										.overlay(Circle().strokeBorder(Color.surface, lineWidth: 3))
-										.rotationEffect(.degrees(savingPhoto ? 8 : 0))
-										.animation(savingPhoto ? .easeInOut(duration: 0.25).repeatForever() : .default, value: savingPhoto)
+										.rotationEffect(.degrees(saving ? 8 : 0))
+										.animation(saving ? .easeInOut(duration: 0.25).repeatForever() : .default, value: saving)
 								}
 						}
 						.accessibilityLabel("Trocar a minha foto")

@@ -1,4 +1,5 @@
-FROM node:22-bookworm-slim AS base
+# Debian 13: libheif 1.19+ reads the HEIC layout of photos from recent iPhones (HDR gain maps)
+FROM node:22-trixie-slim AS base
 WORKDIR /app
 
 FROM base AS build
@@ -22,7 +23,7 @@ CMD ["sh", "-c", "node scripts/migrate.mjs && exec node build"]
 # ---- media worker ----
 FROM base AS worker
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libvips-tools libimage-exiftool-perl ffmpeg ca-certificates \
+ && apt-get install -y --no-install-recommends libvips-tools libheif-plugin-libde265 libimage-exiftool-perl ffmpeg ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 COPY --from=build /app/package.json ./

@@ -8,8 +8,18 @@
 		lat = $bindable(),
 		lng = $bindable(),
 		editable = false,
-		color = '#23824F'
-	}: { lat: number | null; lng: number | null; editable?: boolean; color?: string } = $props();
+		color = '#23824F',
+		height = 260,
+		onchoose
+	}: {
+		lat: number | null;
+		lng: number | null;
+		editable?: boolean;
+		color?: string;
+		height?: number;
+		/** a place picked from the search (to fill in its name and address) */
+		onchoose?: (r: { name: string; detail: string; lat: number; lng: number }) => void;
+	} = $props();
 
 	type Result = { name: string; detail: string; lat: number; lng: number };
 
@@ -95,6 +105,7 @@
 		place?.({ lat: r.lat, lng: r.lng });
 		map?.flyTo({ center: [r.lng, r.lat], zoom: 16, duration: 900 });
 		chosen = r.name;
+		onchoose?.(r);
 		query = '';
 		results = [];
 	}
@@ -110,7 +121,7 @@
 		</label>
 		{#if results.length}
 			<ul class="results card" aria-label="Lugares encontrados">
-				{#each results as r (`${r.lat},${r.lng},${r.name}`)}
+				{#each results as r, i (i)}
 					<li>
 						<button type="button" onclick={() => choose(r)}>
 							<Icon name="pin" size={16} />
@@ -127,10 +138,9 @@
 	</div>
 {/if}
 
-<div class="picker"><MapView center={start} zoom={start ? 15 : 12} framed onready={ready} /></div>
+<div class="picker" style:height="{height}px"><MapView center={start} zoom={start ? 15 : 12} framed onready={ready} /></div>
 
 <style>
-	.picker { height: 260px; }
 	.search { display: grid; gap: 6px; margin-bottom: 10px; }
 	.field {
 		display: flex; align-items: center; gap: 8px; padding: 0 12px; min-height: 46px;

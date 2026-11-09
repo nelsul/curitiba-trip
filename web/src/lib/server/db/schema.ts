@@ -174,3 +174,79 @@ export const likes = pgTable(
 export type User = typeof users.$inferSelect;
 export type Media = typeof media.$inferSelect;
 export type Checkin = typeof checkins.$inferSelect;
+
+// ── Roteiro: shared places and the day-by-day itinerary (the same for everyone, anyone can edit) ──
+
+export type PlaceCategory = 'comer' | 'passeio' | 'outro';
+export type Transport = 'onibus' | 'turismo' | 'uber' | 'pe' | 'rodo';
+
+export const places = pgTable('places', {
+	/** short slug for the original itinerary places (apps use it for arrival areas), random for new ones */
+	id: text('id').primaryKey(),
+	name: text('name').notNull(),
+	category: text('category').$type<PlaceCategory>().notNull().default('passeio'),
+	lat: doublePrecision('lat').notNull(),
+	lng: doublePrecision('lng').notNull(),
+	address: text('address').notNull().default(''),
+	/** opening hours as people write them ("ter–sáb 8h–18h; fecha seg") */
+	hours: text('hours').notNull().default(''),
+	/** "R$ 60–90 por pessoa", "grátis"… */
+	price: text('price').notNull().default(''),
+	/** 0 = free, 1–4 = $ to $$$$; null = unknown */
+	priceLevel: integer('price_level'),
+	description: text('description').notNull().default(''),
+	link: text('link').notNull().default(''),
+	googlePlaceId: text('google_place_id'),
+	createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+	createdAt: createdAt(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+export const placePhotos = pgTable(
+	'place_photos',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		placeId: text('place_id')
+			.notNull()
+			.references(() => places.id, { onDelete: 'cascade' }),
+		key: text('key').notNull(),
+		userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+		createdAt: createdAt()
+	},
+	(t) => [index('place_photos_place_idx').on(t.placeId)]
+);
+
+export const itineraryDays = pgTable('itinerary_days', {
+	/** YYYY-MM-DD (Curitiba) */
+	date: text('date').primaryKey(),
+	title: text('title').notNull().default(''),
+	who: text('who').notNull().default(''),
+	lead: text('lead').notNull().default(''),
+	wedding: boolean('wedding').notNull().default(false),
+	updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+});
+
+export const itineraryStops = pgTable(
+	'itinerary_stops',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		day: text('day')
+			.notNull()
+			.references(() => itineraryDays.date, { onDelete: 'cascade', onUpdate: 'cascade' }),
+		position: integer('position').notNull(),
+		/** "9h35", "14h", or free text ("Ida e volta"); the apps remind 30 min before times like "9h35" */
+		time: text('time').notNull().default(''),
+		placeId: text('place_id').references(() => places.id, { onDelete: 'set null' }),
+		/** title when there's no place ("Salão do casamento") */
+		label: text('label').notNull().default(''),
+		transport: text('transport').$type<Transport>().notNull().default('pe'),
+		note: text('note').notNull().default(''),
+		/** someone in the group ticked "Fomos!" (one tick counts for everyone) */
+		visitedAt: timestamp('visited_at', { withTimezone: true }),
+		visitedBy: uuid('visited_by').references(() => users.id, { onDelete: 'set null' })
+	},
+	(t) => [index('itinerary_stops_day_idx').on(t.day, t.position)]
+);
+
+export type Place = typeof places.$inferSelect;
