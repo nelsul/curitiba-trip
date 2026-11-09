@@ -301,7 +301,7 @@ private fun CheckinDialog(controller: MapController, onDismiss: () -> Unit, done
 
 /** Pick a spot on the map ("Marcar no mapa" / "Corrigir" on your own photos): search a place by name, or drag the map. */
 @Composable
-fun LocationPicker(start: LatLng?, onDismiss: () -> Unit, save: suspend (LatLng) -> Unit) {
+fun LocationPicker(start: LatLng?, onDismiss: () -> Unit, onPick: ((PlaceResult) -> Unit)? = null, save: suspend (LatLng) -> Unit) {
 	val context = LocalContext.current
 	val app = LocalApp.current
 	val scope = rememberCoroutineScope()
@@ -352,6 +352,7 @@ fun LocationPicker(start: LatLng?, onDismiss: () -> Unit, save: suspend (LatLng)
 			controller.flyTo(p, 16.0)
 			center = p
 			chosen = r.name
+			onPick?.invoke(r)
 			results = emptyList()
 			query = ""
 			focus.clearFocus()

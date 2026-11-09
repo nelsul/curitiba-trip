@@ -31,14 +31,18 @@ struct API: Sendable {
 		try await send("PATCH", path, body: body)
 	}
 
+	func put<T: Decodable, B: Encodable>(_ path: String, _ body: B) async throws -> T {
+		try await send("PUT", path, body: body)
+	}
+
 	@discardableResult
 	func delete(_ path: String) async throws -> OK {
 		try await send("DELETE", path, body: Optional<Empty>.none)
 	}
 
-	/// Raw binary body (profile photos, check-in map pictures).
-	func put<T: Decodable>(_ path: String, data: Data, contentType: String) async throws -> T {
-		var req = request("PUT", path)
+	/// Raw binary body (profile photos, check-in map pictures, place photos with `method: "POST"`).
+	func put<T: Decodable>(_ path: String, data: Data, contentType: String, method: String = "PUT") async throws -> T {
+		var req = request(method, path)
 		req.setValue(contentType, forHTTPHeaderField: "content-type")
 		req.httpBody = data
 		return try await perform(req)

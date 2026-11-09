@@ -305,6 +305,8 @@ struct PlaceResult: Decodable, Hashable, Sendable {
 struct LocationPicker: View {
 	let start: CLLocationCoordinate2D?
 	let save: (CLLocationCoordinate2D) async throws -> Void
+	/// A place picked in the search (the place editor fills in its name and address).
+	var onPick: ((PlaceResult) -> Void)? = nil
 	@Environment(AppState.self) private var app
 	@Environment(\.dismiss) private var dismiss
 	@State private var style: URL?
@@ -456,6 +458,7 @@ struct LocationPicker: View {
 		searchFocused = false
 		results = []
 		chosen = r.name
+		onPick?(r)
 		query = ""
 	}
 }

@@ -69,6 +69,22 @@ async function vipsThumb(input: string, output: string, size: string, crop = fal
 	await sh('vipsthumbnail', args);
 }
 
+/**
+ * The photo as a file libvips can read. If it can't open the original (an image format or HEIC variant it doesn't
+ * know), ffmpeg decodes it to a lossless PNG first; EXIF stays on the original for GPS and time.
+ */
+async function decodable(src: string, dir: string, ctx: Ctx) {
+	try {
+		await sh('vipsheader', [src]);
+		return src;
+	} catch (e) {
+		ctx.log(`libvips can't read ${src} (${e instanceof Error ? e.message.slice(0, 120) : e}); trying ffmpeg`);
+		const png = join(dir, 'decoded.png');
+		await sh('ffmpeg', ['-v', 'error', '-y', '-i', src, '-frames:v', '1', '-update', '1', png]);
+		return png;
+	}
+}
+
 async function vipsSize(file: string) {
 	const [{ stdout: w }, { stdout: h }] = await Promise.all([
 		sh('vipsheader', ['-f', 'width', file]),
@@ -140,9 +156,10 @@ export async function processMedia(ctx: Ctx, mediaId: string) {
 			const display = join(dir, 'display.webp');
 			const medium = join(dir, 'medium.webp');
 			const thumb = join(dir, 'thumb.webp');
-			await vipsThumb(src, display, '2048x2048>');
-			await vipsThumb(src, medium, '1080x1350>');
-			await vipsThumb(src, thumb, '480x480', true);
+			const image = await decodable(src, dir, ctx);
+			await vipsThumb(image, display, '2048x2048>');
+			await vipsThumb(image, medium, '1080x1350>');
+			await vipsThumb(image, thumb, '480x480', true);
 			Object.assign(patch, await vipsSize(display));
 			await upload(ctx, `${base}/display.webp`, display, 'image/webp');
 			await upload(ctx, `${base}/medium.webp`, medium, 'image/webp');

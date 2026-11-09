@@ -9,7 +9,8 @@ struct Icon: View {
 	let name: IconName
 	var size: CGFloat = 22
 
-	init(_ name: IconName, size: CGFloat = 22) {
+	/// nonisolated: also used inside labels SwiftUI builds off the main actor (PhotosPicker)
+	nonisolated init(_ name: IconName, size: CGFloat = 22) {
 		self.name = name
 		self.size = size
 	}

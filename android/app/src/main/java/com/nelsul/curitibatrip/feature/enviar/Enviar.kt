@@ -175,7 +175,7 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 					Uploads.add(UploadJob(
 						id = Uploads.newId(), sourceUri = m.sourceUri.toString(), assetId = m.assetId, caption = d.caption.trim(),
 						name = m.name, mime = m.mime, size = m.size, isVideo = m.isVideo, takenAt = m.takenAt?.toString(),
-						lat = if (useHere) here!!.first else m.lat, lng = if (useHere) here!!.second else m.lng,
+						lat = if (useHere) here.first else m.lat, lng = if (useHere) here.second else m.lng,
 						locationSource = if (m.hasLocation) "device-library" else if (useHere) "device" else null,
 					))
 				}

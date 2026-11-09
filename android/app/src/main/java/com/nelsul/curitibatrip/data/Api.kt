@@ -73,5 +73,12 @@ object Api {
 	suspend inline fun <reified T> put(path: String, data: ByteArray, contentType: String): T =
 		json.decodeFromString(execute(request("PUT", path, body = data.toRequestBody(contentType.toMediaType()))))
 
+	suspend inline fun <reified B, reified T> putJson(path: String, body: B): T =
+		json.decodeFromString(execute(request("PUT", path, body = jsonBody(body))))
+
+	/** Raw binary POST (place photos). */
+	suspend inline fun <reified T> postBytes(path: String, data: ByteArray, contentType: String): T =
+		json.decodeFromString(execute(request("POST", path, body = data.toRequestBody(contentType.toMediaType()))))
+
 	inline fun <reified B> jsonBody(body: B): RequestBody = json.encodeToString(body).toRequestBody("application/json".toMediaType())
 }

@@ -74,6 +74,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import java.time.Duration
 import java.time.Instant
+import kotlin.coroutines.resume
 import kotlin.math.abs
 import kotlin.random.Random
 
@@ -92,8 +93,8 @@ class MapController {
 		val v = view ?: return null
 		kotlinx.coroutines.suspendCancellableCoroutine<Unit> { c ->
 			m.animateCamera(CameraUpdateFactory.newLatLngZoom(p, 16.0), 1200, object : MapLibreMap.CancelableCallback {
-				override fun onCancel() { if (c.isActive) c.resume(Unit) {} }
-				override fun onFinish() { if (c.isActive) c.resume(Unit) {} }
+				override fun onCancel() { if (c.isActive) c.resume(Unit) }
+				override fun onFinish() { if (c.isActive) c.resume(Unit) }
 			})
 		}
 		run {
@@ -101,7 +102,7 @@ class MapController {
 				kotlinx.coroutines.suspendCancellableCoroutine<Unit> { c ->
 					val l = object : MapView.OnDidFinishRenderingMapListener {
 						override fun onDidFinishRenderingMap(fully: Boolean) {
-							if (fully) { v.removeOnDidFinishRenderingMapListener(this); if (c.isActive) c.resume(Unit) {} }
+							if (fully) { v.removeOnDidFinishRenderingMapListener(this); if (c.isActive) c.resume(Unit) }
 						}
 					}
 					v.addOnDidFinishRenderingMapListener(l)
@@ -109,7 +110,7 @@ class MapController {
 					c.invokeOnCancellation { v.removeOnDidFinishRenderingMapListener(l) }
 				}
 			}
-			return kotlinx.coroutines.suspendCancellableCoroutine { c -> m.snapshot { b -> if (c.isActive) c.resume(b) {} } }
+			return kotlinx.coroutines.suspendCancellableCoroutine { c -> m.snapshot { b -> if (c.isActive) c.resume(b) } }
 		}
 	}
 

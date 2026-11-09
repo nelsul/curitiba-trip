@@ -36,11 +36,11 @@ a { color: var(--leaf); font-weight: 700; }
 img, video { max-width: 100%; display: block; }
 :focus-visible { outline: 3px solid var(--sea); outline-offset: 3px; border-radius: 8px; }
 input, textarea, select, button { font: inherit; font-size: 16px; color: inherit; }
-input[type='text'], input[type='email'], input[type='number'], input:not([type]), textarea, select {
+input[type='text'], input[type='email'], input[type='number'], input[type='url'], input[type='date'], input[type='time'], input:not([type]), textarea, select {
 	width: 100%; padding: 12px 16px; border: 2.5px solid var(--line); border-radius: 16px; background: var(--surface);
 	transition: border-color 0.15s;
 }
-input:focus, textarea:focus { border-color: var(--sea); outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--sea); outline: none; }
 textarea { resize: vertical; min-height: 80px; }
 
 /* Chunky buttons that press down */
