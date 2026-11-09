@@ -1,3 +1,4 @@
+import Nuke
 import SwiftUI
 import UIKit
 
@@ -157,9 +158,9 @@ struct FrameMakerView: View {
 		do {
 			var out: [UIImage] = []
 			for m in items {
-				guard let url = m.image else { continue }
-				let (data, _) = try await URLSession.shared.data(from: url)
-				if let img = UIImage(data: data) { out.append(img) }
+				// from the image cache when the photo was already seen (it usually was: it was just picked in the grid)
+				guard let req = MediaCache.imageRequest(m.image) else { continue }
+				out.append(try await ImagePipeline.shared.image(for: req))
 			}
 			if out.isEmpty { error = "Não foi possível carregar as fotos." }
 			photos = out
