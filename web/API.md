@@ -54,6 +54,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 | DELETE | `/api/comments/:id` | Your own, or anyone's if you're an admin |
 | GET | `/api/itinerary` | → `{ transport, days }`, where each stop has `place` (name, lat, lng, hours, `mapsUrl`, `uberUrl`, plus `category`, `price`, `photo`) and `visited`, and each day has a `routeUrl`. Built from the editable Roteiro below; used by the apps for reminders and arrival alerts. |
 | GET | `/api/places?q=&lat=&lng=` | Place search for marking where a photo/video was taken → `[{ name, detail, lat, lng }]` (max 10). `q` is 2–100 chars; results are ranked near `lat`/`lng` (send the map's center; default Curitiba), itinerary places first. OpenStreetMap data via Photon; `502` if it doesn't answer. |
+| GET | `/api/places/here?lat=&lng=` | → `{ name }`: a short name for where someone is, for the share frames' "Local e data": the trip's place within ~300 m, else the OpenStreetMap place, neighborhood or city (Photon reverse geocoding), else `Curitiba`. |
 | GET | `/api/map-style.json` | The island night MapLibre style (the same as the web map). Cache for an hour. |
 
 ## Cotinha, Retrospectiva, the couple, weather

@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -63,6 +66,9 @@ import com.nelsul.curitibatrip.ui.theme.Palette
 import com.nelsul.curitibatrip.ui.theme.body
 import com.nelsul.curitibatrip.ui.theme.display
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import com.nelsul.curitibatrip.data.Api
+import com.nelsul.curitibatrip.ui.components.AppTextField
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -71,12 +77,26 @@ import java.io.File
  * Same layout as the web (web/src/lib/frames.ts) and iOS (Frames.swift): keep the numbers in sync.
  */
 object Frames {
-	enum class Style(val label: String, val bg: Int, val card: Int, val title: Int, val sub: Int, val line: Int?, val radius: Float, val text: Pair<String, String>) {
-		Polaroid("Polaroid", 0xffffffff.toInt(), 0xffeeeeee.toInt(), 0xff1d2a45.toInt(), 0xff3a4d78.toInt(), null, 6f, "Curitiba" to "11 a 18 de novembro de 2026"),
-		Passaporte("Passaporte", 0xff18737a.toInt(), 0xff0f5a60.toInt(), 0xfffff6dc.toInt(), 0xfff6d36b.toInt(), 0xfffff6dc.toInt(), 18f, "Viagem a Curitiba" to "11–18 · novembro · 2026"),
-		Noite("Noite", 0xff1d2a45.toInt(), 0xff27375a.toInt(), 0xfff6d36b.toInt(), 0xfff4eed6.toInt(), null, 22f, "Curitiba" to "11 a 18 de novembro de 2026"),
-		Casamento("Casamento", 0xfffff6dc.toInt(), 0xfff2e6c4.toInt(), 0xfff08bb0.toInt(), 0xff1d2a45.toInt(), 0xfff08bb0.toInt(), 18f, "Casamento" to "14 de novembro de 2026"),
+	/** Decoration on top of the background; the shapes and sizes are described in web/src/lib/frames.ts. */
+	enum class Deco { None, Line, Airmail, Film, Ticket, Dots }
+
+	enum class Style(
+		val label: String, val bg: Int, val card: Int, val title: Int, val sub: Int, val line: Int?, val deco: Deco, val radius: Float,
+		val text: Pair<String, String>, val bg2: Int? = null,
+	) {
+		Polaroid("Polaroid", 0xffffffff.toInt(), 0xffeeeeee.toInt(), 0xff1d2a45.toInt(), 0xff3a4d78.toInt(), null, Deco.None, 6f, "Curitiba" to "11 a 18 de novembro de 2026"),
+		Passaporte("Passaporte", 0xff18737a.toInt(), 0xff0f5a60.toInt(), 0xfffff6dc.toInt(), 0xfff6d36b.toInt(), 0xfffff6dc.toInt(), Deco.Line, 18f, "Viagem a Curitiba" to "11–18 · novembro · 2026"),
+		Noite("Noite", 0xff1d2a45.toInt(), 0xff27375a.toInt(), 0xfff6d36b.toInt(), 0xfff4eed6.toInt(), null, Deco.None, 22f, "Curitiba" to "11 a 18 de novembro de 2026"),
+		Casamento("Casamento", 0xfffff6dc.toInt(), 0xfff2e6c4.toInt(), 0xfff08bb0.toInt(), 0xff1d2a45.toInt(), 0xfff08bb0.toInt(), Deco.Line, 18f, "Casamento" to "14 de novembro de 2026"),
+		Postal("Cartão-postal", 0xfffbf3df.toInt(), 0xffefe3c2.toInt(), 0xff2f5aa8.toInt(), 0xffd9534f.toInt(), 0xffd9534f.toInt(), Deco.Airmail, 6f, "Lembranças de Curitiba" to "11 a 18 de novembro de 2026"),
+		Filme("Filme", 0xff141414.toInt(), 0xff262626.toInt(), 0xfff4eed6.toInt(), 0xfff6d36b.toInt(), 0xfff4eed6.toInt(), Deco.Film, 4f, "Curitiba" to "11 a 18 · nov · 2026"),
+		Ingresso("Ingresso", 0xfff6d36b.toInt(), 0xffe9c24f.toInt(), 0xff1d2a45.toInt(), 0xff9a4a1e.toInt(), 0xff1d2a45.toInt(), Deco.Ticket, 14f, "Curitiba" to "Embarque 11/11 · Volta 18/11"),
+		PorDoSol("Pôr do sol", 0xfff7a35c.toInt(), 0xffc8677a.toInt(), 0xfffff6dc.toInt(), 0xfffff6dc.toInt(), null, Deco.None, 24f, "Curitiba" to "11 a 18 de novembro de 2026", bg2 = 0xff7b3f8f.toInt()),
+		Araucaria("Araucária", 0xff2f5a40.toInt(), 0xff244a34.toInt(), 0xfff6d36b.toInt(), 0xffe8f1d8.toInt(), 0xff8fc47a.toInt(), Deco.Dots, 18f, "Curitiba" to "Terra das araucárias · 2026"),
 	}
+
+	/** The subtitle when "Local e data" is on: "Jardim Botânico · 14 de novembro". */
+	fun caption(place: String, day: String) = listOf(place.trim(), day).filter { it.isNotEmpty() }.joinToString(" · ")
 
 	enum class Format(val label: String, val w: Int, val h: Int) { Post("Post (4:5)", 1080, 1350), Story("Story (9:16)", 1080, 1920) }
 
@@ -97,13 +117,74 @@ object Frames {
 		}
 	}
 
-	fun render(context: Context, photos: List<Bitmap>, style: Style, format: Format): Bitmap {
+	private fun deco(g: Canvas, s: Style, W: Float, H: Float) {
+		val line = s.line ?: return
+		val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = line }
+		when (s.deco) {
+			Deco.None -> {}
+			Deco.Line -> g.drawRoundRect(RectF(22f, 22f, W - 22f, H - 22f), 30f, 30f, p.apply { style = Paint.Style.STROKE; strokeWidth = 4f })
+			Deco.Airmail -> {
+				var x = -H
+				while (x < W + H) {
+					for ((dx, c) in listOf(0f to 0xffd9534f.toInt(), 60f to 0xff2f5aa8.toInt())) {
+						p.color = c
+						g.drawPath(Path().apply { moveTo(x + dx, 0f); lineTo(x + dx + 40, 0f); lineTo(x + dx + 40 - H, H); lineTo(x + dx - H, H); close() }, p)
+					}
+					x += 120
+				}
+				p.color = s.bg
+				g.drawRect(24f, 24f, W - 24f, H - 24f, p)
+			}
+			Deco.Film -> {
+				var y = 30f
+				while (y + 40 <= H - 20) {
+					g.drawRoundRect(RectF(15f, y, 41f, y + 40), 6f, 6f, p)
+					g.drawRoundRect(RectF(W - 41f, y, W - 15f, y + 40), 6f, 6f, p)
+					y += 70
+				}
+			}
+			Deco.Ticket -> {
+				val y = H - PAD - FOOTER + 26
+				val dash = Paint(p).apply { style = Paint.Style.STROKE; strokeWidth = 4f; pathEffect = DashPathEffect(floatArrayOf(18f, 14f), 0f) }
+				g.drawLine(44f, y, W - 44f, y, dash)
+				g.drawCircle(0f, y, 30f, p)
+				g.drawCircle(W, y, 30f, p)
+			}
+			Deco.Dots -> {
+				val inset = 30f
+				val nx = Math.round((W - 2 * inset) / 34)
+				val ny = Math.round((H - 2 * inset) / 34)
+				for (i in 0..nx) {
+					val x = inset + (W - 2 * inset) * i / nx
+					g.drawCircle(x, inset, 6f, p)
+					g.drawCircle(x, H - inset, 6f, p)
+				}
+				for (i in 1 until ny) {
+					val y = inset + (H - 2 * inset) * i / ny
+					g.drawCircle(inset, y, 6f, p)
+					g.drawCircle(W - inset, y, 6f, p)
+				}
+			}
+		}
+	}
+
+	/** Centered at the baseline, shrunk to fit the width if it's too long (as on the web). */
+	private fun fitText(g: Canvas, text: String, paint: Paint, x: Float, y: Float, maxW: Float) {
+		val w = paint.measureText(text)
+		if (w > maxW) paint.textSize = kotlin.math.floor(paint.textSize * maxW / w)
+		g.drawText(text, x, y, paint)
+	}
+
+	/** [caption] replaces the style's subtitle (the "Local e data" option). */
+	fun render(context: Context, photos: List<Bitmap>, style: Style, format: Format, caption: String? = null): Bitmap {
 		val out = Bitmap.createBitmap(format.w, format.h, Bitmap.Config.ARGB_8888)
 		val g = Canvas(out)
-		g.drawColor(style.bg)
-		style.line?.let { line ->
-			g.drawRoundRect(RectF(22f, 22f, format.w - 22f, format.h - 22f), 30f, 30f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = line; this.style = Paint.Style.STROKE; strokeWidth = 4f })
-		}
+		val W = format.w.toFloat()
+		val H = format.h.toFloat()
+		if (style.bg2 != null) {
+			g.drawRect(0f, 0f, W, H, Paint().apply { shader = LinearGradient(0f, 0f, 0f, H, style.bg, style.bg2, Shader.TileMode.CLAMP) })
+		} else g.drawColor(style.bg)
+		deco(g, style, W, H)
 		val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = style.card }
 		val img = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 		photos.zip(cells(photos.size, format)).forEach { (b, c) ->
@@ -126,8 +207,9 @@ object Frames {
 			color = style.sub; textSize = 34f; textAlign = Paint.Align.CENTER
 			typeface = ResourcesCompat.getFont(context, R.font.nunito_extrabold)
 		}
-		g.drawText(style.text.first, format.w / 2f, format.h - PAD - 92f, title)
-		g.drawText(style.text.second, format.w / 2f, format.h - PAD - 34f, sub)
+		val maxW = W - 2 * PAD - 40
+		fitText(g, style.text.first, title, W / 2, H - PAD - 92f, maxW)
+		fitText(g, caption?.takeIf { it.isNotEmpty() } ?: style.text.second, sub, W / 2, H - PAD - 34f, maxW)
 		return out
 	}
 
@@ -149,6 +231,9 @@ object Frames {
 	}
 }
 
+@kotlinx.serialization.Serializable
+private data class PlaceHere(val name: String)
+
 /** Picks a frame style and format for the chosen photos, then shares the image. */
 @Composable
 fun FrameMakerDialog(items: List<FeedMedia>, onClose: () -> Unit) {
@@ -157,6 +242,28 @@ fun FrameMakerDialog(items: List<FeedMedia>, onClose: () -> Unit) {
 	var error by remember { mutableStateOf<String?>(null) }
 	var style by remember { mutableStateOf(Frames.Style.Polaroid) }
 	var format by remember { mutableStateOf(Frames.Format.Post) }
+	// "Local e data": where you are now (the trip's place or the neighborhood) and today's date
+	var withPlace by remember { mutableStateOf(false) }
+	var place by remember { mutableStateOf("") }
+	var locating by remember { mutableStateOf(false) }
+	val today = remember { java.time.format.DateTimeFormatter.ofPattern("d 'de' MMMM", com.nelsul.curitibatrip.data.TripTime.locale).format(java.time.ZonedDateTime.now(com.nelsul.curitibatrip.data.TripTime.zone)) }
+	val scope = androidx.compose.runtime.rememberCoroutineScope()
+	fun togglePlace() {
+		withPlace = !withPlace
+		if (!withPlace || place.isNotEmpty()) return
+		locating = true
+		scope.launch {
+			// where you are now (if location is allowed); else where the first photo was taken; else Curitiba
+			val here = runCatching { com.nelsul.curitibatrip.data.LocationOnce.current(context) }.getOrNull()?.let { it.latitude to it.longitude }
+				?: items.firstOrNull { it.lat != null && it.lng != null }?.let { it.lat!! to it.lng!! }
+			val name = here?.let { (lat, lng) ->
+				runCatching { Api.get<PlaceHere>("/api/places/here", mapOf("lat" to lat.toString(), "lng" to lng.toString())).name }.getOrNull()
+			}
+			if (place.isEmpty()) place = name ?: "Curitiba"
+			locating = false
+		}
+	}
+	val caption = if (withPlace) Frames.caption(place, today) else null
 	LaunchedEffect(items) {
 		photos = withContext(Dispatchers.IO) {
 			items.mapNotNull { m ->
@@ -166,7 +273,7 @@ fun FrameMakerDialog(items: List<FeedMedia>, onClose: () -> Unit) {
 		}
 		if (photos.isNullOrEmpty()) error = "Não foi possível carregar as fotos. Confira a internet."
 	}
-	val image = remember(photos, style, format) { photos?.takeIf { it.isNotEmpty() }?.let { Frames.render(context, it, style, format) } }
+	val image = remember(photos, style, format, caption) { photos?.takeIf { it.isNotEmpty() }?.let { Frames.render(context, it, style, format, caption) } }
 
 	Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
 		Column(Modifier.fillMaxSize().background(Palette.bg).systemBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -188,7 +295,7 @@ fun FrameMakerDialog(items: List<FeedMedia>, onClose: () -> Unit) {
 				Frames.Style.entries.forEach { s ->
 					Chip(style == s, { style = s }) {
 						Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-							Box(Modifier.size(14.dp).background(Color(s.bg), RoundedCornerShape(4.dp)).border(2.dp, Color(s.title), RoundedCornerShape(4.dp)))
+							Box(Modifier.size(14.dp).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(s.bg), Color(s.bg2 ?: s.bg))), RoundedCornerShape(4.dp)).border(2.dp, Color(s.title), RoundedCornerShape(4.dp)))
 							Text(s.label, style = body(15, FontWeight.ExtraBold))
 						}
 					}
@@ -196,6 +303,18 @@ fun FrameMakerDialog(items: List<FeedMedia>, onClose: () -> Unit) {
 			}
 			Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 				Frames.Format.entries.forEach { f -> Chip(format == f, { format = f }) { Text(f.label, style = body(15, FontWeight.ExtraBold)) } }
+			}
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+				Chip(withPlace, { togglePlace() }) {
+					Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+						Icon(IconName.Pin, if (withPlace) Palette.onSea else Palette.ink, size = 16.dp)
+						Text("Local e data", style = body(15, FontWeight.ExtraBold))
+					}
+				}
+				if (withPlace) Text(today, style = body(14, FontWeight.Bold), color = Palette.muted)
+			}
+			if (withPlace) {
+				AppTextField(place, { place = it.take(40) }, if (locating) "Procurando onde você está…" else "Onde vocês estão?", Modifier.fillMaxWidth(), singleLine = true)
 			}
 			ChunkyButton("Compartilhar", { image?.let { Frames.share(context, it) } }, variant = ButtonVariant.Sun, fullWidth = true, enabled = image != null, icon = IconName.Share)
 			Text("Abre o Instagram, o WhatsApp e os outros apps.", style = body(13), color = Palette.muted)
