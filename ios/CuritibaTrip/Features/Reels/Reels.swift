@@ -54,14 +54,18 @@ struct ReelsScreen: View {
 
 	var body: some View {
 		NavigationStack {
+			// every page is the whole screen (status bar and home indicator included), so paging always lands
+			// exactly on one; the safe areas are passed down for the buttons and the caption
 			GeometryReader { geo in
+				let insets = geo.safeAreaInsets
 				ScrollView(.vertical) {
 					LazyVStack(spacing: 0) {
 						ForEach(items.filter { !gone.contains($0.id) }) { m in
 							ReelView(media: m, person: app.person(m.userId), playing: current == m.id, muted: $muted,
 									 onShare: m.isVideo ? nil : { framing = [m] },
-									 onDelete: m.userId == app.me?.id || app.me?.isAdmin == true ? { deleting = m } : nil)
-								.frame(width: geo.size.width, height: geo.size.height)
+									 onDelete: m.userId == app.me?.id || app.me?.isAdmin == true ? { deleting = m } : nil,
+									 safeTop: insets.top, safeBottom: insets.bottom)
+								.frame(width: geo.size.width + insets.leading + insets.trailing, height: geo.size.height + insets.top + insets.bottom)
 								.id(m.id)
 						}
 					}
@@ -70,6 +74,8 @@ struct ReelsScreen: View {
 				.scrollTargetBehavior(.paging)
 				.scrollPosition(id: $current)
 				.scrollIndicators(.hidden)
+				.contentMargins(0, for: .scrollContent)
+				.ignoresSafeArea()
 			}
 			.background(Color.black)
 			.overlay(alignment: .topLeading) {
@@ -125,6 +131,9 @@ struct ReelView: View {
 	var onShare: (() -> Void)? = nil
 	/// owner or admin
 	var onDelete: (() -> Void)? = nil
+	/// the page covers the whole screen in the reels: keep the buttons and text clear of the notch and home bar
+	var safeTop: CGFloat = 0
+	var safeBottom: CGFloat = 0
 	@Environment(AppState.self) private var app
 	@State private var likers: [String]?
 	@State private var bigHeart = 0
@@ -162,10 +171,11 @@ struct ReelView: View {
 				}
 				.buttonStyle(.plain)
 				.padding(12)
+				.padding(.top, safeTop)
 				.accessibilityLabel(muted ? "Ligar o som" : "Desligar o som")
 			}
 		}
-		.overlay(alignment: .bottomTrailing) { rail.padding(.trailing, 6).padding(.bottom, 30) }
+		.overlay(alignment: .bottomTrailing) { rail.padding(.trailing, 6).padding(.bottom, 30 + safeBottom) }
 		.overlay(alignment: .bottomLeading) { info }
 		.clipped()
 		.accessibilityElement(children: .contain)
@@ -218,7 +228,7 @@ struct ReelView: View {
 		.shadow(color: .black.opacity(0.5), radius: 3)
 		.padding(.horizontal, 14)
 		.padding(.top, 48)
-		.padding(.bottom, 18)
+		.padding(.bottom, 18 + safeBottom)
 		.padding(.trailing, 64)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom).allowsHitTesting(false))

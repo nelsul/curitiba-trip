@@ -16,6 +16,15 @@
 		const el = strip.children[i] as HTMLElement | undefined;
 		if (el) strip.scrollLeft = el.offsetLeft - strip.offsetLeft - 8;
 	});
+	/** computers: buttons and the wheel move the strip (on phones it's swiped) */
+	const slide = (dir: number) => strip?.scrollBy({ left: dir * strip.clientWidth * 0.8, behavior: 'smooth' });
+	function wheel(e: WheelEvent) {
+		if (!strip || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+		const max = strip.scrollWidth - strip.clientWidth;
+		if ((e.deltaY < 0 && strip.scrollLeft <= 0) || (e.deltaY > 0 && strip.scrollLeft >= max)) return;
+		e.preventDefault();
+		strip.scrollLeft += e.deltaY;
+	}
 	const tempColor = (t: number) => (t >= 26 ? 'var(--coral)' : t >= 20 ? 'var(--sun)' : t >= 14 ? 'var(--leaf)' : 'var(--sky)');
 </script>
 
@@ -27,7 +36,9 @@
 			<span class="small muted">{WEATHER_LABEL[day.kind]}{day.rain >= 20 ? ` · ${day.rain}% de chuva` : ''}</span>
 		</div>
 	</div>
-	<div class="hours" bind:this={strip} role="list" aria-label="Hora a hora">
+	<div class="strip">
+	<button class="arrow prev" onclick={() => slide(-1)} aria-label="Horas anteriores">‹</button>
+	<div class="hours" bind:this={strip} onwheel={wheel} role="list" aria-label="Hora a hora">
 		{#each hours as h (h.time)}
 			<div class="h" role="listitem" aria-label="{h.time}: {h.temp} graus, {WEATHER_LABEL[h.kind]}{h.rain >= 20 ? `, ${h.rain}% de chuva` : ''}">
 				<span class="t small">{h.time.replace(':00', 'h')}</span>
@@ -36,6 +47,8 @@
 				<span class="r small" class:hide={h.rain < 20}>{h.rain}%</span>
 			</div>
 		{/each}
+	</div>
+	<button class="arrow next" onclick={() => slide(1)} aria-label="Próximas horas">›</button>
 	</div>
 </section>
 
@@ -52,4 +65,18 @@
 	.h strong { font-size: 0.95rem; }
 	.r { color: var(--sky); font-weight: 800; font-size: 0.72rem; }
 	.r.hide { visibility: hidden; }
+	.strip { position: relative; min-width: 0; }
+	.arrow { display: none; }
+	@media (hover: hover) and (pointer: fine) {
+		.hours { scrollbar-width: thin; scrollbar-color: var(--line) transparent; padding-bottom: 6px; }
+		.hours::-webkit-scrollbar { display: block; height: 6px; }
+		.hours::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+		.arrow {
+			display: grid; place-items: center; position: absolute; top: 50%; translate: 0 -60%; z-index: 1; width: 32px; height: 32px;
+			border-radius: 50%; border: 2px solid var(--line); background: var(--surface); color: var(--ink); font-size: 1.3rem; line-height: 1; cursor: pointer;
+		}
+		.arrow:hover { border-color: var(--sea); }
+		.prev { left: -8px; }
+		.next { right: -8px; }
+	}
 </style>

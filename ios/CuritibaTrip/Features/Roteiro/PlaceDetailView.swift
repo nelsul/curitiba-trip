@@ -85,6 +85,8 @@ struct PlaceDetailView: View {
 			.frame(maxWidth: 640)
 			.frame(maxWidth: .infinity)
 		}
+		// pushed from a tab: keep the end of the page above the floating dock
+		.contentMargins(.bottom, 104, for: .scrollContent)
 		.toolbar(.hidden, for: .navigationBar)
 		.background(DottedBackground())
 		.task { await weather.load() }

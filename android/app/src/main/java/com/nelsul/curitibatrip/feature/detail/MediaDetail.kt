@@ -1,5 +1,13 @@
 package com.nelsul.curitibatrip.feature.detail
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import com.nelsul.curitibatrip.feature.mapa.MapController
+import com.nelsul.curitibatrip.feature.mapa.MapStyle
+import com.nelsul.curitibatrip.feature.mapa.PinMarker
+import com.nelsul.curitibatrip.feature.mapa.TripMap
+import com.nelsul.curitibatrip.ui.components.pressable
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
@@ -91,6 +99,9 @@ import kotlinx.coroutines.launch
 /** Photo/video page (web /m/:id): polaroid viewer, likes, caption, location, file, save original, delete, comments. */
 @Composable
 fun MediaDetailScreen(id: String, contentPadding: PaddingValues, onBack: () -> Unit) {
+	var mapStyle by remember { mutableStateOf<String?>(null) }
+	val styleContext = LocalContext.current
+	LaunchedEffect(Unit) { mapStyle = runCatching { MapStyle.json(styleContext) }.getOrNull() }
 	val app = LocalApp.current
 	val context = LocalContext.current
 	val scope = rememberCoroutineScope()
@@ -166,6 +177,15 @@ fun MediaDetailScreen(id: String, contentPadding: PaddingValues, onBack: () -> U
 					}
 					if (mine) TextLink(if (item.caption.isEmpty()) "Adicionar texto" else "Editar texto", { editing = true })
 					if (item.lat != null && item.lng != null) {
+						// where it was taken (web /m/:id shows the same small map); a tap opens Google Maps
+						val mapsUrl = "https://www.google.com/maps/search/?api=1&query=${item.lat},${item.lng}"
+						Box(Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(18.dp)).border(2.5.dp, Palette.line, RoundedCornerShape(18.dp)), contentAlignment = Alignment.Center) {
+							val style = mapStyle
+							if (style != null) TripMap(style, remember { MapController() }, Modifier.fillMaxSize(), initial = LatLng(item.lat, item.lng), initialZoom = 15.0)
+							PinMarker(colorOf(app.person(item.userId)?.color), Modifier.offset(y = (-28).dp))
+							Box(Modifier.fillMaxSize().pressable({ context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl))) })
+								.semantics { contentDescription = "Mapa do local da foto. Toque para abrir no Google Maps" })
+						}
 						Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 							Icon(IconName.Pin, Palette.sea, size = 18.dp)
 							Text(locationLabel(item.locationSource), style = body(14), color = Palette.muted, modifier = Modifier.weight(1f))
