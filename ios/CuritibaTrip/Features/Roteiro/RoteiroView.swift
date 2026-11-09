@@ -156,7 +156,8 @@ struct RoteiroView: View {
 		let index = (days.firstIndex { $0.id == d.id } ?? 0) + 1
 		let pts = points(d)
 		let numbers = Dictionary(uniqueKeysWithValues: pts.map { ($0.stop, $0.point.n) })
-		let start = stay(d.startStay), end = stay(d.endStay)
+		// only on days with somewhere to go
+		let start = pts.isEmpty ? nil : stay(d.startStay), end = pts.isEmpty ? nil : stay(d.endStay)
 		let homes = homes(start: start, end: end)
 		VStack(spacing: 0) {
 			HStack(alignment: .center, spacing: 12) {
@@ -190,7 +191,7 @@ struct RoteiroView: View {
 						.frame(height: 260)
 						.clipShape(RoundedRectangle(cornerRadius: 18))
 						.overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.line, lineWidth: 2.5))
-					legend(d)
+					legend(d, back: end != nil)
 				}
 				if let start { homeStop(start, start: true).id("casa-start") }
 				ForEach(Array(d.stops.enumerated()), id: \.element.id) { i, s in
@@ -255,12 +256,20 @@ struct RoteiroView: View {
 		.overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.sea, style: StrokeStyle(lineWidth: 2.5, dash: [7, 5])))
 	}
 
-	private func legend(_ d: RoteiroDay) -> some View {
-		HStack(spacing: 12) {
-			ForEach(RoteiroTransport.allCases.filter { t in d.stops.contains { $0.transport == t.rawValue } }) { t in
+	private func legend(_ d: RoteiroDay, back: Bool = false) -> some View {
+		VStack(alignment: .leading, spacing: 4) {
+			HStack(spacing: 12) {
+				ForEach(RoteiroTransport.allCases.filter { t in d.stops.contains { $0.transport == t.rawValue } }) { t in
+					HStack(spacing: 5) {
+						Capsule().fill(t.color).frame(width: 18, height: 4)
+						Text(t.label).font(.text(12, .bold)).foregroundStyle(Color.muted)
+					}
+				}
+			}
+			if back {
 				HStack(spacing: 5) {
-					Capsule().fill(t.color).frame(width: 18, height: 4)
-					Text(t.label).font(.text(12, .bold)).foregroundStyle(Color.muted)
+					HStack(spacing: 3) { ForEach(0..<3, id: \.self) { _ in Circle().fill(Color.muted).frame(width: 4, height: 4) } }
+					Text("Pontilhado: a volta para a hospedagem").font(.text(12, .bold)).foregroundStyle(Color.muted)
 				}
 			}
 		}

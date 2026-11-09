@@ -231,6 +231,12 @@ struct CreatedId: Decodable, Sendable { let id: String }
 
 /// GET /api/roteiro/days/:date/route
 struct DayRoute: Decodable, Sendable {
-	struct Leg: Decodable, Sendable { let transport: String; let coordinates: [[Double]]; let routed: Bool }
+	struct Leg: Decodable, Sendable {
+		let transport: String
+		let coordinates: [[Double]]
+		let routed: Bool
+		/// the way back to the stay at the end of the day (drawn dotted)
+		var back: Bool?
+	}
 	let legs: [Leg]
 }

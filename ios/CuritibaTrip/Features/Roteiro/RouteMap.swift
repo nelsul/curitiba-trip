@@ -81,6 +81,7 @@ struct RouteMap: UIViewRepresentable {
 			let source = MLNShapeSource(identifier: "route", shape: nil)
 			style.addSource(source)
 			let casing = MLNLineStyleLayer(identifier: "route-casing", source: source)
+			casing.predicate = NSPredicate(format: "back == NO")
 			casing.lineColor = NSExpression(forConstantValue: UIColor(red: 1, green: 0.99, blue: 0.94, alpha: 1))
 			casing.lineWidth = NSExpression(forConstantValue: 8)
 			casing.lineOpacity = NSExpression(forConstantValue: 0.85)
@@ -89,7 +90,7 @@ struct RouteMap: UIViewRepresentable {
 			style.addLayer(casing)
 			for dashed in [false, true] {
 				let line = MLNLineStyleLayer(identifier: dashed ? "route-dashed" : "route", source: source)
-				line.predicate = NSPredicate(format: "dashed == %@", NSNumber(value: dashed))
+				line.predicate = NSPredicate(format: "dashed == %@ AND back == NO", NSNumber(value: dashed))
 				line.lineColor = NSExpression(mglJSONObject: ["to-color", ["get", "color"]])
 				line.lineWidth = NSExpression(forConstantValue: 4.5)
 				line.lineCap = NSExpression(forConstantValue: dashed ? "butt" : "round")
@@ -97,6 +98,15 @@ struct RouteMap: UIViewRepresentable {
 				if dashed { line.lineDashPattern = NSExpression(forConstantValue: [1, 1.6]) }
 				style.addLayer(line)
 			}
+			// the way back to the stay: a row of dots, so it doesn't look like the way out
+			let back = MLNLineStyleLayer(identifier: "route-back", source: source)
+			back.predicate = NSPredicate(format: "back == YES")
+			back.lineColor = NSExpression(mglJSONObject: ["to-color", ["get", "color"]])
+			back.lineWidth = NSExpression(forConstantValue: 5)
+			back.lineCap = NSExpression(forConstantValue: "round")
+			back.lineJoin = NSExpression(forConstantValue: "round")
+			back.lineDashPattern = NSExpression(forConstantValue: [0, 2])
+			style.addLayer(back)
 			styleReady = true
 			reload()
 		}
@@ -140,7 +150,8 @@ struct RouteMap: UIViewRepresentable {
 				guard coords.count >= 2 else { return nil }
 				let f = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
 				let t = RoteiroTransport.of(leg.transport)
-				f.attributes = ["color": UIColor(t.color).hexString, "dashed": NSNumber(value: !leg.routed || t == .pe)]
+				f.attributes = ["color": UIColor(t.color).hexString, "dashed": NSNumber(value: !leg.routed || t == .pe),
+								"back": NSNumber(value: leg.back == true)]
 				return f
 			}
 			source.shape = MLNShapeCollectionFeature(shapes: features)

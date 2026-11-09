@@ -66,12 +66,12 @@ Everyone reads the Roteiro and ticks "Fomos!". Changing places, their photos and
 | DELETE | `/api/roteiro/places/:id/photos/:photoId` | |
 | PUT | `/api/roteiro/days/:date` | `{ title, who, lead, wedding, stops: [{ id?, time, placeId \| label, transport, note }] }` replaces the day, stops in the order sent. Send each existing stop's `id` so its "Fomos!" tick is kept. Times like `9h35` or `14h` get the apps' 30-min reminder. |
 | DELETE | `/api/roteiro/days/:date` | |
-| GET | `/api/roteiro/days/:date/route` | → `{ legs: [{ transport, coordinates: [[lng, lat]…], routed }] }`: the street route between consecutive stops with places (OpenStreetMap routing; `routed: false` = straight line). With `?casa=1` it also starts at the asker's morning stay and ends at their night stay (the way back by the last leg's transport, Uber after Linha Turismo/Graciosa). |
+| GET | `/api/roteiro/days/:date/route` | → `{ legs: [{ transport, coordinates: [[lng, lat]…], routed, back }] }`: the street route between consecutive stops with places (OpenStreetMap routing; `routed: false` = straight line). With `?casa=1` it also starts at the asker's morning stay and ends at their night stay (the way back by the last leg's transport, Uber after Linha Turismo/Graciosa; that leg has `back: true` and the apps draw it dotted). |
 | POST | `/api/roteiro/stops/:id/visited` | `{ visited }` → `{ visitedAt, visitedBy }`. "Fomos!": one tick counts for the whole group. |
 
 ### Hospedagem (admins only)
 
-Where people sleep. Everyone reads them in `GET /api/roteiro`; only admins change them. A stay covers the nights from `checkIn` (first night) to the day before `checkOut` (the day they leave); null = from the start / until the end of the trip. So on the check-in day the person's Roteiro ends there, on the check-out day it starts there. Nobody can be in two stays on the same night (400).
+Where people sleep. Everyone reads them in `GET /api/roteiro`; only admins change them. A stay covers the nights from `checkIn` (first night) to the day before `checkOut` (the day they leave); null = from the start / until the end of the trip. Every day from check-in to check-out (both included) starts and ends there; on a day someone changes places, it starts at the old one and ends at the new one. Nobody can be in two stays on the same night (400).
 
 | Method | Path | |
 |---|---|---|

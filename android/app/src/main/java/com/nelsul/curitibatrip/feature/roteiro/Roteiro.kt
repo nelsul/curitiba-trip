@@ -219,7 +219,10 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 					}
 					if (day != null) {
 						Ticket(
-							day, days.indexOf(day) + 1, days.size, placeOf, stayOf(day.startStay), stayOf(day.endStay), style, open,
+							// the stay only on days with somewhere to go
+							day, days.indexOf(day) + 1, days.size, placeOf,
+							stayOf(day.startStay).takeIf { day.stops.any { placeOf(it.placeId) != null } },
+							stayOf(day.endStay).takeIf { day.stops.any { placeOf(it.placeId) != null } }, style, open,
 							onVisit = ::toggleVisit, onEditPlace = if (admin) { p -> editingPlace = p } else null,
 							onEdit = if (admin) { { editingDay = day to day.date } } else null,
 							onPick = { n -> stopY[n]?.let { y -> scope.launch { scroll.animateScrollTo((y - columnTop - 120).coerceAtLeast(0)) } } },
@@ -359,6 +362,10 @@ private fun Ticket(
 							Text(t.label, style = body(12, FontWeight.Bold), color = Palette.muted)
 						}
 					}
+				}
+				if (end != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+					Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { repeat(3) { Box(Modifier.size(4.dp).background(Palette.muted, CircleShape)) } }
+					Text("Pontilhado: a volta para a hospedagem", style = body(12, FontWeight.Bold), color = Palette.muted)
 				}
 			}
 			start?.let { HomeStop(it, true, open, Modifier.onGloballyPositioned { c -> onStopPlaced(HOME_START, c.positionInRoot().y.toInt()) }) }

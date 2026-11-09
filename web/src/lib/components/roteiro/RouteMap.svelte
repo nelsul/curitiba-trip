@@ -31,6 +31,8 @@
 	});
 
 	let note = $state('');
+	/** the route has a way back to the stay (shown in the legend) */
+	let hasBack = $state(false);
 	// svelte-ignore state_referenced_locally
 	const first = homes[0] ?? points[0];
 
@@ -44,11 +46,13 @@
 		map.addSource('route', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
 		map.addLayer({
 			id: 'route-casing', type: 'line', source: 'route',
+			filter: ['!', ['get', 'back']],
 			layout: { 'line-cap': 'round', 'line-join': 'round' },
 			paint: { 'line-color': '#fffcf0', 'line-width': 8, 'line-opacity': 0.85 }
 		});
 		map.addLayer({
 			id: 'route', type: 'line', source: 'route',
+			filter: ['!', ['get', 'back']],
 			layout: { 'line-cap': 'round', 'line-join': 'round' },
 			paint: {
 				'line-color': ['get', 'color'],
@@ -56,6 +60,13 @@
 				// straight lines (no street route found) and walking legs are dashed
 				'line-dasharray': ['case', ['get', 'dashed'], ['literal', [1, 1.6]], ['literal', [1, 0]]]
 			}
+		});
+		// the way back to the stay: a row of dots, so it doesn't look like the way out
+		map.addLayer({
+			id: 'route-back', type: 'line', source: 'route',
+			filter: ['get', 'back'],
+			layout: { 'line-cap': 'round', 'line-join': 'round' },
+			paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-dasharray': ['literal', [0, 2]] }
 		});
 
 		const bounds = new ml.LngLatBounds();
@@ -115,12 +126,13 @@
 			// the route depends on where you sleep: a new stay gets a new URL (the answer is cached for 5 min)
 			const r = await fetch(`/api/roteiro/days/${date}/route${homes.length ? `?casa=${homes.map((h) => `${h.lat.toFixed(5)},${h.lng.toFixed(5)}`).join(';')}` : ''}`);
 			if (!r.ok) throw new Error();
-			const { legs } = (await r.json()) as { legs: { transport: Transport; coordinates: [number, number][]; routed: boolean }[] };
+			const { legs } = (await r.json()) as { legs: { transport: Transport; coordinates: [number, number][]; routed: boolean; back?: boolean }[] };
+			hasBack = legs.some((l) => l.back);
 			(map.getSource('route') as GeoJSONSource | undefined)?.setData({
 				type: 'FeatureCollection',
 				features: legs.map((l) => ({
 					type: 'Feature',
-					properties: { color: cssColor(TRANSPORT[l.transport].color), dashed: !l.routed || l.transport === 'pe' },
+					properties: { color: cssColor(TRANSPORT[l.transport].color), dashed: !l.routed || l.transport === 'pe', back: !!l.back },
 					geometry: { type: 'LineString', coordinates: l.coordinates }
 				}))
 			});
@@ -134,11 +146,14 @@
 <div class="route-map" style:height>
 	<MapView center={first ? [first.lng, first.lat] : undefined} zoom={14} framed onready={ready} />
 </div>
+{#if hasBack}<p class="small muted back-legend"><i aria-hidden="true"></i> Pontilhado: a volta para a hospedagem</p>{/if}
 {#if note}<p class="small muted note">{note}</p>{/if}
 
 <style>
 	.route-map { margin: 4px 0 6px; min-height: 260px; }
 	.note { margin: 0 0 8px; }
+	.back-legend { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; }
+	.back-legend i { width: 22px; height: 5px; background: radial-gradient(circle, currentColor 2px, transparent 2.5px) 0 50% / 8px 5px repeat-x; }
 	.route-map :global(.route-stop) { padding: 0; border: 0; background: none; cursor: pointer; }
 	.route-map :global(.route-stop span) {
 		display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; padding: 0;
