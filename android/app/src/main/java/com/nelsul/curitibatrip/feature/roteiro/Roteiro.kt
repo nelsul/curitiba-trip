@@ -103,7 +103,7 @@ private val MONTHS = listOf("JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AG
 private val dayMonth = DateTimeFormatter.ofPattern("dd/MM").withZone(TripTime.zone)
 
 /**
- * Roteiro (web /roteiro), the same for everyone and editable by everyone:
+ * Roteiro (web /roteiro), the same for everyone; only admins change places and days (everyone ticks "Fomos!"):
  * **Dia a dia** (route map, stops with "Fomos?", Uber and Maps), **Lugares** (places with photos, hours, prices) and
  * **Hospedagem** (where everyone sleeps, set up by admins on the site; each day leaves from and comes back to it).
  */
@@ -151,6 +151,7 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 	val places = data?.places.orEmpty()
 	val day = days.firstOrNull { it.date == selected } ?: days.firstOrNull()
 	val placeOf: (String?) -> RoteiroPlace? = { id -> id?.let { i -> places.firstOrNull { it.id == i } } }
+	val admin = app.me?.isAdmin == true
 	val stays = data?.stays.orEmpty()
 	val stayOf: (String?) -> RoteiroStay? = { id -> id?.let { i -> stays.firstOrNull { it.id == i } } }
 	val nextDate = days.lastOrNull()?.let { LocalDate.parse(it.date).plusDays(1).toString() } ?: TripTime.dayKey(Instant.now().toString())
@@ -207,7 +208,7 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 								}
 							}
 						}
-						Box(Modifier.semantics { contentDescription = "Adicionar dia" }) {
+						if (admin) Box(Modifier.semantics { contentDescription = "Adicionar dia" }) {
 							Chip(false, { editingDay = null to nextDate }, dashed = true, tint = Palette.sea) {
 								Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 4.dp)) {
 									Text("+", style = display(17), color = Palette.sea)
@@ -219,18 +220,19 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 					if (day != null) {
 						Ticket(
 							day, days.indexOf(day) + 1, days.size, placeOf, stayOf(day.startStay), stayOf(day.endStay), style, open,
-							onVisit = ::toggleVisit, onEditPlace = { editingPlace = it }, onEdit = { editingDay = day to day.date },
+							onVisit = ::toggleVisit, onEditPlace = if (admin) { p -> editingPlace = p } else null,
+							onEdit = if (admin) { { editingDay = day to day.date } } else null,
 							onPick = { n -> stopY[n]?.let { y -> scope.launch { scroll.animateScrollTo((y - columnTop - 120).coerceAtLeast(0)) } } },
 							onStopPlaced = { n, y -> stopY[n] = y + scroll.value },
 						)
 					} else if (data != null) {
 						Column(Modifier.fillMaxWidth().card(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
 							Text("O roteiro ainda está vazio.", style = body(16), color = Palette.ink)
-							ChunkyButton("Criar o primeiro dia", { editingDay = null to nextDate }, variant = ButtonVariant.Sun)
+							if (admin) ChunkyButton("Criar o primeiro dia", { editingDay = null to nextDate }, variant = ButtonVariant.Sun)
 						}
 					}
 				} else if (tab == 1) {
-					PlacesTab(places, days, open, onEdit = { editingPlace = it }, onNew = { newPlace = true }, onAdd = ::addToDay)
+					PlacesTab(places, days, open, admin, onEdit = { editingPlace = it }, onNew = { newPlace = true }, onAdd = ::addToDay)
 				} else {
 					Text("O dia a dia de cada pessoa começa e termina onde ela está hospedada. Quem é administrador muda a hospedagem pelo site.",
 						style = body(14), color = Palette.muted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
@@ -291,7 +293,7 @@ private fun Tabs(tab: Int, onSelect: (Int) -> Unit) {
 @Composable
 private fun Ticket(
 	d: RoteiroDay, index: Int, total: Int, placeOf: (String?) -> RoteiroPlace?, start: RoteiroStay?, end: RoteiroStay?, style: String?, open: (String) -> Unit,
-	onVisit: (RoteiroStop) -> Unit, onEditPlace: (RoteiroPlace) -> Unit, onEdit: () -> Unit, onPick: (Int) -> Unit, onStopPlaced: (Int, Int) -> Unit,
+	onVisit: (RoteiroStop) -> Unit, onEditPlace: ((RoteiroPlace) -> Unit)?, onEdit: (() -> Unit)?, onPick: (Int) -> Unit, onStopPlaced: (Int, Int) -> Unit,
 ) {
 	val shape = RoundedCornerShape(Radius.card)
 	var n = 0
@@ -371,7 +373,7 @@ private fun Ticket(
 					listOfNotNull(end?.let { it.lat to it.lng }),
 			)
 			if (route != null && !d.wedding) ChunkyButton("Rota do dia no Google Maps", { open(route) }, variant = ButtonVariant.Sea, fullWidth = true, icon = IconName.Map)
-			ChunkyButton("✎ Editar este dia", onEdit, variant = ButtonVariant.Secondary, fullWidth = true)
+			if (onEdit != null) ChunkyButton("✎ Editar este dia", onEdit, variant = ButtonVariant.Secondary, fullWidth = true)
 		}
 	}
 }
@@ -473,7 +475,7 @@ private fun StayCard(st: RoteiroStay, mine: Boolean, open: (String) -> Unit) {
 }
 
 @Composable
-private fun StopCard(s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -> Unit, onVisit: () -> Unit, onEditPlace: (RoteiroPlace) -> Unit, modifier: Modifier) {
+private fun StopCard(s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -> Unit, onVisit: () -> Unit, onEditPlace: ((RoteiroPlace) -> Unit)?, modifier: Modifier) {
 	val app = LocalApp.current
 	val t = RoteiroTransport.of(s.transport)
 	val visited = s.visitedAt != null
@@ -487,6 +489,10 @@ private fun StopCard(s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -
 				val photo = p.photos.firstOrNull()
 				if (photo != null) {
 					AsyncImage(photo.url, "Foto de ${p.name}", contentScale = ContentScale.Crop, modifier = Modifier.size(76.dp).clip(RoundedCornerShape(14.dp)))
+				} else if (onEditPlace == null) {
+					Box(Modifier.size(76.dp).background(p.categoryInfo.color.copy(alpha = 0.18f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+						Icon(IconName.Pin, p.categoryInfo.color, size = 22.dp)
+					}
 				} else {
 					Column(
 						Modifier.size(76.dp).background(p.categoryInfo.color.copy(alpha = 0.18f), RoundedCornerShape(14.dp)).pressable({ onEditPlace(p) })
@@ -503,7 +509,7 @@ private fun StopCard(s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -
 					if (n != null) Box(Modifier.size(24.dp).background(Palette.sun, CircleShape), contentAlignment = Alignment.Center) {
 						Text("$n", style = display(13), color = Palette.onSun)
 					}
-					Text(s.time.ifEmpty { "Sem horário" }, style = display(13), color = if (visited) Palette.onLeaf else Palette.onSun,
+					if (s.time.isNotEmpty()) Text(s.time, style = display(13), color = if (visited) Palette.onLeaf else Palette.onSun,
 						modifier = Modifier.background(if (visited) Palette.leaf else Palette.sun, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 2.dp))
 				}
 				Text(p?.name ?: s.label, style = display(19), color = Palette.ink)
@@ -530,7 +536,7 @@ private fun StopCard(s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -
 				Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "Abrir no Google Maps" }) {
 					ChunkyButton({ open(p.mapsUrl) }, variant = ButtonVariant.Secondary, small = true) { Icon(IconName.Map, Palette.ink, size = 18.dp) }
 				}
-				Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "Editar lugar" }) {
+				if (onEditPlace != null) Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "Editar lugar" }) {
 					ChunkyButton({ onEditPlace(p) }, variant = ButtonVariant.Secondary, small = true) { Text("✎") }
 				}
 			}
@@ -550,7 +556,7 @@ private fun Badge(text: String, color: Color) {
 
 @Composable
 private fun PlacesTab(
-	places: List<RoteiroPlace>, days: List<RoteiroDay>, open: (String) -> Unit,
+	places: List<RoteiroPlace>, days: List<RoteiroDay>, open: (String) -> Unit, admin: Boolean,
 	onEdit: (RoteiroPlace) -> Unit, onNew: () -> Unit, onAdd: (RoteiroPlace, String) -> Unit,
 ) {
 	var filter by remember { mutableStateOf<RoteiroCategory?>(null) }
@@ -566,25 +572,26 @@ private fun PlacesTab(
 	}
 	Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
 		AppTextField(query, { query = it }, "Procurar", Modifier.weight(1f), singleLine = true)
-		ChunkyButton("＋ Lugar", onNew, variant = ButtonVariant.Sun, small = true)
+		if (admin) ChunkyButton("＋ Lugar", onNew, variant = ButtonVariant.Sun, small = true)
 	}
 	shown.forEach { p ->
 		key(p.id) {
-			PlaceCard(p, p.id in visited, days.filter { d -> d.stops.any { it.placeId == p.id } }.map { it.date }, days, open, { onEdit(p) }, { onAdd(p, it) })
+			PlaceCard(p, p.id in visited, days.filter { d -> d.stops.any { it.placeId == p.id } }.map { it.date }, days, open,
+				if (admin) { { onEdit(p) } } else null, if (admin) { { onAdd(p, it) } } else null)
 		}
 	}
 	if (shown.isEmpty()) Text(if (query.isEmpty()) "Nenhum lugar aqui ainda." else "Nenhum lugar com esse nome.", style = body(15), color = Palette.muted)
 }
 
 @Composable
-private fun PlaceCard(p: RoteiroPlace, visited: Boolean, usedOn: List<String>, days: List<RoteiroDay>, open: (String) -> Unit, onEdit: () -> Unit, onAdd: (String) -> Unit) {
+private fun PlaceCard(p: RoteiroPlace, visited: Boolean, usedOn: List<String>, days: List<RoteiroDay>, open: (String) -> Unit, onEdit: (() -> Unit)?, onAdd: ((String) -> Unit)?) {
 	var menu by remember { mutableStateOf(false) }
 	Column(Modifier.fillMaxWidth().popIn().card(0.dp)) {
 		Box(Modifier.fillMaxWidth().aspectRatio(16f / 10f).clip(RoundedCornerShape(topStart = Radius.card, topEnd = Radius.card))) {
 			if (p.photos.isEmpty()) {
-				Column(Modifier.fillMaxSize().background(Palette.surface2).pressable(onEdit), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+				Column(Modifier.fillMaxSize().background(Palette.surface2).then(if (onEdit != null) Modifier.pressable(onEdit) else Modifier), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
 					Icon(IconName.Camera, Palette.muted, size = 26.dp)
-					Text("Adicionar fotos", style = body(14, FontWeight.ExtraBold), color = Palette.muted)
+					Text(if (onEdit != null) "Adicionar fotos" else "Sem fotos ainda", style = body(14, FontWeight.ExtraBold), color = Palette.muted)
 				}
 			} else {
 				val pager = rememberPagerState { p.photos.size }
@@ -630,7 +637,7 @@ private fun PlaceCard(p: RoteiroPlace, visited: Boolean, usedOn: List<String>, d
 					}
 				}
 			}
-			Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
+			if (onEdit != null && onAdd != null) Row(Modifier.fillMaxWidth().heightIn(min = 44.dp), verticalAlignment = Alignment.CenterVertically) {
 				Box {
 					Text("+ Pôr no roteiro…", style = body(14, FontWeight.ExtraBold), color = Palette.sea, modifier = Modifier.pressable({ menu = true }).padding(vertical = 8.dp))
 					DropdownMenu(menu, { menu = false }, containerColor = Palette.surface) {

@@ -53,7 +53,9 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 | GET | `/api/places?q=&lat=&lng=` | Place search for marking where a photo/video was taken → `[{ name, detail, lat, lng }]` (max 10). `q` is 2–100 chars; results are ranked near `lat`/`lng` (send the map's center; default Curitiba), itinerary places first. OpenStreetMap data via Photon; `502` if it doesn't answer. |
 | GET | `/api/map-style.json` | The island night MapLibre style (the same as the web map). Cache for an hour. |
 
-## Roteiro (the same for everyone, anyone can edit)
+## Roteiro (the same for everyone; only admins change places and days)
+
+Everyone reads the Roteiro and ticks "Fomos!". Changing places, their photos and the days (`POST`/`PATCH`/`PUT`/`DELETE` under `/api/roteiro/places` and `/api/roteiro/days`) is for admins only (403 otherwise).
 
 | Method | Path | Notes |
 |---|---|---|
