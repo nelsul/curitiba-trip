@@ -46,8 +46,9 @@ final class AppState {
 
 	func signedIn(_ r: VerifyResponse) async {
 		TokenStore.shared.save(r.token)
-		accept(r.user, minVersion: r.minAppVersion)
+		// people first, so names show as soon as the app opens (the login view may go away mid-task)
 		await loadPeople()
+		accept(r.user, minVersion: r.minAppVersion)
 	}
 
 	func signOut() async {

@@ -3,7 +3,7 @@ import SwiftUI
 /// Roteiro (web /roteiro), the same for everyone and editable by everyone:
 /// - **Dia a dia:** day chips, a boarding-pass ticket per day with the route map and the stops ("Fomos?", Uber, Maps).
 /// - **Lugares:** every place to go or eat, with photos, hours, prices and "Pôr no roteiro".
-/// - **Hospedagem:** where everyone sleeps (admins set it up on the site); each day leaves from and comes back to it.
+/// - **Hospedagem:** where everyone sleeps (admins set it up); each day leaves from and comes back to it.
 struct RoteiroView: View {
 	@Environment(AppState.self) private var app
 	@Environment(\.openURL) private var openURL
@@ -14,6 +14,7 @@ struct RoteiroView: View {
 	@State private var selected: String?
 	@State private var editingDay: DayEdit?
 	@State private var editingPlace: PlaceEdit?
+	@State private var editingStay: StayEdit?
 	@State private var filter: RoteiroCategory?
 	@State private var query = ""
 	@State private var toast: String?
@@ -67,6 +68,11 @@ struct RoteiroView: View {
 		}
 		.sheet(item: $editingPlace) { e in
 			PlaceEditor(place: e.place, changed: { Task { await load() } })
+		}
+		.sheet(item: $editingStay) { e in
+			StayEditor(stay: e.stay, firstDay: days.first?.date ?? TripTime.dayKey(Date().formatted(.iso8601)),
+					   lastDay: days.last?.date ?? TripTime.dayKey(Date().formatted(.iso8601)),
+					   changed: { Task { await load(); Roteiro.itineraryChanged() } })
 		}
 	}
 
@@ -349,12 +355,28 @@ struct RoteiroView: View {
 
 	// MARK: Hospedagem
 
+	private var isAdmin: Bool { app.me?.isAdmin == true }
+
 	@ViewBuilder private var staysView: some View {
-		Text("O dia a dia de cada pessoa começa e termina onde ela está hospedada. Quem é administrador muda a hospedagem pelo site.")
+		Text("O dia a dia de cada pessoa começa e termina onde ela está hospedada." + (isAdmin ? "" : " Só administradores mudam a hospedagem."))
 			.font(.text(14)).foregroundStyle(Color.muted).multilineTextAlignment(.center).frame(maxWidth: .infinity)
-		ForEach(stays) { st in StayCard(stay: st, mine: st.guests.contains(app.me?.id ?? "")) }
+		if isAdmin && !stays.isEmpty {
+			Button("＋ Hospedagem") { editingStay = StayEdit(stay: nil) }.buttonStyle(.chunky(.sun, small: true)).frame(maxWidth: .infinity)
+			let homeless = app.people.filter { p in !stays.contains { $0.guests.contains(p.id) } }
+			if !homeless.isEmpty {
+				Text("Sem hospedagem: " + homeless.map(\.name).joined(separator: ", "))
+					.font(.text(13, .extraBold)).foregroundStyle(Color.coral).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+			}
+		}
+		ForEach(stays) { st in
+			StayCard(stay: st, mine: st.guests.contains(app.me?.id ?? ""), edit: isAdmin ? { editingStay = StayEdit(stay: st) } : nil)
+		}
 		if stays.isEmpty && data != nil {
-			Text("Nenhuma hospedagem cadastrada ainda.").font(.text(15)).foregroundStyle(Color.muted).frame(maxWidth: .infinity).card(padding: 24)
+			VStack(spacing: 12) {
+				Text("Nenhuma hospedagem cadastrada ainda.").font(.text(15)).foregroundStyle(Color.muted)
+				if isAdmin { Button("Cadastrar hotel ou Airbnb") { editingStay = StayEdit(stay: nil) }.buttonStyle(.chunky(.sun)) }
+			}
+			.frame(maxWidth: .infinity).card(padding: 24)
 		}
 	}
 
@@ -466,6 +488,11 @@ private struct DayEdit: Identifiable {
 	let suggested: String
 }
 
+private struct StayEdit: Identifiable {
+	let id = UUID()
+	let stay: RoteiroStay?
+}
+
 private struct PlaceEdit: Identifiable {
 	let id = UUID()
 	let place: RoteiroPlace?
@@ -571,6 +598,8 @@ private struct PlaceCard: View {
 private struct StayCard: View {
 	let stay: RoteiroStay
 	let mine: Bool
+	/// admins only
+	var edit: (() -> Void)? = nil
 	@Environment(AppState.self) private var app
 	@Environment(\.openURL) private var openURL
 
@@ -618,6 +647,9 @@ private struct StayCard: View {
 					.accessibilityLabel("Abrir no Google Maps")
 				if let url = stay.linkURL {
 					Button { openURL(url) } label: { Text("Reserva") }.buttonStyle(.chunky(.secondary, small: true))
+				}
+				if let edit {
+					Button(action: edit) { Text("✎") }.buttonStyle(.chunky(.secondary, small: true)).accessibilityLabel("Editar \(stay.name)")
 				}
 			}
 		}

@@ -49,7 +49,11 @@ class MainActivity : ComponentActivity() {
 						when (val phase = app.phase) {
 							AppState.Phase.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Palette.sea) }
 							AppState.Phase.SignedOut -> LoginScreen()
-							is AppState.Phase.SignedIn -> Shell()
+							is AppState.Phase.SignedIn -> {
+								// safety net: names and photos need the people list (e.g. it failed while offline at launch)
+								LaunchedEffect(Unit) { if (app.people.isEmpty()) app.loadPeople() }
+								Shell()
+							}
 							is AppState.Phase.Outdated -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
 								androidx.compose.foundation.layout.Column(Modifier.card(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
 									TitleRow(IconName.Plane, "Nova versão")

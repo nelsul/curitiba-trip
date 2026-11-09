@@ -43,8 +43,8 @@ class AppState(context: Context) {
 		if (TokenStore.token == null) { phase = Phase.SignedOut; return }
 		try {
 			val me: Me = Api.get("/api/me")
-			accept(me, me.minAppVersion)
 			loadPeople()
+			accept(me, me.minAppVersion)
 		} catch (e: ApiError) {
 			if (e.isUnauthorized) {
 				TokenStore.clear()
@@ -59,8 +59,9 @@ class AppState(context: Context) {
 
 	suspend fun signedIn(r: VerifyResponse) {
 		TokenStore.save(r.token)
-		accept(r.user, r.minAppVersion)
+		// people first: this runs in the login screen's scope, which is cancelled as soon as the phase changes
 		loadPeople()
+		accept(r.user, r.minAppVersion)
 	}
 
 	suspend fun signOut() {
