@@ -31,6 +31,8 @@ data class FeedMedia(
 	val lng: Double? = null,
 	val caption: String = "",
 	val comments: Int = 0,
+	/** the first (oldest) two comments, shown under the post */
+	val firstComments: List<PreviewComment> = emptyList(),
 	val durationS: Double? = null,
 ) { val isVideo get() = kind == "video" }
 
@@ -45,8 +47,12 @@ data class FeedCheckin(
 	val note: String = "",
 	val snapshot: String? = null,
 	val comments: Int = 0,
+	val firstComments: List<PreviewComment> = emptyList(),
 	val likers: List<String> = emptyList(),
 )
+
+@Serializable
+data class PreviewComment(val id: String, val userId: String, val body: String)
 
 /** A feed post: a carousel of photos/videos (`items`), or a check-in (`item`), grouped by the server like the web. */
 @Serializable

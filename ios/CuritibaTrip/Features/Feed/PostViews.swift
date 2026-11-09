@@ -66,12 +66,7 @@ struct MediaPostView: View {
 					(Text(person?.name ?? "").font(.text(16, .extraBold)) + Text("  ") + Text(current.caption).font(.text(16)))
 						.foregroundStyle(Color.ink)
 				}
-				if current.comments > 0 {
-					NavigationLink(value: Route.media(current.id)) {
-						Text(current.comments == 1 ? "Ver 1 comentário" : "Ver os \(current.comments) comentários")
-							.font(.text(14, .bold)).foregroundStyle(Color.muted)
-					}
-				}
+				CommentPreview(first: current.firstComments ?? [], total: current.comments, route: .media(current.id))
 			}
 			.padding(.horizontal, 14)
 			.padding(.bottom, 14)
@@ -187,6 +182,7 @@ struct CheckinPostView: View {
 					(Text(person?.name ?? "").font(.text(16, .extraBold)) + Text("  ") + Text(checkin.note).font(.text(16)))
 						.foregroundStyle(Color.ink)
 				}
+				CommentPreview(first: checkin.firstComments ?? [], total: checkin.comments, route: .checkin(checkin.id))
 			}
 			.padding(.horizontal, 14)
 			.padding(.bottom, 14)
@@ -334,4 +330,29 @@ struct LikedByView: View {
 extension EnvironmentValues {
 	/// Opens the full-screen reels at a photo/video (set by the Diário).
 	@Entry var openReel: ((String) -> Void)? = nil
+}
+
+/// The first two comments under a post (Instagram-style), and a link to the rest (as on the web).
+struct CommentPreview: View {
+	let first: [PreviewComment]
+	let total: Int
+	let route: Route
+	@Environment(AppState.self) private var app
+
+	var body: some View {
+		ForEach(first, id: \.id) { c in
+			NavigationLink(value: route) {
+				(Text(app.person(c.userId)?.name ?? "Alguém").font(.text(15, .extraBold)) + Text("  ") + Text(Mentions.highlight(c.body, people: app.people)).font(.text(15)))
+					.foregroundStyle(Color.ink).lineLimit(2).multilineTextAlignment(.leading)
+					.frame(maxWidth: .infinity, alignment: .leading)
+			}
+			.buttonStyle(.plain)
+		}
+		if total > first.count {
+			NavigationLink(value: route) {
+				Text(first.isEmpty ? (total == 1 ? "Ver 1 comentário" : "Ver os \(total) comentários") : "Ver todos os \(total) comentários")
+					.font(.text(14, .bold)).foregroundStyle(Color.muted)
+			}
+		}
+	}
 }

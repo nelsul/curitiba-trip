@@ -19,6 +19,8 @@ struct RoteiroView: View {
 	@State private var query = ""
 	@State private var toast: String?
 	@State private var scrollTo: String?
+	/// the stop picked on the map or in the list: the way to it is highlighted
+	@State private var activeStop: Int?
 
 	private var days: [RoteiroDay] { data?.days ?? [] }
 	private var places: [RoteiroPlace] { data?.places ?? [] }
@@ -49,6 +51,8 @@ struct RoteiroView: View {
 				withAnimation { proxy.scrollTo(id, anchor: .center) }
 				scrollTo = nil
 			}
+			// another day: nothing selected on its map
+			.onChange(of: selected) { activeStop = nil }
 		}
 		.refreshable { await load() }
 		.overlay(alignment: .top) {
@@ -188,8 +192,8 @@ struct RoteiroView: View {
 				if !d.lead.isEmpty { Text(d.lead).font(.text(17)).foregroundStyle(Color.ink) }
 				if let w = WeatherStore.shared.days[d.date] { WeatherCard(day: w) }
 				if !pts.isEmpty, let style {
-					RouteMap(styleURL: style, date: d.date, points: pts.map(\.point), homes: homes,
-							 onPick: { scrollTo = "parada-\($0)" }, onPickHome: { scrollTo = "casa-\($0)" })
+					RouteMap(styleURL: style, date: d.date, points: pts.map(\.point), homes: homes, active: activeStop,
+							 onPick: { activeStop = $0; scrollTo = "parada-\($0)" }, onPickHome: { scrollTo = "casa-\($0)" })
 						.frame(height: 260)
 						.clipShape(RoundedRectangle(cornerRadius: 18))
 						.overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.line, lineWidth: 2.5))
@@ -198,6 +202,8 @@ struct RoteiroView: View {
 				if let start { homeStop(start, start: true).id("casa-start") }
 				ForEach(Array(d.stops.enumerated()), id: \.element.id) { i, s in
 					stop(s, n: numbers[s.id]).id(numbers[s.id].map { "parada-\($0)" } ?? s.id).popIn(delay: 0.1 + Double(i) * 0.07)
+						// tapping a stop highlights the way to it on the map
+						.simultaneousGesture(TapGesture().onEnded { if let n = numbers[s.id] { activeStop = activeStop == n ? nil : n } })
 				}
 				if d.stops.isEmpty { Text("Nenhuma parada ainda.").font(.text(15)).foregroundStyle(Color.muted) }
 				if let end { homeStop(end, start: false).id("casa-end") }
@@ -281,9 +287,23 @@ struct RoteiroView: View {
 		let p = place(s.placeId)
 		let t = RoteiroTransport.of(s.transport)
 		let visited = s.visitedAt != nil
-		return VStack(alignment: .leading, spacing: 8) {
+		let cover = p?.photos.first?.url
+		let active = n != nil && activeStop == n
+		return VStack(alignment: .leading, spacing: 0) {
+			// the place's photo across the top of the card
+			if let p, let cover {
+				NavigationLink { PlaceDetailView(place: p, days: days) } label: {
+					Color.surface2.aspectRatio(16 / 9, contentMode: .fit)
+						.overlay(RemoteImage(url: cover))
+						.clipped()
+						.overlay(alignment: .bottom) { Rectangle().fill(Color.line).frame(height: 2) }
+				}
+				.buttonStyle(.plain)
+				.accessibilityHidden(true)
+			}
+		VStack(alignment: .leading, spacing: 8) {
 			HStack(alignment: .top, spacing: 10) {
-				if let p { stopPhoto(p) }
+				if let p, cover == nil { stopPhoto(p) }
 				VStack(alignment: .leading, spacing: 5) {
 					HStack(spacing: 6) {
 						if let n {
@@ -344,9 +364,11 @@ struct RoteiroView: View {
 			}
 		}
 		.padding(12)
+		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.background(RoundedRectangle(cornerRadius: 18).fill(Color.surface2.opacity(0.4)))
-		.overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(visited ? Color.leaf : Color.line, lineWidth: 2.5))
+		.clipShape(RoundedRectangle(cornerRadius: 18))
+		.overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(active ? Color.sun : visited ? Color.leaf : Color.line, lineWidth: 2.5))
 	}
 
 	/// The place's first photo, or a dashed "foto" square that opens the place editor.

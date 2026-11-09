@@ -158,10 +158,7 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 		Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 			LikedBy(likersOf(current))
 			if (current.caption.isNotEmpty()) Caption(person?.name ?: "", current.caption)
-			if (current.comments > 0) Text(
-				if (current.comments == 1) "Ver 1 comentário" else "Ver os ${current.comments} comentários",
-				style = body(14, FontWeight.Bold), color = Palette.muted, modifier = Modifier.pressable({ open(Route.Media(current.id)) }),
-			)
+			CommentPreview(current.firstComments, current.comments) { open(Route.Media(current.id)) }
 		}
 	}
 }
@@ -246,6 +243,7 @@ fun CheckinPost(checkin: FeedCheckin, person: Person?, open: Opener) {
 		Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 			LikedBy(current)
 			if (checkin.note.isNotEmpty()) Caption(person?.name ?: "", checkin.note)
+			CommentPreview(checkin.firstComments, checkin.comments) { open(Route.Checkin(checkin.id)) }
 		}
 	}
 }
@@ -347,4 +345,22 @@ fun LikedBy(likers: List<String>) {
 			}
 		}, style = body(15), color = Palette.ink, modifier = Modifier.offset(x = (-8 * (minOf(3, ordered.size) - 1)).dp))
 	}
+}
+
+/** The first two comments under a post (Instagram-style), and a link to the rest (as on the web). */
+@Composable
+private fun CommentPreview(first: List<com.nelsul.curitibatrip.data.PreviewComment>, total: Int, onOpen: () -> Unit) {
+	val app = LocalApp.current
+	first.forEach { c ->
+		Text(buildAnnotatedString {
+			withStyle(SpanStyle(fontWeight = FontWeight.ExtraBold)) { append(app.person(c.userId)?.name ?: "Alguém") }
+			append("  ")
+			append(com.nelsul.curitibatrip.feature.detail.Mentions.highlight(c.body, app.people))
+		}, style = body(15), color = Palette.ink, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+			modifier = Modifier.fillMaxWidth().pressable(onOpen))
+	}
+	if (total > first.size) Text(
+		if (first.isEmpty()) (if (total == 1) "Ver 1 comentário" else "Ver os $total comentários") else "Ver todos os $total comentários",
+		style = body(14, FontWeight.Bold), color = Palette.muted, modifier = Modifier.pressable(onOpen),
+	)
 }

@@ -409,7 +409,10 @@ export async function dayRoute(date: string, userId?: string) {
 		// the transport of a stop is how you get there
 		const leg = await routeLeg([a.lng, a.lat], [b.lng, b.lat], b.transport === 'pe');
 		// back: the way home at the end of the day (the apps draw it differently from the way out)
-		legs.push({ transport: b.transport, back: !!night && i === rows.length - 1, ...leg });
+		const isBack = !!night && i === rows.length - 1;
+		// to: the number of the stop this leg arrives at (1 = the first stop with a place), null for the way back
+		const to = isBack ? null : i + (morning ? 0 : 1);
+		legs.push({ transport: b.transport, back: isBack, to, ...leg });
 	}
 	return { legs };
 }

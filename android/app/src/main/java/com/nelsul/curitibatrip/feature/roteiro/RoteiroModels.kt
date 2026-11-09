@@ -182,5 +182,5 @@ data class DayBody(val title: String, val who: String, val lead: String, val wed
 @Serializable
 data class DayRoute(val legs: List<Leg> = emptyList()) {
 	/** back = the way back to the stay at the end of the day (drawn dotted) */
-	@Serializable data class Leg(val transport: String, val coordinates: List<List<Double>> = emptyList(), val routed: Boolean = false, val back: Boolean = false)
+	@Serializable data class Leg(val transport: String, val coordinates: List<List<Double>> = emptyList(), val routed: Boolean = false, val back: Boolean = false, val to: Int? = null)
 }

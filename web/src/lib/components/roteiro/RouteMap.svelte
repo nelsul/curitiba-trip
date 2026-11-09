@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Map as MLMap, GeoJSONSource } from 'maplibre-gl';
+	import type { Map as MLMap, GeoJSONSource, FilterSpecification } from 'maplibre-gl';
 	import MapView from '$lib/components/MapView.svelte';
 	import { TRANSPORT, type Transport } from '$lib/itinerary';
 
@@ -25,9 +25,22 @@
 	} = $props();
 
 	const pins = new Map<number, HTMLElement>();
+	let mapRef = $state<MLMap>();
+	let routeReady = $state(false);
 	$effect(() => {
 		const a = active; // read first, so the effect follows it even before the pins exist
 		for (const [n, el] of pins) el.classList.toggle('on', n === a);
+	});
+	// the selected stop: the way to it from the previous one stands out, the rest fades
+	$effect(() => {
+		const a = active;
+		const m = mapRef;
+		if (!m || !routeReady) return;
+		const on: FilterSpecification = ['==', ['get', 'to'], a ?? -1];
+		m.setFilter('route-hot-casing', on);
+		m.setFilter('route-hot', on);
+		const fade = a == null ? 1 : 0.35;
+		for (const id of ['route', 'route-casing', 'route-back']) m.setPaintProperty(id, 'line-opacity', id === 'route-casing' ? 0.85 * fade : fade);
 	});
 
 	let note = $state('');
@@ -68,6 +81,21 @@
 			layout: { 'line-cap': 'round', 'line-join': 'round' },
 			paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-dasharray': ['literal', [0, 2]] }
 		});
+
+		// the highlighted leg (to the selected stop), drawn wider on top
+		map.addLayer({
+			id: 'route-hot-casing', type: 'line', source: 'route',
+			filter: ['==', ['get', 'to'], -1],
+			layout: { 'line-cap': 'round', 'line-join': 'round' },
+			paint: { 'line-color': '#fffcf0', 'line-width': 13 }
+		});
+		map.addLayer({
+			id: 'route-hot', type: 'line', source: 'route',
+			filter: ['==', ['get', 'to'], -1],
+			layout: { 'line-cap': 'round', 'line-join': 'round' },
+			paint: { 'line-color': cssColor('var(--coral)'), 'line-width': 7 }
+		});
+		mapRef = map;
 
 		const bounds = new ml.LngLatBounds();
 		for (const p of points) {
@@ -126,16 +154,17 @@
 			// the route depends on where you sleep: a new stay gets a new URL (the answer is cached for 5 min)
 			const r = await fetch(`/api/roteiro/days/${date}/route${homes.length ? `?casa=${homes.map((h) => `${h.lat.toFixed(5)},${h.lng.toFixed(5)}`).join(';')}` : ''}`);
 			if (!r.ok) throw new Error();
-			const { legs } = (await r.json()) as { legs: { transport: Transport; coordinates: [number, number][]; routed: boolean; back?: boolean }[] };
+			const { legs } = (await r.json()) as { legs: { transport: Transport; coordinates: [number, number][]; routed: boolean; back?: boolean; to?: number | null }[] };
 			hasBack = legs.some((l) => l.back);
 			(map.getSource('route') as GeoJSONSource | undefined)?.setData({
 				type: 'FeatureCollection',
 				features: legs.map((l) => ({
 					type: 'Feature',
-					properties: { color: cssColor(TRANSPORT[l.transport].color), dashed: !l.routed || l.transport === 'pe', back: !!l.back },
+					properties: { color: cssColor(TRANSPORT[l.transport].color), dashed: !l.routed || l.transport === 'pe', back: !!l.back, to: l.to ?? -1 },
 					geometry: { type: 'LineString', coordinates: l.coordinates }
 				}))
 			});
+			routeReady = true;
 			if (legs.some((l) => !l.routed)) note = 'Alguns trechos aparecem em linha reta (sem rota pelas ruas).';
 		} catch {
 			note = 'Não foi possível traçar a rota agora.';

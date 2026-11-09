@@ -1,5 +1,6 @@
 package com.nelsul.curitibatrip.feature.roteiro
 
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.nelsul.curitibatrip.data.Route
@@ -312,6 +313,8 @@ private fun Ticket(
 	onVisit: (RoteiroStop) -> Unit, onEditPlace: ((RoteiroPlace) -> Unit)?, onEdit: (() -> Unit)?, onPick: (Int) -> Unit, onStopPlaced: (Int, Int) -> Unit,
 ) {
 	val shape = RoundedCornerShape(Radius.card)
+	// the stop picked on the map or in the list: the way to it is highlighted
+	var active by remember(d.date) { mutableStateOf<Int?>(null) }
 	var n = 0
 	val numbered = d.stops.map { s -> s to placeOf(s.placeId)?.let { ++n } }
 	val points = numbered.mapNotNull { (s, num) ->
@@ -367,7 +370,7 @@ private fun Ticket(
 			if (points.isNotEmpty() && style != null) {
 				key(d.date) {
 					RouteMap(style, d.date, points, Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(18.dp)).border(2.5.dp, Palette.line, RoundedCornerShape(18.dp)),
-						homes, onPick, onPickHome = { onPick(if (it == "start") HOME_START else HOME_END) })
+						homes, { active = it; onPick(it) }, onPickHome = { onPick(if (it == "start") HOME_START else HOME_END) }, active = active)
 				}
 				Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 					RoteiroTransport.entries.filter { t -> d.stops.any { it.transport == t.key } }.forEach { t ->
@@ -385,7 +388,8 @@ private fun Ticket(
 			start?.let { HomeStop(it, true, open, Modifier.onGloballyPositioned { c -> onStopPlaced(HOME_START, c.positionInRoot().y.toInt()) }) }
 			numbered.forEachIndexed { i, (s, num) ->
 				StopCard(s, num, placeOf(s.placeId), open, { onVisit(s) }, onEditPlace,
-					Modifier.popIn(100L + i * 70L).onGloballyPositioned { if (num != null) onStopPlaced(num, it.positionInRoot().y.toInt()) })
+					Modifier.popIn(100L + i * 70L).onGloballyPositioned { if (num != null) onStopPlaced(num, it.positionInRoot().y.toInt()) },
+					active = num != null && active == num, onSelect = { if (num != null) active = if (active == num) null else num })
 			}
 			if (d.stops.isEmpty()) Text("Nenhuma parada ainda.", style = body(15), color = Palette.muted)
 			end?.let { HomeStop(it, false, open, Modifier.onGloballyPositioned { c -> onStopPlaced(HOME_END, c.positionInRoot().y.toInt()) }) }
@@ -496,20 +500,33 @@ private fun StayCard(st: RoteiroStay, mine: Boolean, open: (String) -> Unit) {
 }
 
 @Composable
-private fun StopCard(s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -> Unit, onVisit: () -> Unit, onEditPlace: ((RoteiroPlace) -> Unit)?, modifier: Modifier) {
+private fun StopCard(
+	s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -> Unit, onVisit: () -> Unit, onEditPlace: ((RoteiroPlace) -> Unit)?, modifier: Modifier,
+	active: Boolean = false, onSelect: () -> Unit = {},
+) {
 	val app = LocalApp.current
 	val t = RoteiroTransport.of(s.transport)
 	val visited = s.visitedAt != null
+	val cover = p?.photos?.firstOrNull()
+	val card = RoundedCornerShape(18.dp)
 	Column(
-		modifier.fillMaxWidth().background(Palette.surface2.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-			.border(2.5.dp, if (visited) Palette.leaf else Palette.line, RoundedCornerShape(18.dp)).padding(12.dp),
-		verticalArrangement = Arrangement.spacedBy(8.dp),
+		modifier.fillMaxWidth().clip(card).background(Palette.surface2.copy(alpha = 0.4f), card)
+			.border(2.5.dp, if (active) Palette.sun else if (visited) Palette.leaf else Palette.line, card)
+			// tapping a stop highlights the way to it on the map
+			.clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, null, onClick = onSelect),
 	) {
+		// the place's photo across the top of the card
+		if (p != null && cover != null) {
+			val openPlace = LocalOpenPlace.current
+			AsyncImage(cover.url, "Foto de ${p.name}", contentScale = ContentScale.Crop,
+				modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Palette.surface2).pressable({ openPlace(p.id) }))
+			Box(Modifier.fillMaxWidth().height(2.dp).background(Palette.line))
+		}
+	Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 			if (p != null) {
-				val photo = p.photos.firstOrNull()
-				if (photo != null) {
-					AsyncImage(photo.url, "Foto de ${p.name}", contentScale = ContentScale.Crop, modifier = Modifier.size(76.dp).clip(RoundedCornerShape(14.dp)))
+				if (cover != null) {
+					// the photo is the cover above
 				} else if (onEditPlace == null) {
 					Box(Modifier.size(76.dp).background(p.categoryInfo.color.copy(alpha = 0.18f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
 						Icon(IconName.Pin, p.categoryInfo.color, size = 22.dp)
@@ -568,6 +585,7 @@ private fun StopCard(s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -
 			ChunkyButton(if (visited) "Fomos!" else "Fomos?", onVisit, variant = if (visited) ButtonVariant.Leaf else ButtonVariant.Secondary,
 				small = true, fullWidth = true, icon = IconName.Check)
 		}
+	}
 	}
 }
 

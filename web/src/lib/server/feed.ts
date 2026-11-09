@@ -4,7 +4,7 @@ import { checkins, comments, db, likes, media, users } from './db';
 import { mediaUrl } from './r2';
 import { dayKey } from '$lib/format';
 import { groupPosts, isOlderThan, postCursor, type Post } from '$lib/feed-group';
-import type { FeedCheckin, FeedItem, FeedMedia, Person } from '$lib/types';
+import type { FeedCheckin, FeedItem, FeedMedia, Person, PreviewComment } from '$lib/types';
 
 export async function people(): Promise<Person[]> {
 	const rows = await db()
@@ -32,7 +32,7 @@ export async function feedUnsigned(): Promise<Unsigned> {
 		.groupBy(comments.mediaId, comments.checkinId)
 		.as('counts');
 
-	const [mRows, cRows, likeRows] = await Promise.all([
+	const [mRows, cRows, likeRows, firstRows] = await Promise.all([
 		db()
 			.select({ m: media, n: counts.n })
 			.from(media)
@@ -43,8 +43,17 @@ export async function feedUnsigned(): Promise<Unsigned> {
 			.select({ c: checkins, n: counts.n })
 			.from(checkins)
 			.leftJoin(counts, sql`${counts.checkinId} = ${checkins.id}`),
-		db().select({ userId: likes.userId, mediaId: likes.mediaId, checkinId: likes.checkinId }).from(likes).orderBy(asc(likes.createdAt))
+		db().select({ userId: likes.userId, mediaId: likes.mediaId, checkinId: likes.checkinId }).from(likes).orderBy(asc(likes.createdAt)),
+		// the first two comments of each post
+		db().execute<{ id: string; user_id: string; body: string; target: string }>(sql`
+			select id, user_id, body, target from (
+				select id, user_id, body, coalesce(media_id, checkin_id) as target,
+					row_number() over (partition by coalesce(media_id, checkin_id) order by created_at, id) as n
+				from comments
+			) c where n <= 2 order by target, n`)
 	]);
+	const first = new Map<string, PreviewComment[]>();
+	for (const c of firstRows) (first.get(c.target) ?? first.set(c.target, []).get(c.target)!).push({ id: c.id, userId: c.user_id, body: c.body });
 	const likers = new Map<string, string[]>();
 	for (const l of likeRows) {
 		const k = (l.mediaId ?? l.checkinId)!;
@@ -77,6 +86,7 @@ export async function feedUnsigned(): Promise<Unsigned> {
 			lng: m.lng,
 			caption: m.caption,
 			comments: n ?? 0,
+			firstComments: first.get(m.id) ?? [],
 			durationS: m.durationS
 		};
 	});
@@ -93,6 +103,7 @@ export async function feedUnsigned(): Promise<Unsigned> {
 			note: c.note,
 			snapshot: null,
 			comments: n ?? 0,
+			firstComments: first.get(c.id) ?? [],
 			likers: likers.get(c.id) ?? []
 		};
 	});

@@ -237,6 +237,8 @@ struct DayRoute: Decodable, Sendable {
 		let routed: Bool
 		/// the way back to the stay at the end of the day (drawn dotted)
 		var back: Bool?
+		/// the number of the stop this leg arrives at (nil for the way back)
+		var to: Int?
 	}
 	let legs: [Leg]
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CommentPreview from './CommentPreview.svelte';
 	import Avatar from './Avatar.svelte';
 	import Icon from './Icon.svelte';
 	import LikeButton from './LikeButton.svelte';
@@ -122,9 +123,7 @@
 	<div class="text">
 		<LikedBy likers={likes[cur.id] ?? []} {persons} {meId} />
 		{#if cur.caption}<p class="caption"><strong>{p?.name}</strong> {cur.caption}</p>{/if}
-		{#if cur.comments}
-			<a class="small muted more" href="/m/{cur.id}#comentarios">Ver {cur.comments === 1 ? '1 comentário' : `os ${cur.comments} comentários`}</a>
-		{/if}
+		<CommentPreview first={cur.firstComments ?? []} total={cur.comments} {persons} href="/m/{cur.id}#comentarios" />
 	</div>
 </article>
 
@@ -169,5 +168,4 @@
 	.text { display: grid; gap: 4px; padding: 0 14px 14px; }
 	.caption { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 	.caption strong { font-weight: 800; margin-right: 4px; }
-	.more { text-decoration: none; font-weight: 700; }
 </style>

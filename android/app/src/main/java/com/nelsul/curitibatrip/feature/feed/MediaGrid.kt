@@ -81,20 +81,22 @@ fun CountdownCard(onClick: () -> Unit, modifier: Modifier = Modifier, big: Boole
 		modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
 			.background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(accent.copy(alpha = 0.3f), Palette.surface)))
 			.border(2.5.dp, Palette.berry.copy(alpha = 0.6f), RoundedCornerShape(22.dp))
-			.pressable(onClick).padding(14.dp)
+			.pressable(onClick).padding(horizontal = 18.dp, vertical = 16.dp)
 			.semantics { contentDescription = if (running) "Faltam ${left / 86400} dias e ${left / 3600 % 24} horas para o casamento" else "Retrospectiva da viagem" },
-		verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+		// counting: the ring and the numbers centered in the card
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = if (running) Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally) else Arrangement.spacedBy(12.dp),
 	) {
 		Box(Modifier.size(if (big) 72.dp else 52.dp).background(accent, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
 			Icon(if (running) IconName.Ring else IconName.Sparkle, if (running) Color.White else Palette.onSun, size = if (big) 40.dp else 28.dp)
 		}
-		if (running) androidx.compose.foundation.layout.Column {
+		if (running) androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
 			Text("Contagem para o casamento", style = body(13, FontWeight.ExtraBold), color = Palette.berry)
-			Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 				listOf(left / 86400 to "dias", left / 3600 % 24 to "horas", left / 60 % 60 to "min", left % 60 to "seg").forEach { (n, l) ->
 					androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
-						Text("%02d".format(n), style = com.nelsul.curitibatrip.ui.theme.display(if (big) 38 else 26), color = Palette.ink)
-						Text(l, style = body(11, FontWeight.ExtraBold), color = Palette.muted)
+						Text("%02d".format(n), style = com.nelsul.curitibatrip.ui.theme.display(if (big) 40 else 29), color = Palette.ink)
+						Text(l, style = body(11, FontWeight.ExtraBold), color = Palette.muted, modifier = Modifier.padding(top = 2.dp))
 					}
 				}
 			}

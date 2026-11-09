@@ -239,7 +239,7 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 			itemsIndexed(model.posts, key = { _, p -> p.key }) { i, post ->
 				Column(Modifier.widthIn(max = 600.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(22.dp)) {
 					if (i == 0 || model.posts[i - 1].day != post.day) {
-						DaySign(TripTime.longDay(post.day), Modifier.padding(top = if (i == 0) 0.dp else 8.dp))
+						DaySign(TripTime.longDay(post.day), Modifier.padding(top = if (i == 0) 8.dp else 14.dp))
 					}
 					val person = app.person(post.userId)
 					if (post.type == "checkin" && post.item != null) CheckinPost(post.item, person, open)

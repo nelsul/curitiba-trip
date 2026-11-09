@@ -41,6 +41,8 @@ struct FeedMedia: Codable, Identifiable, Hashable, Sendable {
 	let lng: Double?
 	let caption: String
 	let comments: Int
+	/// the first (oldest) two comments, shown under the post
+	var firstComments: [PreviewComment]? = nil
 	let durationS: Double?
 	var isVideo: Bool { kind == "video" }
 }
@@ -55,7 +57,14 @@ struct FeedCheckin: Codable, Identifiable, Hashable, Sendable {
 	let note: String
 	let snapshot: URL?
 	let comments: Int
+	var firstComments: [PreviewComment]? = nil
 	var likers: [String]
+}
+
+struct PreviewComment: Codable, Hashable, Sendable {
+	let id: String
+	let userId: String
+	let body: String
 }
 
 /// A feed post: a carousel of photos/videos, or a check-in (grouped by the server like the web).

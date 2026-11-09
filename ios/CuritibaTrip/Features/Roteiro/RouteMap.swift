@@ -38,6 +38,8 @@ struct RouteMap: UIViewRepresentable {
 	let date: String
 	let points: [RoutePoint]
 	var homes: [RouteHome] = []
+	/// the selected stop: the leg to it stands out, the others fade
+	var active: Int? = nil
 	var onPick: (Int) -> Void = { _ in }
 	var onPickHome: (String) -> Void = { _ in }
 
@@ -64,6 +66,10 @@ struct RouteMap: UIViewRepresentable {
 			c.date = date
 			c.reload()
 		}
+		if c.active != active {
+			c.active = active
+			c.highlight()
+		}
 	}
 
 	@MainActor
@@ -73,6 +79,7 @@ struct RouteMap: UIViewRepresentable {
 		var shown: [RoutePoint] = []
 		var homes: [RouteHome] = []
 		var date = ""
+		var active: Int?
 		private var styleReady = false
 		private var lastSize = CGSize.zero
 		private var routeTask: Task<Void, Never>?
@@ -107,7 +114,21 @@ struct RouteMap: UIViewRepresentable {
 			back.lineJoin = NSExpression(forConstantValue: "round")
 			back.lineDashPattern = NSExpression(forConstantValue: [0, 2])
 			style.addLayer(back)
+			// the leg to the selected stop, wider and coral, on top
+			let hotCasing = MLNLineStyleLayer(identifier: "route-hot-casing", source: source)
+			hotCasing.lineColor = NSExpression(forConstantValue: UIColor(red: 1, green: 0.99, blue: 0.94, alpha: 1))
+			hotCasing.lineWidth = NSExpression(forConstantValue: 13)
+			let hot = MLNLineStyleLayer(identifier: "route-hot", source: source)
+			hot.lineColor = NSExpression(forConstantValue: UIColor(Color.coral))
+			hot.lineWidth = NSExpression(forConstantValue: 7)
+			for l in [hotCasing, hot] {
+				l.lineCap = NSExpression(forConstantValue: "round")
+				l.lineJoin = NSExpression(forConstantValue: "round")
+				l.predicate = NSPredicate(format: "to == -1")
+				style.addLayer(l)
+			}
 			styleReady = true
+			highlight()
 			reload()
 		}
 
@@ -151,10 +172,22 @@ struct RouteMap: UIViewRepresentable {
 				let f = MLNPolylineFeature(coordinates: &coords, count: UInt(coords.count))
 				let t = RoteiroTransport.of(leg.transport)
 				f.attributes = ["color": UIColor(t.color).hexString, "dashed": NSNumber(value: !leg.routed || t == .pe),
-								"back": NSNumber(value: leg.back == true)]
+								"back": NSNumber(value: leg.back == true), "to": NSNumber(value: leg.to ?? -1)]
 				return f
 			}
 			source.shape = MLNShapeCollectionFeature(shapes: features)
+		}
+
+		/// Shows the leg to the selected stop and fades the rest (web RouteMap does the same).
+		func highlight() {
+			guard styleReady, let style = map?.style else { return }
+			let pred = NSPredicate(format: "to == %@", NSNumber(value: active ?? -1))
+			for id in ["route-hot-casing", "route-hot"] { (style.layer(withIdentifier: id) as? MLNLineStyleLayer)?.predicate = pred }
+			let fade = active == nil ? 1.0 : 0.35
+			for id in ["route", "route-dashed", "route-back"] {
+				(style.layer(withIdentifier: id) as? MLNLineStyleLayer)?.lineOpacity = NSExpression(forConstantValue: fade)
+			}
+			(style.layer(withIdentifier: "route-casing") as? MLNLineStyleLayer)?.lineOpacity = NSExpression(forConstantValue: 0.85 * fade)
 		}
 
 		func fit() {
