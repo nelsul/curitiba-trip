@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Icon from './Icon.svelte';
-	import { FRAME_SIZE, FRAME_STYLES, drawFrame, loadImage, type FrameFormat, type FrameStyle } from '$lib/frames';
+	import { FRAME_SIZE, FRAME_STYLES, drawFrame, frameCaption, loadImage, type FrameFormat, type FrameStyle } from '$lib/frames';
+	import { TZ } from '$lib/format';
 
 	/** Builds one image with the chosen photos in a frame and shares it (Instagram, WhatsApp…) or downloads it. */
 	let { ids, onclose }: { ids: string[]; onclose: () => void } = $props();
@@ -15,6 +16,30 @@
 	let busy = $state(false);
 	const canShare = typeof navigator !== 'undefined' && 'canShare' in navigator;
 
+	// "Local e data": where you are now (the trip's place or the neighborhood) and today's date
+	const today = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: 'numeric', month: 'long' }).format(new Date());
+	let withPlace = $state(false);
+	let place = $state('');
+	let locating = $state(false);
+	async function togglePlace() {
+		withPlace = !withPlace;
+		if (!withPlace || place) return;
+		locating = true;
+		place = await new Promise<string>((ok) => {
+			if (!('geolocation' in navigator)) return ok('Curitiba');
+			navigator.geolocation.getCurrentPosition(
+				async (p) => {
+					const r = await fetch(`/api/places/here?lat=${p.coords.latitude}&lng=${p.coords.longitude}`).catch(() => null);
+					ok(r?.ok ? (await r.json()).name : 'Curitiba');
+				},
+				() => ok('Curitiba'),
+				{ timeout: 10_000, maximumAge: 120_000 }
+			);
+		});
+		locating = false;
+	}
+	const caption = $derived(withPlace ? frameCaption(place, today) : null);
+
 	onMount(() => {
 		dialog.showModal();
 		// same-origin copies, so the canvas can be exported
@@ -25,7 +50,7 @@
 	});
 
 	$effect(() => {
-		if (canvas && photos.length) drawFrame(canvas, photos, style, format);
+		if (canvas && photos.length) drawFrame(canvas, photos, style, format, caption);
 	});
 
 	const blob = () => new Promise<Blob>((ok, fail) => canvas!.toBlob((b) => (b ? ok(b) : fail(new Error('Não foi possível gerar a imagem.'))), 'image/jpeg', 0.92));
@@ -66,14 +91,14 @@
 		<button class="x" onclick={() => dialog.close()} aria-label="Fechar"><Icon name="close" size={20} /></button>
 	</header>
 	<div class="preview" style:aspect-ratio="{FRAME_SIZE[format].w}/{FRAME_SIZE[format].h}"
-		style:width="min(100%, calc((100dvh - 350px) * {FRAME_SIZE[format].w / FRAME_SIZE[format].h}))">
+		style:width="min(100%, calc((100dvh - 420px) * {FRAME_SIZE[format].w / FRAME_SIZE[format].h}))">
 		{#if photos.length}<canvas bind:this={canvas} aria-label="Prévia da imagem com {ids.length} {ids.length === 1 ? 'foto' : 'fotos'}"></canvas>
 		{:else if !error}<p class="muted">Preparando as fotos…</p>{/if}
 	</div>
-	<div class="chips" role="radiogroup" aria-label="Estilo">
+	<div class="chips styles" role="radiogroup" aria-label="Estilo">
 		{#each Object.entries(FRAME_STYLES) as [k, s] (k)}
 			<button class="chip" role="radio" aria-checked={style === k} onclick={() => (style = k as FrameStyle)}>
-				<i style:background={s.bg} style:border-color={s.title}></i>{s.label}
+				<i style:background={s.bg2 ? `linear-gradient(${s.bg}, ${s.bg2})` : s.bg} style:border-color={s.title}></i>{s.label}
 			</button>
 		{/each}
 	</div>
@@ -81,6 +106,13 @@
 		{#each Object.entries(FRAME_SIZE) as [k, f] (k)}
 			<button class="chip" role="radio" aria-checked={format === k} onclick={() => (format = k as FrameFormat)}>{f.label}</button>
 		{/each}
+	</div>
+	<div class="place">
+		<button class="chip" role="switch" aria-checked={withPlace} onclick={togglePlace}><Icon name="pin" size={16} /> Local e data</button>
+		{#if withPlace}
+			<input bind:value={place} maxlength="40" placeholder={locating ? 'Procurando onde você está…' : 'Onde vocês estão?'} aria-label="Local" />
+			<span class="small muted">{today}</span>
+		{/if}
 	</div>
 	{#if error}<p class="error small" role="alert">{error}</p>{/if}
 	<footer>
@@ -93,15 +125,20 @@
 <style>
 	.maker { width: min(520px, 100vw); max-width: 100vw; max-height: 100dvh; margin: auto; padding: 0 16px 16px; border: 2.5px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--ink); }
 	.maker::backdrop { background: rgb(10 15 30 / 0.7); }
-	.maker[open] { display: grid; gap: 12px; animation: pop-in 0.3s var(--bounce); }
+	.maker[open] { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; overflow-y: auto; animation: pop-in 0.3s var(--bounce); }
 	header { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; }
 	header h2 { margin: 0; }
 	.x { width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--surface); color: var(--ink); display: grid; place-items: center; cursor: pointer; }
 	.preview { margin: 0 auto; display: grid; place-items: center; background: var(--surface); border-radius: 12px; overflow: hidden; }
 	canvas { width: 100%; height: 100%; display: block; }
 	.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+	/* one row that scrolls sideways (9 styles) */
+	.chips.styles { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: thin; padding-bottom: 6px; min-width: 0; }
+	.chips.styles .chip { flex: none; }
 	.chip { gap: 6px; }
 	.chip i { width: 14px; height: 14px; border-radius: 4px; border: 2px solid; display: inline-block; }
+	.place { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+	.place input { flex: 1 1 160px; min-width: 0; max-width: 260px; }
 	.chip[aria-checked='true'] { background: var(--sea); border-color: var(--sea); color: var(--on-sea); }
 	footer { display: flex; gap: 8px; justify-content: center; }
 	.hint { margin: 0; text-align: center; }

@@ -1,6 +1,5 @@
 package com.nelsul.curitibatrip.feature.retro
 
-import android.net.Uri
 import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -220,7 +219,7 @@ fun StoryDialog(items: List<FeedMedia>, onClose: () -> Unit) {
 				}
 				current != null -> Box(Modifier.fillMaxSize()) {
 					if (current.isVideo && current.video != null) AndroidView(
-						factory = { ctx -> VideoView(ctx).apply { setVideoURI(Uri.parse(current.video)); setOnPreparedListener { start() }; videoView = this } },
+						factory = { ctx -> VideoView(ctx).apply { setVideoURI(com.nelsul.curitibatrip.data.VideoCache.playable(current.video)); setOnPreparedListener { start() }; videoView = this } },
 						onRelease = { it.stopPlayback(); videoView = null },
 						modifier = Modifier.fillMaxSize().systemBarsPadding(),
 					) else AsyncImage(current.image, current.caption.ifEmpty { null }, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())

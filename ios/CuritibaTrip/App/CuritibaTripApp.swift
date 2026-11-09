@@ -47,6 +47,7 @@ struct RootView: View {
 final class AppDelegate: NSObject, UIApplicationDelegate {
 	func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
 		MainActor.assumeIsolated {
+			MediaCache.setUp()
 			// must be registered before launch finishes
 			Notifier.registerBackgroundTask()
 			UNUserNotificationCenter.current().delegate = Notifier.shared

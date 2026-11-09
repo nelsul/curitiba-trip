@@ -92,22 +92,41 @@ struct FeedView: View {
 	@ViewBuilder private var selectionBar: some View {
 		if selecting && !selected.isEmpty {
 			let picked = selected.compactMap { id in library.items.first { $0.id == id } }
-			HStack(spacing: 8) {
-				Text("\(selected.count) \(selected.count == 1 ? "escolhida" : "escolhidas")").font(.text(16, .extraBold)).foregroundStyle(Color.ink)
-				Spacer()
-				if app.me?.isAdmin == true {
-					Button { Task { await addToRetro() } } label: { Label { Text("Retrô") } icon: { Icon(.sparkle, size: 16) } }
-						.buttonStyle(.chunky(.secondary, small: true))
-				}
-				Button { framing = FrameSelection(items: picked) } label: { Label { Text("Moldura") } icon: { Icon(.frame, size: 16) } }
-					.buttonStyle(.chunky(.sun, small: true))
-					.disabled(picked.count > Frames.max || picked.contains { $0.isVideo })
+			// narrow phones or bigger text: first the count gets shorter, then the buttons lose their words
+			ViewThatFits(in: .horizontal) {
+				selectionRow(picked, count: "\(selected.count) \(selected.count == 1 ? "escolhida" : "escolhidas")", words: true)
+				selectionRow(picked, count: "\(selected.count)", words: true)
+				selectionRow(picked, count: "\(selected.count)", words: false)
 			}
 			.padding(12)
 			.card(padding: 0)
 			.padding(.horizontal, 12)
 			.padding(.bottom, 108)
 			.transition(.move(edge: .bottom).combined(with: .opacity))
+		}
+	}
+
+	private func selectionRow(_ picked: [FeedMedia], count: String, words: Bool) -> some View {
+		HStack(spacing: 8) {
+			Text(count).font(.text(16, .extraBold)).foregroundStyle(Color.ink).lineLimit(1).fixedSize()
+			Spacer(minLength: 4)
+			if app.me?.isAdmin == true {
+				Button { Task { await addToRetro() } } label: { selectionLabel("Retrô", icon: .sparkle, words: words) }
+					.buttonStyle(.chunky(.secondary, small: true))
+					.accessibilityLabel("Retrospectiva")
+			}
+			Button { framing = FrameSelection(items: picked) } label: { selectionLabel("Moldura", icon: .frame, words: words) }
+				.buttonStyle(.chunky(.sun, small: true))
+				.accessibilityLabel("Moldura")
+				.disabled(picked.count > Frames.max || picked.contains { $0.isVideo })
+		}
+	}
+
+	@ViewBuilder private func selectionLabel(_ title: String, icon: IconName, words: Bool) -> some View {
+		if words {
+			Label { Text(title) } icon: { Icon(icon, size: 16) }.lineLimit(1).fixedSize()
+		} else {
+			Icon(icon, size: 18)
 		}
 	}
 

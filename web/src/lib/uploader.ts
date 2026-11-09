@@ -32,7 +32,8 @@ export async function readMeta(file: File): Promise<FileMeta> {
 	};
 	if (kind !== 'photo') return meta;
 	try {
-		const exifr = (await import('exifr')).default;
+		// the "lite" build (JPEG/HEIC/TIFF, ~45 KB) instead of the full one (~75 KB)
+		const exifr = (await import('exifr/dist/lite.esm.mjs')).default;
 		const [gps, tags] = await Promise.all([
 			exifr.gps(file).catch(() => null),
 			exifr

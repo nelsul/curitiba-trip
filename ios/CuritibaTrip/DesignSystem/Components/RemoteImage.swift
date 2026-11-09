@@ -1,13 +1,13 @@
 import NukeUI
 import SwiftUI
 
-/// Cached remote image (memory + disk, via Nuke). R2 URLs stay the same for a whole day, so cache hits are common.
+/// Cached remote image (memory + disk, via Nuke), keyed by the file path so it survives the daily new signature (see MediaCache).
 struct RemoteImage: View {
 	let url: URL?
 	var contentMode: ContentMode = .fill
 
 	var body: some View {
-		LazyImage(url: url) { state in
+		LazyImage(request: MediaCache.imageRequest(url)) { state in
 			if let image = state.image {
 				image.resizable().aspectRatio(contentMode: contentMode)
 			} else {

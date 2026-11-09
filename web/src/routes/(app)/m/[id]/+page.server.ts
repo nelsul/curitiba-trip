@@ -1,13 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { addComment, deleteComment } from '$lib/server/comments';
 import { assertTarget, deleteMedia, mediaDetail, updateMedia } from '$lib/server/details';
-import { people } from '$lib/server/feed';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, depends }) => {
 	depends('app:media');
-	const [detail, persons] = await Promise.all([mediaDetail(params.id), people()]);
-	return { ...detail, persons };
+	return mediaDetail(params.id);
 };
 
 export const actions: Actions = {

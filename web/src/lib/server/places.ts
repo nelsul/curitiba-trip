@@ -72,3 +72,37 @@ export async function searchPlaces(q: string, near: { lat: number; lng: number }
 	for (const r of [...mine, ...found]) if (!out.some((o) => close(o, r) && fold(o.name) === fold(r.name))) out.push(r);
 	return out.slice(0, 10);
 }
+
+const hereCache = new Map<string, { at: number; name: string }>();
+
+/**
+ * A short name for where someone is (the frames' "local"): the trip's own place within ~300 m,
+ * else the OpenStreetMap place, neighborhood or city from Photon's reverse geocoding. Cached for a day (≈ 100 m).
+ */
+export async function placeHere(lat: number, lng: number): Promise<string> {
+	const all = await db().select({ name: places.name, lat: places.lat, lng: places.lng }).from(places);
+	const m = (a: number, b: number, c: number, d: number) => Math.hypot((a - c) * 111_000, (b - d) * 111_000 * Math.cos((a * Math.PI) / 180));
+	const near = all.map((p) => ({ p, d: m(lat, lng, p.lat, p.lng) })).sort((a, b) => a.d - b.d)[0];
+	if (near && near.d < 300) return near.p.name;
+
+	const key = `${lat.toFixed(3)}|${lng.toFixed(3)}`;
+	const hit = hereCache.get(key);
+	if (hit && Date.now() - hit.at < DAY) return hit.name;
+	const url = new URL('https://photon.komoot.io/reverse');
+	url.searchParams.set('lat', String(lat));
+	url.searchParams.set('lon', String(lng));
+	url.searchParams.set('limit', '1');
+	const r = await fetch(url, {
+		headers: { 'user-agent': 'curitiba-trip/1.0 (+https://github.com/nelsul/curitiba-trip)' },
+		signal: AbortSignal.timeout(6000)
+	});
+	if (!r.ok) throw new Error(`photon ${r.status}`);
+	const { features } = (await r.json()) as { features: PhotonFeature[] };
+	const f = features[0]?.properties ?? {};
+	// a named place (a park, a restaurant) reads better than a street; otherwise the neighborhood, then the city
+	const named = f.name && f.type !== 'street' && f.type !== 'house' ? f.name : undefined;
+	const name = [named ?? f.district ?? f.locality, f.city].filter((x, i, a) => x && a.indexOf(x) === i).join(', ') || f.city || 'Curitiba';
+	if (hereCache.size > 500) hereCache.clear();
+	hereCache.set(key, { at: Date.now(), name });
+	return name;
+}

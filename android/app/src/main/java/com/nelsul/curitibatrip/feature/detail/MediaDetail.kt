@@ -256,7 +256,7 @@ private fun Viewer(item: MediaItem, onZoom: () -> Unit) {
 				factory = { ctx ->
 					VideoView(ctx).apply {
 						setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
-						setVideoURI(Uri.parse(item.video))
+						setVideoURI(com.nelsul.curitibatrip.data.VideoCache.playable(item.video))
 						setOnPreparedListener { start() }
 					}
 				},

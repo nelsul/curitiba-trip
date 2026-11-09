@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 
 /// Every photo and video (no check-ins), newest first: the Diário's grid ("Todas as fotos") and the reels.
-/// Loads every page of GET /api/feed (a trip has a few hundred items at most).
+/// One request to GET /api/feed/media (already only ready ones, newest first).
 @MainActor @Observable
 final class MediaLibrary {
 	var items: [FeedMedia] = []
@@ -15,19 +15,8 @@ final class MediaLibrary {
 		loading = true
 		defer { loading = false }
 		do {
-			var found: [FeedMedia] = []
-			var cursor: String?
-			repeat {
-				let page: FeedPage = try await API.shared.get("/api/feed", query: ["limit": "50", "before": cursor])
-				for post in page.posts {
-					if case .media(_, _, _, _, let media) = post {
-						// carousels are oldest → newest inside; the grid is newest first
-						found += media.reversed().filter { $0.status == "ready" && ($0.image != nil || $0.video != nil) }
-					}
-				}
-				cursor = page.nextCursor
-			} while cursor != nil
-			items = found
+			let page: GridPage = try await API.shared.get("/api/feed/media")
+			items = page.media
 			error = nil
 		} catch {
 			app.handle(error)
@@ -39,6 +28,8 @@ final class MediaLibrary {
 		items.filter { (day == nil || $0.day == day) && (person == nil || $0.userId == person) }
 	}
 }
+
+private struct GridPage: Decodable { let media: [FeedMedia] }
 
 /// Full-screen reels over the Diário, starting at the post that was tapped. Only the one on screen plays.
 struct ReelsScreen: View {
@@ -274,7 +265,7 @@ private struct LoopingVideo: UIViewRepresentable {
 			if playing {
 				if player == nil {
 					let p = AVQueuePlayer()
-					looper = AVPlayerLooper(player: p, templateItem: AVPlayerItem(url: url))
+					looper = AVPlayerLooper(player: p, templateItem: AVPlayerItem(url: VideoCache.shared.playable(url)))
 					playerLayer.player = p
 					player = p
 					// play sound even with the silent switch on, like other video apps
