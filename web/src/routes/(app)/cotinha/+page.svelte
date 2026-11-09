@@ -17,6 +17,32 @@
 	const iOwe = $derived(data.splits.reduce((a, s) => a + (s.payerId !== me ? s.shares.filter((x) => x.userId === me && !x.paidAt).reduce((b, x) => b + x.amountCents, 0) : 0), 0));
 	const owedToMe = $derived(data.splits.reduce((a, s) => a + (s.payerId === me ? s.shares.filter((x) => x.userId !== me && !x.paidAt).reduce((b, x) => b + x.amountCents, 0) : 0), 0));
 	let filter = $state<'abertas' | 'todas'>('abertas');
+	/** Cotinhas, or what I owe grouped by who paid ("Por pessoa", to pay everything with one Pix) */
+	let view = $state<'cotinhas' | 'pessoas'>('cotinhas');
+	type Debt = { payerId: string; totalCents: number; pixKey: string; items: { id: string; title: string; amountCents: number; createdAt: string }[] };
+	const debts = $derived.by(() => {
+		const by = new Map<string, Debt>();
+		for (const s of data.splits) {
+			if (s.payerId === me) continue;
+			const mine = s.shares.find((x) => x.userId === me && !x.paidAt);
+			if (!mine) continue;
+			const d = by.get(s.payerId) ?? by.set(s.payerId, { payerId: s.payerId, totalCents: 0, pixKey: '', items: [] }).get(s.payerId)!;
+			d.totalCents += mine.amountCents;
+			if (!d.pixKey && s.pixKey) d.pixKey = s.pixKey; // the newest one (the list is newest first)
+			d.items.push({ id: s.id, title: s.title, amountCents: mine.amountCents, createdAt: s.createdAt });
+		}
+		return [...by.values()].sort((a, b) => b.totalCents - a.totalCents);
+	});
+	async function payAll(d: Debt) {
+		if (!confirm(`Marcar como pago tudo o que você deve para ${name(d.payerId)} (${brl(d.totalCents)})?`)) return;
+		try {
+			await api('POST', '/api/splits/pay-all', { payerId: d.payerId });
+			say(`Pronto! ${d.items.length === 1 ? 'A cotinha foi marcada' : `As ${d.items.length} cotinhas foram marcadas`} como paga${d.items.length === 1 ? '' : 's'}.`);
+			await reload();
+		} catch (err) {
+			alert((err as Error).message);
+		}
+	}
 	const open = (s: (typeof data.splits)[number]) => s.shares.some((x) => !x.paidAt);
 	const shown = $derived(data.splits.filter((s) => filter === 'todas' || open(s)));
 
@@ -119,6 +145,37 @@
 
 	<button class="btn sun block" onclick={startNew}><Icon name="plus" size={20} /> Nova cotinha</button>
 
+	<div class="views" role="tablist" aria-label="Ver">
+		<button role="tab" aria-selected={view === 'cotinhas'} onclick={() => (view = 'cotinhas')}><Icon name="wallet" size={18} /> Cotinhas</button>
+		<button role="tab" aria-selected={view === 'pessoas'} onclick={() => (view = 'pessoas')}><Icon name="people" size={18} /> Por pessoa</button>
+	</div>
+
+	{#if view === 'pessoas'}
+		<p class="muted small intro">Quanto você deve para cada pessoa, somando as cotinhas. Pague tudo de uma vez com um Pix só e marque “Paguei tudo”.</p>
+		{#each debts as d (d.payerId)}
+			{@const p = byId.get(d.payerId)}
+			<article class="card split debt">
+				<header>
+					<Avatar name={p?.name ?? '?'} color={p?.color ?? '#888'} photo={p?.photo} size={44} />
+					<div class="ttl"><h2>{name(d.payerId)}</h2><span class="small muted">{d.items.length} {d.items.length === 1 ? 'cotinha' : 'cotinhas'}</span></div>
+					<strong class="total owe-total">{brl(d.totalCents)}</strong>
+				</header>
+				{#if d.pixKey}
+					<button class="pix" onclick={() => copy(d.pixKey)} aria-label="Copiar a chave Pix {d.pixKey}">
+						<span class="small muted">Pix de {name(d.payerId)} · toque para copiar</span>
+						<span class="key">{d.pixKey}</span>
+						<Icon name="copy" size={18} />
+					</button>
+				{/if}
+				<ul class="items">
+					{#each d.items as it (it.id)}<li><span>{it.title}</span><span class="small muted">{fmtAgo(it.createdAt)}</span><b>{brl(it.amountCents)}</b></li>{/each}
+				</ul>
+				<button class="btn sun block" onclick={() => payAll(d)}><Icon name="check" size={18} /> Paguei tudo · {brl(d.totalCents)}</button>
+			</article>
+		{:else}
+			<div class="card empty-card"><Icon name="check" size={40} /><p>Você não deve nada para ninguém.</p></div>
+		{/each}
+	{:else}
 	<div class="chips filter" role="tablist" aria-label="Mostrar">
 		<button role="tab" class="chip" aria-selected={filter === 'abertas'} onclick={() => (filter = 'abertas')}>Em aberto</button>
 		<button role="tab" class="chip" aria-selected={filter === 'todas'} onclick={() => (filter = 'todas')}>Todas</button>
@@ -188,6 +245,7 @@
 	{:else}
 		<div class="card empty-card"><Icon name="wallet" size={40} /><p>{filter === 'abertas' ? 'Nenhuma cotinha em aberto.' : 'Nenhuma cotinha ainda.'}</p></div>
 	{/each}
+	{/if}
 </main>
 
 {#if toast}<p class="toast" role="status">{toast}</p>{/if}
@@ -200,7 +258,8 @@
 		</header>
 		<label><span class="label">O que foi</span><input bind:value={title} required maxlength="120" placeholder="Ex.: Mercado, Uber do aeroporto" /></label>
 		<label><span class="label">Valor total (R$)</span><input bind:value={amount} required inputmode="decimal" placeholder="0,00" /></label>
-		<label><span class="label">Sua chave Pix</span><input bind:value={pix} maxlength="140" placeholder="CPF, e-mail, celular ou chave aleatória" autocomplete="off" /></label>
+		<label><span class="label">Sua chave Pix</span><input bind:value={pix} maxlength="140" placeholder="CPF, e-mail, celular ou chave aleatória" autocomplete="off" />
+			<span class="small muted">Fica salva para as próximas cotinhas.</span></label>
 		<fieldset>
 			<legend class="label">Quem divide ({who.length})</legend>
 			<div class="people">
@@ -232,6 +291,15 @@
 	.owe strong { color: var(--coral); }
 	.get strong { color: var(--leaf); }
 	.filter { margin: 14px 0 10px; }
+	.views { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 14px 0 4px; padding: 4px; background: var(--surface); border: 2.5px solid var(--line); border-radius: 999px; }
+	.views button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 600 1rem var(--font-display); cursor: pointer; }
+	.views button[aria-selected='true'] { background: var(--sea); color: var(--on-sea); }
+	.debt { margin-top: 10px; }
+	.owe-total { color: var(--coral); }
+	.items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+	.items li { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1.5px dashed var(--line); }
+	.items li:last-child { border-bottom: 0; }
+	.items b { font-variant-numeric: tabular-nums; }
 	.split { display: grid; gap: 10px; margin-bottom: 14px; animation: pop-in 0.4s var(--bounce) both; }
 	.split.done { opacity: 0.75; }
 	.split header { display: flex; align-items: center; gap: 10px; }

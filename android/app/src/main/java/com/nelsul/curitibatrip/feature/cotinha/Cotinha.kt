@@ -1,5 +1,6 @@
 package com.nelsul.curitibatrip.feature.cotinha
 
+import androidx.compose.ui.semantics.selected
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -97,6 +98,9 @@ fun CotinhaScreen(contentPadding: PaddingValues) {
 	var list by remember { mutableStateOf<SplitList?>(null) }
 	var error by remember { mutableStateOf<String?>(null) }
 	var showAll by remember { mutableStateOf(false) }
+	/** Cotinhas, or what I owe grouped by who paid ("Por pessoa", to pay everything with one Pix) */
+	var byPerson by remember { mutableStateOf(false) }
+	var paying by remember { mutableStateOf<Debt?>(null) }
 	var creating by remember { mutableStateOf(false) }
 	var deleting by remember { mutableStateOf<Split?>(null) }
 	var toast by remember { mutableStateOf<String?>(null) }
@@ -114,6 +118,7 @@ fun CotinhaScreen(contentPadding: PaddingValues) {
 	val all = list?.splits ?: emptyList()
 	val shown = all.filter { showAll || it.open }
 	val iOwe = all.filter { it.payerId != me }.flatMap { it.shares }.filter { it.userId == me && it.paidAt == null }.sumOf { it.amountCents }
+	val debts = debtsOf(all, me)
 	val owedToMe = all.filter { it.payerId == me }.flatMap { it.shares }.filter { it.userId != me && it.paidAt == null }.sumOf { it.amountCents }
 
 	Box(Modifier.fillMaxSize()) {
@@ -127,11 +132,25 @@ fun CotinhaScreen(contentPadding: PaddingValues) {
 						Total("Te devem", owedToMe, Palette.leaf, Modifier.weight(1f))
 					}
 					ChunkyButton("Nova cotinha", { creating = true }, variant = ButtonVariant.Sun, fullWidth = true, icon = IconName.Plus)
+					ViewSwitch(byPerson) { byPerson = it }
+					if (error != null && list == null) EmptyState(error!!, retry = { scope.launch { load() } })
+					if (byPerson) {
+						Text("Quanto você deve para cada pessoa, somando as cotinhas. Pague tudo de uma vez com um Pix só e marque “Paguei tudo”.", style = body(14), color = Palette.muted)
+						debts.forEach { d ->
+							DebtCard(d, copy = {
+								(context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Pix", d.pixKey))
+								toast = "Chave Pix copiada!"
+							}, payAll = { paying = d })
+						}
+						if (list != null && debts.isEmpty()) Column(Modifier.fillMaxWidth().card(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+							Icon(IconName.Check, Palette.leaf, size = 40.dp)
+							Text("Você não deve nada para ninguém.", style = body(16), color = Palette.muted)
+						}
+					} else {
 					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 						Chip(!showAll, { showAll = false }) { Text("Em aberto", style = body(15, FontWeight.ExtraBold)) }
 						Chip(showAll, { showAll = true }) { Text("Todas", style = body(15, FontWeight.ExtraBold)) }
 					}
-					if (error != null && list == null) EmptyState(error!!, retry = { scope.launch { load() } })
 					shown.forEach { s ->
 						SplitCard(s,
 							reload = { scope.launch { load() } },
@@ -142,7 +161,8 @@ fun CotinhaScreen(contentPadding: PaddingValues) {
 							},
 							delete = { deleting = s })
 					}
-					if (list != null && shown.isEmpty()) Column(Modifier.fillMaxWidth().card(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+					}
+					if (!byPerson && list != null && shown.isEmpty()) Column(Modifier.fillMaxWidth().card(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
 						Icon(IconName.Wallet, Palette.muted, size = 40.dp)
 						Text(if (showAll) "Nenhuma cotinha ainda." else "Nenhuma cotinha em aberto.", style = body(16), color = Palette.muted)
 					}
@@ -155,6 +175,18 @@ fun CotinhaScreen(contentPadding: PaddingValues) {
 		}
 	}
 	if (creating) NewSplitDialog(list?.myPix ?: "", onClose = { creating = false }) { scope.launch { load() } }
+	paying?.let { d ->
+		ConfirmDialog("Marcar como pago tudo o que você deve para ${app.person(d.payerId)?.name ?: "essa pessoa"} (${Money.brl(d.totalCents)})?", "Paguei tudo", { paying = null }) {
+			paying = null
+			scope.launch {
+				try {
+					Api.post<PayAllBody, PayAllResult>("/api/splits/pay-all", PayAllBody(d.payerId))
+					toast = if (d.items.size == 1) "Pronto! A cotinha foi marcada como paga." else "Pronto! As ${d.items.size} cotinhas foram marcadas como pagas."
+					load()
+				} catch (e: Exception) { app.handle(e); toast = e.message }
+			}
+		}
+	}
 	deleting?.let { s ->
 		ConfirmDialog("Apagar a cotinha \"${s.title}\"?", "Apagar", { deleting = null }) {
 			deleting = null
@@ -284,6 +316,7 @@ private fun NewSplitDialog(myPix: String, onClose: () -> Unit, created: () -> Un
 			Label("O que foi"); AppTextField(title, { title = it }, "Ex.: Mercado, Uber do aeroporto", Modifier.fillMaxWidth(), singleLine = true)
 			Label("Valor total (R$)"); AppTextField(amount, { amount = it }, "0,00", Modifier.fillMaxWidth(), singleLine = true, keyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal))
 			Label("Sua chave Pix"); AppTextField(pix, { pix = it }, "CPF, e-mail, celular ou chave aleatória", Modifier.fillMaxWidth(), singleLine = true)
+			Text("Fica salva para as próximas cotinhas.", style = body(13), color = Palette.muted)
 			Label("Quem divide (${who.size})")
 			app.people.forEach { p ->
 				val i = who.indexOf(p.id)
@@ -321,3 +354,78 @@ private fun NewSplitDialog(myPix: String, onClose: () -> Unit, created: () -> Un
 
 @Composable
 private fun Label(text: String) = Text(text, style = body(14, FontWeight.ExtraBold), color = Palette.ink)
+
+/** What I owe one person, adding up their cotinhas. */
+data class Debt(val payerId: String, val totalCents: Int, val pixKey: String, val items: List<Item>) {
+	data class Item(val id: String, val title: String, val amountCents: Int, val createdAt: String)
+}
+
+@kotlinx.serialization.Serializable data class PayAllBody(val payerId: String)
+@kotlinx.serialization.Serializable data class PayAllResult(val parts: Int = 0, val totalCents: Int = 0)
+
+/** What I still owe, per person who paid (their newest Pix key), biggest first. */
+fun debtsOf(splits: List<Split>, me: String?): List<Debt> =
+	splits.filter { it.payerId != me }
+		.mapNotNull { s -> s.shares.firstOrNull { it.userId == me && it.paidAt == null }?.let { s to it } }
+		.groupBy { it.first.payerId }
+		.map { (payer, rows) ->
+			Debt(payer, rows.sumOf { it.second.amountCents }, rows.firstOrNull { it.first.pixKey.isNotEmpty() }?.first?.pixKey ?: "",
+				rows.map { (s, x) -> Debt.Item(s.id, s.title, x.amountCents, s.createdAt) })
+		}
+		.sortedByDescending { it.totalCents }
+
+/** Cotinhas or Por pessoa. */
+@Composable
+private fun ViewSwitch(byPerson: Boolean, onChange: (Boolean) -> Unit) {
+	Row(
+		Modifier.fillMaxWidth().background(Palette.surface, CircleShape).border(2.5.dp, Palette.line, CircleShape).padding(4.dp),
+		horizontalArrangement = Arrangement.spacedBy(6.dp),
+	) {
+		listOf(false to (IconName.Wallet to "Cotinhas"), true to (IconName.People to "Por pessoa")).forEach { (value, v) ->
+			val on = byPerson == value
+			Row(
+				Modifier.weight(1f).heightIn(min = 40.dp).background(if (on) Palette.sea else Color.Transparent, CircleShape).pressable({ onChange(value) })
+					.semantics { selected = on },
+				verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+			) {
+				Icon(v.first, if (on) Palette.onSea else Palette.muted, size = 18.dp)
+				Text(" " + v.second, style = display(16), color = if (on) Palette.onSea else Palette.muted)
+			}
+		}
+	}
+}
+
+@Composable
+private fun DebtCard(debt: Debt, copy: () -> Unit, payAll: () -> Unit) {
+	val app = LocalApp.current
+	val p = app.person(debt.payerId)
+	Column(Modifier.fillMaxWidth().card(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			Avatar(p?.name ?: "?", colorOf(p?.color), p?.photo, 44.dp)
+			Column(Modifier.weight(1f)) {
+				Text(p?.name ?: "Alguém", style = display(18), color = Palette.ink)
+				Text("${debt.items.size} ${if (debt.items.size == 1) "cotinha" else "cotinhas"}", style = body(13), color = Palette.muted)
+			}
+			Text(Money.brl(debt.totalCents), style = display(20), color = Palette.coral)
+		}
+		if (debt.pixKey.isNotEmpty()) Row(
+			Modifier.fillMaxWidth().border(2.5.dp, Palette.sea, RoundedCornerShape(14.dp)).pressable(copy).padding(horizontal = 12.dp, vertical = 8.dp)
+				.semantics { contentDescription = "Copiar a chave Pix ${debt.pixKey}" },
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Column(Modifier.weight(1f)) {
+				Text("Pix de ${p?.name ?: "alguém"} · toque para copiar", style = body(13), color = Palette.muted)
+				Text(debt.pixKey, style = body(16, FontWeight.ExtraBold), color = Palette.ink)
+			}
+			Icon(IconName.Copy, Palette.sea, size = 18.dp)
+		}
+		debt.items.forEach { it ->
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+				Text(it.title, style = body(15), color = Palette.ink, modifier = Modifier.weight(1f))
+				Text(TripTime.ago(it.createdAt), style = body(12), color = Palette.muted)
+				Text(Money.brl(it.amountCents), style = body(15, FontWeight.ExtraBold), color = Palette.ink)
+			}
+		}
+		ChunkyButton("Paguei tudo · ${Money.brl(debt.totalCents)}", payAll, variant = ButtonVariant.Sun, fullWidth = true, icon = IconName.Check)
+	}
+}

@@ -27,6 +27,8 @@ export const users = pgTable('users', {
 	couple: text('couple').$type<CoupleRole>(),
 	/** id of the last like from the couple this person already saw the effect for */
 	seenCoupleLike: bigint('seen_couple_like', { mode: 'number' }).notNull().default(0),
+	/** the Pix key this person uses in the Cotinha (remembered for their next ones) */
+	pixKey: text('pix_key').notNull().default(''),
 	createdAt: createdAt()
 });
 

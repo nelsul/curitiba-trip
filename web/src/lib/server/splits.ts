@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db, splitShares, splits, users } from './db';
 import { clip } from './validate';
 import type { Actor } from './details';
@@ -21,7 +21,7 @@ export type Split = {
 	shares: SplitShare[];
 };
 
-/** Every cotinha, newest first, plus the Pix key I used last (to prefill a new one). */
+/** Every cotinha, newest first, plus my saved Pix key (to prefill a new one). */
 export async function listSplits(me: string) {
 	const rows = await db().select().from(splits).orderBy(desc(splits.createdAt));
 	const shares = rows.length
@@ -40,7 +40,8 @@ export async function listSplits(me: string) {
 			.filter((s) => s.splitId === r.id)
 			.map((s) => ({ userId: s.userId, amountCents: s.amountCents, paidAt: s.paidAt?.toISOString() ?? null }))
 	}));
-	const myPix = rows.find((r) => r.payerId === me && r.pixKey)?.pixKey ?? '';
+	const [u] = await db().select({ pix: users.pixKey }).from(users).where(eq(users.id, me));
+	const myPix = u?.pix || (rows.find((r) => r.payerId === me && r.pixKey)?.pixKey ?? '');
 	return { splits: list, myPix };
 }
 
@@ -77,11 +78,14 @@ export async function createSplit(payer: string, b: Body) {
 	const known = await db().select({ id: users.id }).from(users).where(inArray(users.id, parts.map((p) => p.userId)));
 	if (known.length !== parts.length) error(400, 'Pessoas inválidas.');
 
+	const pixKey = clip(b.pixKey, 140);
 	return db().transaction(async (tx) => {
 		const [s] = await tx
 			.insert(splits)
-			.values({ title, totalCents, payerId: payer, pixKey: clip(b.pixKey, 140), note: clip(b.note, 1000) })
+			.values({ title, totalCents, payerId: payer, pixKey, note: clip(b.note, 1000) })
 			.returning({ id: splits.id });
+		// remembered for the payer's next cotinhas
+		if (pixKey) await tx.update(users).set({ pixKey }).where(eq(users.id, payer));
 		const now = new Date();
 		await tx.insert(splitShares).values(
 			parts.map((p) => ({ splitId: s.id, ...p, ...(p.userId === payer ? { paidAt: now, paidBy: payer } : {}) }))
@@ -124,4 +128,23 @@ export async function remind(id: string, user: Actor) {
 	if (s.payerId !== user.id && !user.isAdmin) error(403, 'Só quem pagou pode cobrar.');
 	if (s.remindedAt && Date.now() - s.remindedAt.getTime() < 10 * 60_000) error(429, 'Você acabou de cobrar. Espere uns minutinhos.');
 	await db().update(splits).set({ remindedAt: new Date() }).where(eq(splits.id, s.id));
+}
+
+/**
+ * "Paguei tudo": marks every part I still owe to `payerId` as paid, in one go (one Pix for all of them).
+ * Returns how many parts and how much was settled.
+ */
+export async function payAll(user: Actor, payerId: unknown) {
+	if (typeof payerId !== 'string' || !UUID.test(payerId)) error(400, 'Pessoa inválida.');
+	const owed = await db()
+		.select({ splitId: splitShares.splitId, amountCents: splitShares.amountCents })
+		.from(splitShares)
+		.innerJoin(splits, eq(splits.id, splitShares.splitId))
+		.where(and(eq(splits.payerId, payerId), eq(splitShares.userId, user.id), isNull(splitShares.paidAt)));
+	if (!owed.length) return { parts: 0, totalCents: 0 };
+	await db()
+		.update(splitShares)
+		.set({ paidAt: new Date(), paidBy: user.id })
+		.where(and(eq(splitShares.userId, user.id), inArray(splitShares.splitId, owed.map((o) => o.splitId)), isNull(splitShares.paidAt)));
+	return { parts: owed.length, totalCents: owed.reduce((a, o) => a + o.amountCents, 0) };
 }

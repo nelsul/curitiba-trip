@@ -58,10 +58,11 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/splits` | → `{ splits: [{ id, title, totalCents, payerId, pixKey, note, createdAt, remindedAt, shares: [{ userId, amountCents, paidAt }] }], myPix }`. Newest first. `myPix` = the Pix key I used last (to prefill). |
+| GET | `/api/splits` | → `{ splits: [{ id, title, totalCents, payerId, pixKey, note, createdAt, remindedAt, shares: [{ userId, amountCents, paidAt }] }], myPix }`. Newest first. `myPix` = my saved Pix key (to prefill; saved whenever I create a cotinha with one). |
 | POST | `/api/splits` | `{ title, totalCents, pixKey?, note?, participants: [userId] }` (equal parts; leftover cents go to the first people) or `shares: [{ userId, amountCents }]` adding up to `totalCents` → `{ id }` (201). I'm the payer; my own part starts paid. |
 | DELETE | `/api/splits/:id` | The payer or an admin |
 | POST | `/api/splits/:id/paid` | `{ userId?, paid }`: my own part, or anyone's when I'm the payer (or admin) |
+| POST | `/api/splits/pay-all` | `{ payerId }`: "Paguei tudo", every part I still owe that person is marked paid (they get the `splitPaid` notifications) → `{ parts, totalCents }` |
 | POST | `/api/splits/:id/remind` | The payer: everyone who hasn't paid gets a notification (`/api/activity` `splits`, kind `reminder`). At most every 10 min (429). |
 | GET | `/api/retro` | → `{ weddingAt, items: [FeedMedia] }`: the countdown target and the admin's picks, in order. Clients show the countdown until `weddingAt`, then the picks as stories (admins can preview before). |
 | PUT | `/api/admin/retro` | Admin: `{ mediaIds: [...] }` replaces the list, in this order (max 300) |

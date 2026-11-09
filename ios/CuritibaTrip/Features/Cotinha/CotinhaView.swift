@@ -6,6 +6,9 @@ struct CotinhaView: View {
 	@State private var list: SplitList?
 	@State private var error: String?
 	@State private var showAll = false
+	/** Cotinhas, or what I owe grouped by who paid ("Por pessoa", to pay everything with one Pix) */
+	@State private var byPerson = false
+	@State private var paying: Debt?
 	@State private var creating = false
 	@State private var toast: String?
 	@State private var deleting: Split?
@@ -13,6 +16,19 @@ struct CotinhaView: View {
 	private var me: String { app.me?.id ?? "" }
 	private var splits: [Split] { (list?.splits ?? []).filter { showAll || $0.open } }
 	private var iOwe: Int { (list?.splits ?? []).filter { $0.payerId != me }.flatMap(\.shares).filter { $0.userId == me && $0.paidAt == nil }.map(\.amountCents).reduce(0, +) }
+	/// What I still owe, per person who paid (newest Pix key of theirs), biggest first.
+	private var debts: [Debt] {
+		var by: [String: Debt] = [:]
+		for s in list?.splits ?? [] where s.payerId != me {
+			guard let mine = s.shares.first(where: { $0.userId == me && $0.paidAt == nil }) else { continue }
+			var d = by[s.payerId] ?? Debt(payerId: s.payerId)
+			d.totalCents += mine.amountCents
+			if d.pixKey.isEmpty { d.pixKey = s.pixKey }
+			d.items.append(.init(id: s.id, title: s.title, amountCents: mine.amountCents, createdAt: s.createdAt))
+			by[s.payerId] = d
+		}
+		return by.values.sorted { $0.totalCents > $1.totalCents }
+	}
 	private var owedToMe: Int { (list?.splits ?? []).filter { $0.payerId == me }.flatMap(\.shares).filter { $0.userId != me && $0.paidAt == nil }.map(\.amountCents).reduce(0, +) }
 
 	var body: some View {
@@ -27,13 +43,27 @@ struct CotinhaView: View {
 				}
 				Button { creating = true } label: { Label { Text("Nova cotinha") } icon: { Icon(.plus, size: 20) } }
 					.buttonStyle(.chunky(.sun, fullWidth: true))
+				ViewSwitch(byPerson: $byPerson)
+				if let error, list == nil { EmptyState(text: error, retry: { Task { await load() } }) }
+				if byPerson {
+					Text("Quanto você deve para cada pessoa, somando as cotinhas. Pague tudo de uma vez com um Pix só e marque “Paguei tudo”.")
+						.font(.text(14)).foregroundStyle(Color.muted)
+					ForEach(debts) { d in DebtCard(debt: d, copy: { copy($0) }, payAll: { paying = d }).popIn() }
+					if list != nil && debts.isEmpty {
+						VStack(spacing: 8) {
+							Icon(.check, size: 40).foregroundStyle(Color.leaf)
+							Text("Você não deve nada para ninguém.").font(.text(16)).foregroundStyle(Color.muted)
+						}
+						.frame(maxWidth: .infinity).card()
+					}
+				} else {
 				HStack(spacing: 8) {
 					Chip(selected: !showAll, action: { showAll = false }) { Text("Em aberto") }
 					Chip(selected: showAll, action: { showAll = true }) { Text("Todas") }
 				}
-				if let error, list == nil { EmptyState(text: error, retry: { Task { await load() } }) }
 				ForEach(splits) { s in SplitCard(split: s, reload: load, say: say, delete: { deleting = s }).popIn() }
-				if list != nil && splits.isEmpty {
+				}
+				if !byPerson && list != nil && splits.isEmpty {
 					VStack(spacing: 8) {
 						Icon(.wallet, size: 40).foregroundStyle(Color.muted)
 						Text(showAll ? "Nenhuma cotinha ainda." : "Nenhuma cotinha em aberto.").font(.text(16)).foregroundStyle(Color.muted)
@@ -55,6 +85,19 @@ struct CotinhaView: View {
 			}
 		}
 		.sheet(isPresented: $creating) { NewSplitView(myPix: list?.myPix ?? "") { Task { await load() } } }
+		.confirmationDialog("Marcar como pago tudo o que você deve para \(app.person(paying?.payerId ?? "")?.name ?? "essa pessoa") (\(Money.brl(paying?.totalCents ?? 0)))?",
+							isPresented: Binding(get: { paying != nil }, set: { if !$0 { paying = nil } }), titleVisibility: .visible) {
+			Button("Paguei tudo") {
+				guard let d = paying else { return }
+				Task {
+					do {
+						let _: PayAllResult = try await API.shared.post("/api/splits/pay-all", PayAllBody(payerId: d.payerId))
+						say(d.items.count == 1 ? "Pronto! A cotinha foi marcada como paga." : "Pronto! As \(d.items.count) cotinhas foram marcadas como pagas.")
+						await load()
+					} catch { app.handle(error); say(error.localizedDescription) }
+				}
+			}
+		}
 		.confirmationDialog("Apagar a cotinha \"\(deleting?.title ?? "")\"?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
 			Button("Apagar", role: .destructive) {
 				guard let s = deleting else { return }
@@ -83,6 +126,11 @@ struct CotinhaView: View {
 			app.handle(error)
 			self.error = error.localizedDescription
 		}
+	}
+
+	private func copy(_ key: String) {
+		UIPasteboard.general.string = key
+		say("Chave Pix copiada!")
 	}
 
 	private func say(_ text: String) {
@@ -255,9 +303,10 @@ private struct NewSplitView: View {
 			Form {
 				Section("O que foi") { TextField("Ex.: Mercado, Uber do aeroporto", text: $title) }.listRowBackground(Color.surface)
 				Section("Valor total (R$)") { TextField("0,00", text: $amount).keyboardType(.decimalPad) }.listRowBackground(Color.surface)
-				Section("Sua chave Pix") {
+				Section {
 					TextField("CPF, e-mail, celular ou chave aleatória", text: $pix).textInputAutocapitalization(.never).autocorrectionDisabled()
-				}.listRowBackground(Color.surface)
+				} header: { Text("Sua chave Pix") } footer: { Text("Fica salva para as próximas cotinhas.") }
+				.listRowBackground(Color.surface)
 				Section("Quem divide (\(who.count))") {
 					ForEach(app.people) { p in
 						Button { if let i = who.firstIndex(of: p.id) { who.remove(at: i) } else { who.append(p.id) } } label: {
@@ -309,5 +358,94 @@ private struct NewSplitView: View {
 			app.handle(error)
 			self.error = error.localizedDescription
 		}
+	}
+}
+
+/// What I owe one person, adding up their cotinhas.
+struct Debt: Identifiable {
+	struct Item: Identifiable { let id: String; let title: String; let amountCents: Int; let createdAt: String }
+	let payerId: String
+	var totalCents = 0
+	var pixKey = ""
+	var items: [Item] = []
+	var id: String { payerId }
+}
+
+struct PayAllBody: Encodable, Sendable { let payerId: String }
+struct PayAllResult: Decodable, Sendable { let parts: Int; let totalCents: Int }
+
+/// Cotinhas or Por pessoa.
+private struct ViewSwitch: View {
+	@Binding var byPerson: Bool
+
+	var body: some View {
+		HStack(spacing: 6) {
+			item(false, .wallet, "Cotinhas")
+			item(true, .people, "Por pessoa")
+		}
+		.padding(4)
+		.background(Capsule().fill(Color.surface))
+		.overlay(Capsule().strokeBorder(Color.line, lineWidth: 2.5))
+		.animation(.bounce, value: byPerson)
+	}
+
+	private func item(_ value: Bool, _ icon: IconName, _ label: String) -> some View {
+		Button { byPerson = value } label: {
+			HStack(spacing: 6) { Icon(icon, size: 18); Text(label).font(.display(16)) }
+				.foregroundStyle(byPerson == value ? Color.onSea : Color.muted)
+				.frame(maxWidth: .infinity, minHeight: 40)
+				.background(Capsule().fill(byPerson == value ? Color.sea : .clear))
+		}
+		.buttonStyle(.plain)
+		.accessibilityAddTraits(byPerson == value ? .isSelected : [])
+	}
+}
+
+private struct DebtCard: View {
+	let debt: Debt
+	let copy: (String) -> Void
+	let payAll: () -> Void
+	@Environment(AppState.self) private var app
+
+	var body: some View {
+		let p = app.person(debt.payerId)
+		VStack(alignment: .leading, spacing: 10) {
+			HStack(spacing: 10) {
+				AvatarView(name: p?.name ?? "?", color: p?.tint ?? .muted, photo: p?.photo, size: 44)
+				VStack(alignment: .leading, spacing: 0) {
+					Text(p?.name ?? "Alguém").font(.display(18)).foregroundStyle(Color.ink)
+					Text("\(debt.items.count) \(debt.items.count == 1 ? "cotinha" : "cotinhas")").font(.text(13)).foregroundStyle(Color.muted)
+				}
+				Spacer()
+				Text(Money.brl(debt.totalCents)).font(.display(20)).foregroundStyle(Color.coral)
+			}
+			if !debt.pixKey.isEmpty {
+				Button { copy(debt.pixKey) } label: {
+					HStack {
+						VStack(alignment: .leading, spacing: 0) {
+							Text("Pix de \(p?.name ?? "alguém") · toque para copiar").font(.text(13)).foregroundStyle(Color.muted)
+							Text(debt.pixKey).font(.text(16, .extraBold)).foregroundStyle(Color.ink).multilineTextAlignment(.leading)
+						}
+						Spacer()
+						Icon(.copy, size: 18).foregroundStyle(Color.sea)
+					}
+					.padding(.horizontal, 12).padding(.vertical, 8)
+					.overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.sea, style: StrokeStyle(lineWidth: 2.5, dash: [6, 4])))
+				}
+				.buttonStyle(.plain)
+				.accessibilityLabel("Copiar a chave Pix \(debt.pixKey)")
+			}
+			ForEach(debt.items) { it in
+				HStack(alignment: .firstTextBaseline) {
+					Text(it.title).font(.text(15)).foregroundStyle(Color.ink)
+					Spacer()
+					Text(TripTime.ago(it.createdAt)).font(.text(12)).foregroundStyle(Color.muted)
+					Text(Money.brl(it.amountCents)).font(.text(15, .extraBold)).monospacedDigit().foregroundStyle(Color.ink)
+				}
+			}
+			Button(action: payAll) { Label { Text("Paguei tudo · \(Money.brl(debt.totalCents))") } icon: { Icon(.check, size: 18) } }
+				.buttonStyle(.chunky(.sun, fullWidth: true))
+		}
+		.card()
 	}
 }
