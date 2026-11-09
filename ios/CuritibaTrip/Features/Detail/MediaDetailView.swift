@@ -20,6 +20,7 @@ struct MediaDetailView: View {
 	@State private var zoom = false
 	@State private var confirmDelete = false
 	@State private var placing = false
+	@State private var mapStyle: URL?
 
 	var body: some View {
 		ScrollView {
@@ -54,6 +55,21 @@ struct MediaDetailView: View {
 							.font(.text(15, .extraBold)).tint(.leaf)
 					}
 					if let lat = item.lat, let lng = item.lng {
+						// where it was taken (web /m/:id shows the same small map)
+						ZStack {
+							if let mapStyle {
+								TripMap(styleURL: mapStyle, initialCenter: CLLocationCoordinate2D(latitude: lat, longitude: lng), initialZoom: 15)
+									.allowsHitTesting(false)
+							} else {
+								Color.surface2
+							}
+							PinMarker(color: person?.tint ?? .coral).frame(width: 56, height: 64).offset(y: -32).allowsHitTesting(false)
+						}
+						.frame(height: 200)
+						.clipShape(RoundedRectangle(cornerRadius: 18))
+						.overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.line, lineWidth: 2.5))
+						.task { if mapStyle == nil { mapStyle = try? await MapStyle.url() } }
+						.accessibilityLabel("Mapa do local da foto")
 						HStack(spacing: 12) {
 							Icon(.pin, size: 18).foregroundStyle(Color.sea)
 							Text(locationLabel(item.locationSource)).font(.text(14)).foregroundStyle(Color.muted)
