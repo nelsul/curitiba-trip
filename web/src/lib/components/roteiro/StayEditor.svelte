@@ -130,7 +130,7 @@
 					<input type="date" bind:value={checkOut} min={checkIn || undefined} />
 				</label>
 			</div>
-			<p class="small muted hint">No dia da chegada o roteiro termina aqui; no dia da saída, começa aqui. Sem datas = a viagem toda.</p>
+			<p class="small muted hint">Do dia da chegada ao dia da saída, o roteiro de quem fica aqui começa e termina aqui. Sem datas = a viagem toda.</p>
 
 			<fieldset class="guests">
 				<legend class="label">Quem fica aqui ({guests.length})</legend>

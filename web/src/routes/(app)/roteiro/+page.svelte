@@ -72,8 +72,9 @@
 
 	// ── where I sleep: the day leaves from there and comes back there ──
 	const stayById = $derived(new Map(data.stays.map((s) => [s.id, s])));
-	const startStay = $derived(day?.startStay ? (stayById.get(day.startStay) ?? null) : null);
-	const endStay = $derived(day?.endStay ? (stayById.get(day.endStay) ?? null) : null);
+	// only on days with somewhere to go
+	const startStay = $derived(day?.startStay && mapPoints.length ? (stayById.get(day.startStay) ?? null) : null);
+	const endStay = $derived(day?.endStay && mapPoints.length ? (stayById.get(day.endStay) ?? null) : null);
 	const homes = $derived.by(() => {
 		const h: { id: string; name: string; lat: number; lng: number; emoji: string; label: string }[] = [];
 		const pin = (s: RoteiroStay, id: string, label: string) => ({ id, name: s.name, lat: s.lat, lng: s.lng, emoji: STAY_KIND[s.kind].emoji, label });

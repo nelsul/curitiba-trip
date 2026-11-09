@@ -62,7 +62,7 @@ struct StayEditor: View {
 						DatePicker("Saída", selection: $checkOut, in: checkIn..., displayedComponents: .date)
 					}
 				} header: { Text("Datas") } footer: {
-					Text("No dia da chegada o roteiro termina aqui; no dia da saída, começa aqui. Sem datas = a viagem toda.")
+					Text("Do dia da chegada ao dia da saída, o roteiro de quem fica aqui começa e termina aqui. Sem datas = a viagem toda.")
 				}
 				.listRowBackground(Color.surface)
 				Section("Quem fica aqui (\(guests.count))") {

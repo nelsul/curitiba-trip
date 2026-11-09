@@ -181,5 +181,6 @@ data class DayBody(val title: String, val who: String, val lead: String, val wed
 /** GET /api/roteiro/days/:date/route */
 @Serializable
 data class DayRoute(val legs: List<Leg> = emptyList()) {
-	@Serializable data class Leg(val transport: String, val coordinates: List<List<Double>> = emptyList(), val routed: Boolean = false)
+	/** back = the way back to the stay at the end of the day (drawn dotted) */
+	@Serializable data class Leg(val transport: String, val coordinates: List<List<Double>> = emptyList(), val routed: Boolean = false, val back: Boolean = false)
 }

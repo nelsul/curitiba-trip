@@ -94,17 +94,27 @@ fun RouteMap(
 					s.addSource(GeoJsonSource("route"))
 					s.addLayer(LineLayer("route-casing", "route").withProperties(
 						PropertyFactory.lineColor("#fffcf0"), PropertyFactory.lineWidth(8f), PropertyFactory.lineOpacity(0.85f),
-						PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND)))
+						PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+					).apply { setFilter(Expression.eq(Expression.get("back"), Expression.literal(false))) })
 					for (dashed in listOf(false, true)) {
 						s.addLayer(LineLayer(if (dashed) "route-dashed" else "route", "route").withProperties(
 							PropertyFactory.lineColor(Expression.toColor(Expression.get("color"))), PropertyFactory.lineWidth(4.5f),
 							PropertyFactory.lineCap(if (dashed) Property.LINE_CAP_BUTT else Property.LINE_CAP_ROUND),
 							PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
 						).apply {
-							setFilter(Expression.eq(Expression.get("dashed"), Expression.literal(dashed)))
+							setFilter(Expression.all(
+								Expression.eq(Expression.get("dashed"), Expression.literal(dashed)),
+								Expression.eq(Expression.get("back"), Expression.literal(false)),
+							))
 							if (dashed) setProperties(PropertyFactory.lineDasharray(arrayOf(1f, 1.6f)))
 						})
 					}
+					// the way back to the stay: a row of dots, so it doesn't look like the way out
+					s.addLayer(LineLayer("route-back", "route").withProperties(
+						PropertyFactory.lineColor(Expression.toColor(Expression.get("color"))), PropertyFactory.lineWidth(5f),
+						PropertyFactory.lineCap(Property.LINE_CAP_ROUND), PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+						PropertyFactory.lineDasharray(arrayOf(0f, 2f)),
+					).apply { setFilter(Expression.eq(Expression.get("back"), Expression.literal(true))) })
 					map = m
 					style = s
 				}
@@ -153,6 +163,7 @@ fun RouteMap(
 			Feature.fromGeometry(LineString.fromLngLats(coords)).apply {
 				addStringProperty("color", "#%06x".format(t.color.toArgb() and 0xFFFFFF))
 				addBooleanProperty("dashed", !leg.routed || t == RoteiroTransport.Pe)
+				addBooleanProperty("back", leg.back)
 			}
 		}
 		s.getSourceAs<GeoJsonSource>("route")?.setGeoJson(FeatureCollection.fromFeatures(features))

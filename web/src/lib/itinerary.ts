@@ -84,14 +84,23 @@ export type RoteiroStay = {
 	guests: string[];
 };
 
-/** The stay `userId` wakes up in on `date` (slept there the night before). */
+/** The stays `userId` has on `date`, from the check-in day to the check-out day (both included). */
+const staysOn = (stays: RoteiroStay[], userId: string, date: string) =>
+	stays.filter((s) => s.guests.includes(userId) && (!s.checkIn || s.checkIn <= date) && (!s.checkOut || date <= s.checkOut));
+
+/**
+ * Where `userId` leaves from on `date`: every day of the stay counts, the arrival day too (the Roteiro is about the
+ * outings, not the trip there). On a day they change places, it's the one they slept in.
+ */
 export function morningStay(stays: RoteiroStay[], userId: string, date: string) {
-	return stays.find((s) => s.guests.includes(userId) && (!s.checkIn || s.checkIn < date) && (!s.checkOut || date <= s.checkOut)) ?? null;
+	const on = staysOn(stays, userId, date);
+	return on.find((s) => !s.checkIn || s.checkIn < date) ?? on[0] ?? null;
 }
 
-/** The stay `userId` sleeps in on the night of `date`. */
+/** Where `userId` goes back to at the end of `date` (on a day they change places, the new one). */
 export function nightStay(stays: RoteiroStay[], userId: string, date: string) {
-	return stays.find((s) => s.guests.includes(userId) && (!s.checkIn || s.checkIn <= date) && (!s.checkOut || date < s.checkOut)) ?? null;
+	const on = staysOn(stays, userId, date);
+	return on.find((s) => !s.checkOut || date < s.checkOut) ?? on[0] ?? null;
 }
 
 type LatLng = { lat: number; lng: number; name?: string; googlePlaceId?: string | null };
