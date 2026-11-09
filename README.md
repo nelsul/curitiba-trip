@@ -25,7 +25,7 @@ The interface is 100% in Portuguese (pt-BR). Code, comments and commit messages 
 | **Enviar** (yellow button, top right): originals in full quality with their own location and time | ✔ | ✔ (keeps sending with the app closed) | ✔ (keeps sending with the app closed) |
 | **Mapa:** polaroids, check-ins, live sharing, "go to where I am", check-in with a map picture | ✔ | ✔ | ✔ |
 | Mark or fix a photo's location: search a place by name, or pick it on the map | ✔ | ✔ | ✔ |
-| **Roteiro:** places to go and eat (photos, hours, prices, Uber), day-by-day itinerary with a route map, editable by everyone, "Fomos!" ticks shared by the group | ✔ | ✔ | ✔ |
+| **Roteiro:** places to go and eat (photos, hours, prices, Uber), day-by-day itinerary with a route map, editable by everyone, "Fomos!" ticks shared by the group; hotels/Airbnbs set up by admins, so each person's day starts and ends where they sleep | ✔ | ✔ | ✔ |
 | **Mais:** profile photo with a circle framer | ✔ | ✔ | ✔ |
 | Signed-in devices (sign one out) | — | ✔ | ✔ |
 | Save the original photo/video to the phone | download | Fotos | galeria |

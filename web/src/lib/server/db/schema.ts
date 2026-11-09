@@ -250,3 +250,39 @@ export const itineraryStops = pgTable(
 );
 
 export type Place = typeof places.$inferSelect;
+
+// ── Hospedagem: where people sleep (hotel / Airbnb), set up by admins. Each person's Roteiro day starts and
+// ends at their own stay. ──
+
+export type StayKind = 'hotel' | 'airbnb' | 'casa';
+
+export const stays = pgTable('stays', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	name: text('name').notNull(),
+	kind: text('kind').$type<StayKind>().notNull().default('hotel'),
+	lat: doublePrecision('lat').notNull(),
+	lng: doublePrecision('lng').notNull(),
+	address: text('address').notNull().default(''),
+	link: text('link').notNull().default(''),
+	/** YYYY-MM-DD: the first night there (null = since the start of the trip) */
+	checkIn: text('check_in'),
+	/** YYYY-MM-DD: the day you leave (null = until the end of the trip) */
+	checkOut: text('check_out'),
+	note: text('note').notNull().default(''),
+	createdAt: createdAt()
+});
+
+export const stayGuests = pgTable(
+	'stay_guests',
+	{
+		stayId: uuid('stay_id')
+			.notNull()
+			.references(() => stays.id, { onDelete: 'cascade' }),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' })
+	},
+	(t) => [uniqueIndex('stay_guests_pk').on(t.stayId, t.userId), index('stay_guests_user_idx').on(t.userId)]
+);
+
+export type Stay = typeof stays.$inferSelect;

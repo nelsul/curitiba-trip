@@ -64,6 +64,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,6 +77,8 @@ import com.nelsul.curitibatrip.data.TripTime
 import com.nelsul.curitibatrip.feature.feed.EmptyState
 import com.nelsul.curitibatrip.feature.mapa.MapStyle
 import com.nelsul.curitibatrip.ui.components.AppTextField
+import com.nelsul.curitibatrip.ui.components.Avatar
+import com.nelsul.curitibatrip.ui.components.colorOf
 import com.nelsul.curitibatrip.ui.components.ButtonVariant
 import com.nelsul.curitibatrip.ui.components.Chip
 import com.nelsul.curitibatrip.ui.components.ChunkyButton
@@ -101,7 +104,8 @@ private val dayMonth = DateTimeFormatter.ofPattern("dd/MM").withZone(TripTime.zo
 
 /**
  * Roteiro (web /roteiro), the same for everyone and editable by everyone:
- * **Dia a dia** (route map, stops with "Fomos?", Uber and Maps) and **Lugares** (places with photos, hours, prices).
+ * **Dia a dia** (route map, stops with "Fomos?", Uber and Maps), **Lugares** (places with photos, hours, prices) and
+ * **Hospedagem** (where everyone sleeps, set up by admins on the site; each day leaves from and comes back to it).
  */
 @Composable
 fun RoteiroScreen(contentPadding: PaddingValues) {
@@ -147,6 +151,8 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 	val places = data?.places.orEmpty()
 	val day = days.firstOrNull { it.date == selected } ?: days.firstOrNull()
 	val placeOf: (String?) -> RoteiroPlace? = { id -> id?.let { i -> places.firstOrNull { it.id == i } } }
+	val stays = data?.stays.orEmpty()
+	val stayOf: (String?) -> RoteiroStay? = { id -> id?.let { i -> stays.firstOrNull { it.id == i } } }
 	val nextDate = days.lastOrNull()?.let { LocalDate.parse(it.date).plusDays(1).toString() } ?: TripTime.dayKey(Instant.now().toString())
 
 	/** "Fomos!": one tick counts for the whole group. */
@@ -189,7 +195,7 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 		) {
 			Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
 				TitleRow(IconName.Ticket, "Roteiro")
-				Tabs(tab, places.size) { tab = it }
+				Tabs(tab) { tab = it }
 				error?.let { e -> if (data == null) EmptyState(e, retry = { scope.launch { load() } }) }
 				if (tab == 0) {
 					Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 6.dp, horizontal = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -212,7 +218,7 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 					}
 					if (day != null) {
 						Ticket(
-							day, days.indexOf(day) + 1, days.size, placeOf, style, open,
+							day, days.indexOf(day) + 1, days.size, placeOf, stayOf(day.startStay), stayOf(day.endStay), style, open,
 							onVisit = ::toggleVisit, onEditPlace = { editingPlace = it }, onEdit = { editingDay = day to day.date },
 							onPick = { n -> stopY[n]?.let { y -> scope.launch { scroll.animateScrollTo((y - columnTop - 120).coerceAtLeast(0)) } } },
 							onStopPlaced = { n, y -> stopY[n] = y + scroll.value },
@@ -223,8 +229,16 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 							ChunkyButton("Criar o primeiro dia", { editingDay = null to nextDate }, variant = ButtonVariant.Sun)
 						}
 					}
-				} else {
+				} else if (tab == 1) {
 					PlacesTab(places, days, open, onEdit = { editingPlace = it }, onNew = { newPlace = true }, onAdd = ::addToDay)
+				} else {
+					Text("O dia a dia de cada pessoa começa e termina onde ela está hospedada. Quem é administrador muda a hospedagem pelo site.",
+						style = body(14), color = Palette.muted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+					stays.forEach { StayCard(it, it.guests.contains(app.me?.id), open) }
+					if (stays.isEmpty() && data != null) {
+						Text("Nenhuma hospedagem cadastrada ainda.", style = body(15), color = Palette.muted, textAlign = TextAlign.Center,
+							modifier = Modifier.fillMaxWidth().card(24.dp))
+					}
 				}
 			}
 		}
@@ -242,14 +256,14 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 	if (newPlace) PlaceEditor(null, { newPlace = false }, changed = { scope.launch { load() } })
 }
 
-/** "Dia a dia" / "Lugares": the sea-blue pill switch (web .tabs). */
+/** "Dia a dia" / "Lugares" / "Hospedagem": the sea-blue pill switch (web .tabs). */
 @Composable
-private fun Tabs(tab: Int, places: Int, onSelect: (Int) -> Unit) {
+private fun Tabs(tab: Int, onSelect: (Int) -> Unit) {
 	Row(
 		Modifier.fillMaxWidth().background(Palette.surface, CircleShape).border(2.5.dp, Palette.line, CircleShape).padding(5.dp),
 		horizontalArrangement = Arrangement.spacedBy(6.dp),
 	) {
-		listOf(Triple(0, "Dia a dia", IconName.Calendar), Triple(1, "Lugares ($places)", IconName.Pin)).forEach { (i, label, icon) ->
+		listOf(Triple(0, "Dia a dia", IconName.Calendar), Triple(1, "Lugares", IconName.Pin), Triple(2, "Hospedagem", IconName.Home)).forEach { (i, label, icon) ->
 			val on = tab == i
 			Row(
 				Modifier
@@ -266,9 +280,9 @@ private fun Tabs(tab: Int, places: Int, onSelect: (Int) -> Unit) {
 					.semantics { selected = on },
 				horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
 			) {
-				Icon(icon, if (on) Palette.onSea else Palette.muted, size = 18.dp)
-				Spacer(Modifier.width(6.dp))
-				Text(label, style = display(16), color = if (on) Palette.onSea else Palette.muted)
+				Icon(icon, if (on) Palette.onSea else Palette.muted, size = 16.dp)
+				Spacer(Modifier.width(4.dp))
+				Text(label, style = display(14), color = if (on) Palette.onSea else Palette.muted, maxLines = 1, softWrap = false)
 			}
 		}
 	}
@@ -276,7 +290,7 @@ private fun Tabs(tab: Int, places: Int, onSelect: (Int) -> Unit) {
 
 @Composable
 private fun Ticket(
-	d: RoteiroDay, index: Int, total: Int, placeOf: (String?) -> RoteiroPlace?, style: String?, open: (String) -> Unit,
+	d: RoteiroDay, index: Int, total: Int, placeOf: (String?) -> RoteiroPlace?, start: RoteiroStay?, end: RoteiroStay?, style: String?, open: (String) -> Unit,
 	onVisit: (RoteiroStop) -> Unit, onEditPlace: (RoteiroPlace) -> Unit, onEdit: () -> Unit, onPick: (Int) -> Unit, onStopPlaced: (Int, Int) -> Unit,
 ) {
 	val shape = RoundedCornerShape(Radius.card)
@@ -285,6 +299,14 @@ private fun Ticket(
 	val points = numbered.mapNotNull { (s, num) ->
 		val p = placeOf(s.placeId) ?: return@mapNotNull null
 		RoutePoint(num ?: 0, p.name, p.lat, p.lng, p.photos.firstOrNull()?.url, s.visitedAt != null)
+	}
+	// the stay pin(s): one when you leave from and come back to the same place
+	val homes = when {
+		start != null && end != null && start.id == end.id -> listOf(RouteHome("start", start.name, start.emoji, "Saída e volta", start.lat, start.lng))
+		else -> listOfNotNull(
+			start?.let { RouteHome("start", it.name, it.emoji, "Saída", it.lat, it.lng) },
+			end?.let { RouteHome("end", it.name, it.emoji, "Volta", it.lat, it.lng) },
+		)
 	}
 	Column(
 		Modifier
@@ -325,7 +347,8 @@ private fun Ticket(
 			if (d.lead.isNotEmpty()) Text(d.lead, style = body(17), color = Palette.ink)
 			if (points.isNotEmpty() && style != null) {
 				key(d.date) {
-					RouteMap(style, d.date, points, Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(18.dp)).border(2.5.dp, Palette.line, RoundedCornerShape(18.dp)), onPick)
+					RouteMap(style, d.date, points, Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(18.dp)).border(2.5.dp, Palette.line, RoundedCornerShape(18.dp)),
+						homes, onPick, onPickHome = { onPick(if (it == "start") HOME_START else HOME_END) })
 				}
 				Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 					RoteiroTransport.entries.filter { t -> d.stops.any { it.transport == t.key } }.forEach { t ->
@@ -336,14 +359,115 @@ private fun Ticket(
 					}
 				}
 			}
+			start?.let { HomeStop(it, true, open, Modifier.onGloballyPositioned { c -> onStopPlaced(HOME_START, c.positionInRoot().y.toInt()) }) }
 			numbered.forEachIndexed { i, (s, num) ->
 				StopCard(s, num, placeOf(s.placeId), open, { onVisit(s) }, onEditPlace,
 					Modifier.popIn(100L + i * 70L).onGloballyPositioned { if (num != null) onStopPlaced(num, it.positionInRoot().y.toInt()) })
 			}
 			if (d.stops.isEmpty()) Text("Nenhuma parada ainda.", style = body(15), color = Palette.muted)
-			val route = Roteiro.routeUrl(d.stops.mapNotNull { placeOf(it.placeId) })
+			end?.let { HomeStop(it, false, open, Modifier.onGloballyPositioned { c -> onStopPlaced(HOME_END, c.positionInRoot().y.toInt()) }) }
+			val route = Roteiro.routeUrl(
+				listOfNotNull(start?.let { it.lat to it.lng }) + d.stops.mapNotNull { placeOf(it.placeId)?.let { p -> p.lat to p.lng } } +
+					listOfNotNull(end?.let { it.lat to it.lng }),
+			)
 			if (route != null && !d.wedding) ChunkyButton("Rota do dia no Google Maps", { open(route) }, variant = ButtonVariant.Sea, fullWidth = true, icon = IconName.Map)
 			ChunkyButton("✎ Editar este dia", onEdit, variant = ButtonVariant.Secondary, fullWidth = true)
+		}
+	}
+}
+
+/** stopY keys for the stay cards (stops use their number, 1…) */
+private const val HOME_START = -1
+private const val HOME_END = -2
+
+/** "Saída" / "Volta": where you sleep, at the start and end of the day. */
+@Composable
+private fun HomeStop(st: RoteiroStay, start: Boolean, open: (String) -> Unit, modifier: Modifier) {
+	val shape = RoundedCornerShape(18.dp)
+	Column(
+		modifier.fillMaxWidth()
+			.drawBehind {
+				drawRoundRect(Palette.sea, cornerRadius = CornerRadius(18.dp.toPx()),
+					style = Stroke(2.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 5.dp.toPx()))))
+			}
+			.clip(shape).padding(12.dp),
+		verticalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			Box(Modifier.size(76.dp).background(Palette.sea.copy(alpha = 0.22f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+				Text(st.emoji, style = body(32))
+			}
+			Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+				Row(
+					Modifier.background(Palette.sea, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 2.dp),
+					horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically,
+				) {
+					Icon(IconName.Home, Palette.onSea, size = 13.dp)
+					Text(if (start) "Saída" else "Volta", style = display(13), color = Palette.onSea)
+				}
+				Text(st.name, style = display(19), color = Palette.ink)
+				if (st.address.isNotEmpty()) Text(st.address, style = body(13), color = Palette.muted)
+			}
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			if (!start) ChunkyButton("Uber de volta", { open(st.uberUrl) }, variant = ButtonVariant.Uber, small = true, icon = IconName.Car)
+			Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "Abrir ${st.name} no Google Maps" }) {
+				ChunkyButton({ open(st.mapsUrl) }, variant = ButtonVariant.Secondary, small = true) { Icon(IconName.Map, Palette.ink, size = 18.dp) }
+			}
+		}
+	}
+}
+
+/** A stay in "Hospedagem": type, dates, address, who sleeps there, Uber, Maps and the booking link. */
+@Composable
+private fun StayCard(st: RoteiroStay, mine: Boolean, open: (String) -> Unit) {
+	val app = LocalApp.current
+	val day = { key: String -> "${TripTime.shortWeekday(key)} ${key.takeLast(2)}/${key.substring(5, 7)}" }
+	Column(
+		Modifier.fillMaxWidth().popIn().then(if (mine) Modifier.border(2.5.dp, Palette.leaf, RoundedCornerShape(Radius.card)) else Modifier).card(14.dp),
+		verticalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+			Box(Modifier.size(56.dp).background(Palette.sea.copy(alpha = 0.22f), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+				Text(st.emoji, style = body(30))
+			}
+			Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+				Text(st.name, style = display(20), color = Palette.ink)
+				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+					Badge(st.kindLabel, Palette.sea)
+					if (mine) Badge("Você fica aqui", Palette.leaf)
+				}
+			}
+		}
+		Text(
+			buildAnnotatedString {
+				withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Chegada ") }
+				append(st.checkIn?.let(day) ?: "início da viagem")
+				append("     ")
+				withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("Saída ") }
+				append(st.checkOut?.let(day) ?: "fim da viagem")
+			},
+			style = body(14), color = Palette.ink,
+		)
+		if (st.address.isNotEmpty()) Text(st.address, style = body(13), color = Palette.muted)
+		Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			st.guests.mapNotNull { app.person(it) }.forEach { p ->
+				Row(
+					Modifier.background(Palette.surface2, CircleShape).padding(start = 2.dp, end = 10.dp, top = 2.dp, bottom = 2.dp),
+					horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+				) {
+					Avatar(p.name, colorOf(p.color), p.photo, size = 26.dp)
+					Text(p.name, style = body(14, FontWeight.ExtraBold), color = Palette.ink)
+				}
+			}
+		}
+		if (st.note.isNotEmpty()) Text(st.note, style = body(14), color = Palette.ink)
+		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			ChunkyButton("Pedir Uber", { open(st.uberUrl) }, variant = ButtonVariant.Uber, small = true, icon = IconName.Car)
+			Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "Abrir no Google Maps" }) {
+				ChunkyButton({ open(st.mapsUrl) }, variant = ButtonVariant.Secondary, small = true) { Icon(IconName.Map, Palette.ink, size = 18.dp) }
+			}
+			if (st.link.isNotEmpty()) ChunkyButton("Reserva", { open(st.link) }, variant = ButtonVariant.Secondary, small = true)
 		}
 	}
 }

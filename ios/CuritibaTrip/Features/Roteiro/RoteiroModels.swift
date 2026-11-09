@@ -7,6 +7,30 @@ import SwiftUI
 struct RoteiroData: Decodable, Sendable {
 	var places: [RoteiroPlace]
 	var days: [RoteiroDay]
+	/// hotels / Airbnbs (set up by admins on the site); nil from servers before stays existed
+	var stays: [RoteiroStay]?
+}
+
+/// Where people sleep. `checkIn` = first night, `checkOut` = the day they leave (nil = whole trip).
+struct RoteiroStay: Decodable, Hashable, Identifiable, Sendable {
+	let id: String
+	var name: String
+	var kind: String // hotel | airbnb | casa
+	var lat: Double
+	var lng: Double
+	var address: String
+	var link: String
+	var checkIn: String?
+	var checkOut: String?
+	var note: String
+	var guests: [String]
+
+	var coordinate: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: lat, longitude: lng) }
+	var emoji: String { switch kind { case "airbnb": "🏠"; case "casa": "🏡"; default: "🏨" } }
+	var kindLabel: String { switch kind { case "airbnb": "Airbnb"; case "casa": "Casa"; default: "Hotel" } }
+	var uberURL: URL { Roteiro.uberURL(lat: lat, lng: lng, name: name) }
+	var mapsURL: URL { Roteiro.mapsURL(lat: lat, lng: lng) }
+	var linkURL: URL? { link.isEmpty ? nil : URL(string: link) }
 }
 
 struct PlacePhoto: Codable, Hashable, Identifiable, Sendable {
@@ -33,15 +57,7 @@ struct RoteiroPlace: Codable, Hashable, Identifiable, Sendable {
 	var categoryInfo: RoteiroCategory { RoteiroCategory(rawValue: category) ?? .passeio }
 
 	/// Opens the Uber app (or m.uber.com) with the place as the destination.
-	var uberURL: URL {
-		var c = URLComponents(string: "https://m.uber.com/ul/")!
-		c.queryItems = [
-			.init(name: "action", value: "setPickup"), .init(name: "pickup", value: "my_location"),
-			.init(name: "dropoff[latitude]", value: String(lat)), .init(name: "dropoff[longitude]", value: String(lng)),
-			.init(name: "dropoff[nickname]", value: name)
-		]
-		return c.url!
-	}
+	var uberURL: URL { Roteiro.uberURL(lat: lat, lng: lng, name: name) }
 
 	/// Its Google Maps page (the Google listing when known, otherwise the coordinates).
 	var mapsURL: URL {
@@ -74,6 +90,9 @@ struct RoteiroDay: Codable, Hashable, Identifiable, Sendable {
 	var lead: String
 	var wedding: Bool
 	var stops: [RoteiroStop]
+	/// the stay (id) the person asking leaves from that morning / goes back to that night
+	var startStay: String?
+	var endStay: String?
 }
 
 enum RoteiroCategory: String, CaseIterable, Identifiable {
@@ -119,10 +138,26 @@ enum Roteiro {
 		return m == 0 ? "\(h)h" : String(format: "%dh%02d", h, m)
 	}
 
-	/// Google Maps directions through the places, in order.
-	static func routeURL(_ places: [RoteiroPlace]) -> URL? {
+	static func uberURL(lat: Double, lng: Double, name: String) -> URL {
+		var c = URLComponents(string: "https://m.uber.com/ul/")!
+		c.queryItems = [
+			.init(name: "action", value: "setPickup"), .init(name: "pickup", value: "my_location"),
+			.init(name: "dropoff[latitude]", value: String(lat)), .init(name: "dropoff[longitude]", value: String(lng)),
+			.init(name: "dropoff[nickname]", value: name)
+		]
+		return c.url!
+	}
+
+	static func mapsURL(lat: Double, lng: Double) -> URL {
+		var c = URLComponents(string: "https://www.google.com/maps/search/")!
+		c.queryItems = [.init(name: "api", value: "1"), .init(name: "query", value: "\(lat),\(lng)")]
+		return c.url!
+	}
+
+	/// Google Maps directions through the points, in order.
+	static func routeURL(_ places: [CLLocationCoordinate2D]) -> URL? {
 		guard places.count >= 2 else { return nil }
-		let ll: (RoteiroPlace) -> String = { "\($0.lat),\($0.lng)" }
+		let ll: (CLLocationCoordinate2D) -> String = { "\($0.latitude),\($0.longitude)" }
 		var c = URLComponents(string: "https://www.google.com/maps/dir/")!
 		var items = [URLQueryItem(name: "api", value: "1"), .init(name: "origin", value: ll(places[0])),
 					 .init(name: "destination", value: ll(places.last!)), .init(name: "travelmode", value: "driving")]

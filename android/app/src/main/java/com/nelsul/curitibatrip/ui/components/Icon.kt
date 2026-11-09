@@ -22,7 +22,7 @@ enum class IconName(val res: Int) {
 	Camera(R.drawable.ic_camera), Plane(R.drawable.ic_plane), Car(R.drawable.ic_car), Island(R.drawable.ic_island),
 	Chat(R.drawable.ic_chat), Check(R.drawable.ic_check), Heart(R.drawable.ic_heart), Download(R.drawable.ic_download),
 	Play(R.drawable.ic_play), Leaf(R.drawable.ic_leaf), Expand(R.drawable.ic_expand), Gallery(R.drawable.ic_gallery),
-	Search(R.drawable.ic_search), Locate(R.drawable.ic_locate), Sound(R.drawable.ic_sound), Mute(R.drawable.ic_mute),
+	Search(R.drawable.ic_search), Locate(R.drawable.ic_locate), Sound(R.drawable.ic_sound), Mute(R.drawable.ic_mute), Home(R.drawable.ic_home),
 }
 
 @Composable

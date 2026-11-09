@@ -1,19 +1,24 @@
 import { error } from '@sveltejs/kit';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
-import { db, itineraryDays, itineraryStops, placePhotos, places } from './db';
+import { db, itineraryDays, itineraryStops, placePhotos, places, stayGuests, stays, users } from './db';
 import { mediaUrl } from './r2';
 import { deleteObject } from './images';
 import { clip, isLat, isLng } from './validate';
 import {
 	CATEGORY,
+	STAY_KIND,
 	TRANSPORT,
+	morningStay,
+	nightStay,
 	placeUrl,
 	routeUrl,
 	uberUrl,
 	type PlaceCategory,
 	type RoteiroDay,
 	type RoteiroPlace,
+	type RoteiroStay,
+	type StayKind,
 	type Transport
 } from '$lib/itinerary';
 
@@ -45,12 +50,16 @@ export async function listPlaces(): Promise<RoteiroPlace[]> {
 	);
 }
 
-export async function listDays(): Promise<RoteiroDay[]> {
-	const [days, stops] = await Promise.all([
+/** The days with their stops; `startStay`/`endStay` are where `userId` sleeps (null without a user). */
+export async function listDays(userId?: string, allStays?: RoteiroStay[]): Promise<RoteiroDay[]> {
+	const [days, stops, st] = await Promise.all([
 		db().select().from(itineraryDays).orderBy(asc(itineraryDays.date)),
-		db().select().from(itineraryStops).orderBy(asc(itineraryStops.day), asc(itineraryStops.position))
+		db().select().from(itineraryStops).orderBy(asc(itineraryStops.day), asc(itineraryStops.position)),
+		allStays ?? (userId ? listStays() : [])
 	]);
 	return days.map((d) => ({
+		startStay: userId ? (morningStay(st, userId, d.date)?.id ?? null) : null,
+		endStay: userId ? (nightStay(st, userId, d.date)?.id ?? null) : null,
 		date: d.date,
 		title: d.title,
 		who: d.who,
@@ -114,6 +123,90 @@ export async function itineraryForApps() {
 			};
 		})
 	};
+}
+
+// ── stays (hotel / Airbnb), admins only ──
+
+export async function listStays(): Promise<RoteiroStay[]> {
+	const [rows, guests] = await Promise.all([
+		db().select().from(stays).orderBy(asc(stays.checkIn), asc(stays.name)),
+		db().select().from(stayGuests)
+	]);
+	return rows.map((s) => ({
+		id: s.id,
+		name: s.name,
+		kind: s.kind,
+		lat: s.lat,
+		lng: s.lng,
+		address: s.address,
+		link: s.link,
+		checkIn: s.checkIn,
+		checkOut: s.checkOut,
+		note: s.note,
+		guests: guests.filter((g) => g.stayId === s.id).map((g) => g.userId)
+	}));
+}
+
+const UUID = /^[0-9a-f-]{36}$/;
+
+async function stayInput(b: Record<string, unknown>) {
+	const name = str(b, 'name', 120);
+	if (!name) error(400, 'Dê um nome à hospedagem.');
+	const lat = Number(b.lat), lng = Number(b.lng);
+	if (!isLat(lat) || !isLng(lng)) error(400, 'Marque a hospedagem no mapa.');
+	const kind = (typeof b.kind === 'string' && b.kind in STAY_KIND ? b.kind : 'hotel') as StayKind;
+	const day = (k: string) => {
+		const v = typeof b[k] === 'string' ? (b[k] as string) : '';
+		if (!v) return null;
+		checkDate(v);
+		return v;
+	};
+	const checkIn = day('checkIn'), checkOut = day('checkOut');
+	if (checkIn && checkOut && checkOut <= checkIn) error(400, 'A saída tem que ser depois da chegada.');
+	let link = str(b, 'link', 500);
+	if (link && !/^https?:\/\//i.test(link)) link = `https://${link}`;
+	const guests = [...new Set(Array.isArray(b.guests) ? b.guests.filter((g): g is string => typeof g === 'string' && UUID.test(g)) : [])];
+	if (guests.length) {
+		const found = await db().select({ id: users.id }).from(users).where(inArray(users.id, guests));
+		if (found.length !== guests.length) error(400, 'Uma das pessoas não existe mais. Recarregue a página.');
+	}
+	return { stay: { name, kind, lat, lng, address: str(b, 'address', 200), link, checkIn, checkOut, note: str(b, 'note', 1000) }, guests };
+}
+
+/** Creates (no id) or replaces a stay and its guest list. */
+export async function saveStay(id: string | null, b: Record<string, unknown>) {
+	const { stay, guests } = await stayInput(b);
+	// one bed per night: nobody can be in two stays on the same night
+	const nights = (s: { checkIn: string | null; checkOut: string | null }) => [s.checkIn ?? '0000-00-00', s.checkOut ?? '9999-99-99'];
+	const [aIn, aOut] = nights(stay);
+	for (const other of await listStays()) {
+		if (other.id === id) continue;
+		const [bIn, bOut] = nights(other);
+		if (aIn >= bOut || bIn >= aOut) continue;
+		const clash = other.guests.find((g) => guests.includes(g));
+		if (clash) {
+			const [u] = await db().select({ name: users.name }).from(users).where(eq(users.id, clash));
+			error(400, `${u?.name ?? 'Uma das pessoas'} já está em "${other.name}" nessas noites.`);
+		}
+	}
+	return db().transaction(async (tx) => {
+		let sid = id;
+		if (sid) {
+			if (!UUID.test(sid)) error(404, 'Hospedagem não encontrada.');
+			const r = await tx.update(stays).set(stay).where(eq(stays.id, sid)).returning({ id: stays.id });
+			if (!r.length) error(404, 'Hospedagem não encontrada.');
+			await tx.delete(stayGuests).where(eq(stayGuests.stayId, sid));
+		} else {
+			[{ id: sid }] = await tx.insert(stays).values(stay).returning({ id: stays.id });
+		}
+		if (guests.length) await tx.insert(stayGuests).values(guests.map((userId) => ({ stayId: sid!, userId })));
+		return sid!;
+	});
+}
+
+export async function deleteStay(id: string) {
+	if (!UUID.test(id)) error(404, 'Hospedagem não encontrada.');
+	await db().delete(stays).where(eq(stays.id, id));
 }
 
 // ── places ──
@@ -285,15 +378,30 @@ async function routeLeg(a: [number, number], b: [number, number], foot: boolean)
 	return leg;
 }
 
-/** The day's route, one leg per pair of consecutive stops that have places. */
-export async function dayRoute(date: string) {
+/**
+ * The day's route, one leg per pair of consecutive stops that have places. With a user, it starts at the stay
+ * they wake up in and ends at the one they sleep in.
+ */
+export async function dayRoute(date: string, userId?: string) {
 	checkDate(date);
-	const rows = await db()
-		.select({ transport: itineraryStops.transport, lat: places.lat, lng: places.lng })
-		.from(itineraryStops)
-		.innerJoin(places, eq(places.id, itineraryStops.placeId))
-		.where(eq(itineraryStops.day, date))
-		.orderBy(asc(itineraryStops.position));
+	const [stops, st] = await Promise.all([
+		db()
+			.select({ transport: itineraryStops.transport, lat: places.lat, lng: places.lng })
+			.from(itineraryStops)
+			.innerJoin(places, eq(places.id, itineraryStops.placeId))
+			.where(eq(itineraryStops.day, date))
+			.orderBy(asc(itineraryStops.position)),
+		userId ? listStays() : []
+	]);
+	const rows: { transport: Transport; lat: number; lng: number }[] = [...stops];
+	// going out: how you get to the first stop; coming back: like the last leg, but by Uber after a tour line
+	const first = stops[0]?.transport ?? 'uber';
+	const last = stops.at(-1)?.transport ?? 'uber';
+	const back: Transport = last === 'turismo' || last === 'rodo' ? 'uber' : last;
+	const morning = userId ? morningStay(st, userId, date) : null;
+	const night = userId ? nightStay(st, userId, date) : null;
+	if (morning) rows.unshift({ transport: first, lat: morning.lat, lng: morning.lng });
+	if (night) rows.push({ transport: back, lat: night.lat, lng: night.lng });
 	const legs = [];
 	for (let i = 1; i < rows.length; i++) {
 		const a = rows[i - 1], b = rows[i];

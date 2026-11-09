@@ -1,9 +1,10 @@
 import { people } from '$lib/server/feed';
-import { listDays, listPlaces } from '$lib/server/roteiro';
+import { listDays, listPlaces, listStays } from '$lib/server/roteiro';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ depends }) => {
+export const load: PageServerLoad = async ({ depends, locals }) => {
 	depends('app:roteiro');
-	const [places, days, persons] = await Promise.all([listPlaces(), listDays(), people()]);
-	return { places, days, persons };
+	const [places, stays, persons] = await Promise.all([listPlaces(), listStays(), people()]);
+	const days = await listDays(locals.user!.id, stays);
+	return { places, stays, days, persons };
 };
