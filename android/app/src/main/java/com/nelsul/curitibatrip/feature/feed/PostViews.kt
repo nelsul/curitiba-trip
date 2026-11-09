@@ -178,7 +178,18 @@ private fun Caption(name: String, text: String) {
 @Composable
 private fun MediaSlide(media: FeedMedia, modifier: Modifier) {
 	Box(modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
-		if (media.status != "ready") {
+		if ((media.status == "preview" || media.status == "processing") && media.image != null) {
+			// waiting for Wi-Fi on the sender's phone (or the original is being processed): the low-res picture for now
+			AsyncImage(media.image, contentDescription = media.caption.ifEmpty { "Foto" }, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+			Row(
+				Modifier.align(Alignment.BottomStart).padding(8.dp).background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 5.dp),
+				verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+			) {
+				Icon(IconName.Clock, Color.White, size = 13.dp)
+				Text(if (media.status == "preview") "${if (media.isVideo) "Vídeo completo" else "Foto completa"} chega quando estiver no Wi‑Fi" else "Processando o original…",
+					style = body(12, FontWeight.ExtraBold), color = Color.White)
+			}
+		} else if (media.status != "ready") {
 			Text(
 				when { media.status == "failed" -> "Não foi possível processar"; media.isVideo -> "Preparando o vídeo…"; else -> "Processando…" },
 				style = body(15, FontWeight.ExtraBold), color = Color.White.copy(alpha = 0.85f),

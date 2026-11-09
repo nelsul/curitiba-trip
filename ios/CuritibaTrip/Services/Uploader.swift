@@ -1,5 +1,7 @@
 import Foundation
+import Network
 import Observation
+import UIKit
 import Photos
 import UniformTypeIdentifiers
 import os
@@ -28,6 +30,38 @@ struct UploadJob: Codable, Identifiable, Sendable {
 	var error: String?
 	var duplicate = false
 	var hasLocation = false
+	/// Send the original only on Wi-Fi (a low-res preview goes to the diary first). Optional: older saved jobs lack it.
+	var wifiOnly: Bool?
+	var previewSent: Bool?
+	var waitsForWifi: Bool { wifiOnly == true }
+}
+
+/// "Enviar só no Wi-Fi" (Enviar screen) and whether the phone is on Wi-Fi right now.
+@MainActor @Observable
+final class UploadNetwork {
+	static let shared = UploadNetwork()
+	private static let key = "envio-so-wifi"
+	var wifiOnly: Bool { didSet { UserDefaults.standard.set(wifiOnly, forKey: Self.key) } }
+	private(set) var onWifi = true
+	/// Debug builds: `FORCE_NO_WIFI=1` also holds "só no Wi-Fi" uploads in the app, so the waiting state can be tested.
+	private(set) var simulatedNoWifi = false
+	private let monitor = NWPathMonitor()
+
+	private init() {
+		wifiOnly = UserDefaults.standard.bool(forKey: Self.key)
+		#if DEBUG
+		// Simulator testing only: `SIMCTL_CHILD_FORCE_NO_WIFI=1` acts as if the phone were off Wi-Fi.
+		let forceOff = ProcessInfo.processInfo.environment["FORCE_NO_WIFI"] == "1"
+		#else
+		let forceOff = false
+		#endif
+		simulatedNoWifi = forceOff
+		monitor.pathUpdateHandler = { path in
+			let wifi = !forceOff && path.status == .satisfied && !path.isExpensive && !path.usesInterfaceType(.cellular)
+			Task { @MainActor in UploadNetwork.shared.onWifi = wifi }
+		}
+		monitor.start(queue: DispatchQueue(label: "upload-network"))
+	}
 }
 
 /// Sends originals from the photo library to R2 with the multipart flow in web/API.md, using a background
@@ -90,11 +124,13 @@ final class Uploader {
 		Task { await reconcile() }
 	}
 
-	func add(assetId: String, caption: String, deviceLocation: (Double, Double)?) {
+	func add(assetId: String, caption: String, deviceLocation: (Double, Double)?, wifiOnly: Bool = false) {
 		// the same photo already queued or sent from this phone: the server would also refuse a copy
 		if jobs.contains(where: { $0.assetId == assetId && $0.state != .failed }) { return }
 		jobs.removeAll { $0.assetId == assetId }
-		jobs.append(UploadJob(id: UUID(), assetId: assetId, caption: caption, deviceLat: deviceLocation?.0, deviceLng: deviceLocation?.1))
+		var job = UploadJob(id: UUID(), assetId: assetId, caption: caption, deviceLat: deviceLocation?.0, deviceLng: deviceLocation?.1)
+		job.wifiOnly = wifiOnly ? true : nil
+		jobs.append(job)
 		save()
 		pump()
 	}
@@ -110,6 +146,20 @@ final class Uploader {
 		} else {
 			reset(i)
 			pump()
+		}
+	}
+
+	/// "Enviar agora": stop waiting for Wi-Fi and send this one over any connection.
+	func sendNow(_ id: UUID) {
+		guard let job = jobs.first(where: { $0.id == id }) else { return }
+		update(id) { $0.wifiOnly = nil }
+		guard job.state == .uploading else { return pump() }
+		session.getAllTasks { tasks in
+			for t in tasks where t.taskDescription?.hasPrefix(id.uuidString) == true { t.cancel() }
+			Task { @MainActor in
+				try? await Task.sleep(for: .milliseconds(300))
+				await Uploader.shared.resumeParts(id)
+			}
 		}
 	}
 
@@ -175,6 +225,7 @@ final class Uploader {
 		try? FileManager.default.removeItem(at: folder(jobs[i]))
 		let j = jobs[i]
 		jobs[i] = UploadJob(id: j.id, assetId: j.assetId, caption: j.caption, deviceLat: j.deviceLat, deviceLng: j.deviceLng)
+		jobs[i].wifiOnly = j.wifiOnly
 		save()
 	}
 
@@ -239,6 +290,13 @@ final class Uploader {
 		guard let partSize = created.partSize, let partCount = created.partCount, partCount > 0 else {
 			return fail(id, "Resposta inesperada do servidor.")
 		}
+		// waiting for Wi-Fi: a low-res picture goes to the diary now, the original later
+		if jobs.first(where: { $0.id == id })?.waitsForWifi == true, created.preview != true, !UploadNetwork.shared.onWifi {
+			if let jpeg = await Self.previewJPEG(asset), let _: OK = try? await API.shared.put("/api/uploads/\(created.id)/preview", data: jpeg, contentType: "image/jpeg") {
+				update(id) { $0.previewSent = true }
+				arrivals += 1
+			}
+		}
 		do {
 			try await Self.split(original, partSize: partSize, partCount: partCount, into: dir)
 		} catch {
@@ -246,6 +304,20 @@ final class Uploader {
 		}
 		update(id) { $0.partSize = partSize; $0.partCount = partCount; $0.state = .uploading }
 		await resumeParts(id)
+	}
+
+	/// A ~720 px JPEG of the photo (or the video's first frame) for the preview.
+	nonisolated private static func previewJPEG(_ asset: PHAsset) async -> Data? {
+		let options = PHImageRequestOptions()
+		options.deliveryMode = .highQualityFormat
+		options.isNetworkAccessAllowed = true
+		options.resizeMode = .exact
+		let image: UIImage? = await withCheckedContinuation { c in
+			PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 720, height: 720), contentMode: .aspectFit, options: options) { img, _ in
+				c.resume(returning: img)
+			}
+		}
+		return image?.jpegData(compressionQuality: 0.7)
 	}
 
 	private func export(_ resource: PHAssetResource, to url: URL) async throws {
@@ -277,8 +349,9 @@ final class Uploader {
 	// MARK: - Sending
 
 	/// Queues every part that isn't sent or already in flight (fetching fresh links when needed).
-	private func resumeParts(_ id: UUID) async {
+	fileprivate func resumeParts(_ id: UUID) async {
 		guard let job = jobs.first(where: { $0.id == id }), let mediaId = job.mediaId else { return }
+		if job.waitsForWifi && UploadNetwork.shared.simulatedNoWifi { return }
 		let running = await runningParts(id)
 		let missing = (1...max(job.partCount, 1)).filter { job.etags[$0] == nil && !running.contains($0) }
 		if missing.isEmpty {
@@ -302,6 +375,9 @@ final class Uploader {
 		guard let job = jobs.first(where: { $0.id == id }), let raw = job.urls[n], let url = URL(string: raw) else { return }
 		var req = URLRequest(url: url)
 		req.httpMethod = "PUT"
+		// "só no Wi-Fi": iOS holds the part (even with the app closed) until the phone is on Wi-Fi
+		req.allowsCellularAccess = !job.waitsForWifi
+		req.allowsExpensiveNetworkAccess = !job.waitsForWifi
 		let task = session.uploadTask(with: req, fromFile: partFile(job, n))
 		task.taskDescription = "\(id.uuidString)|\(n)"
 		if delay > 0 { task.earliestBeginDate = Date().addingTimeInterval(delay) }
@@ -479,6 +555,8 @@ private struct UploadStart: Decodable {
 	let partSize: Int64?
 	let partCount: Int?
 	let duplicate: Bool?
+	/// the post was already in the diary with its preview; the original starts over in place
+	let preview: Bool?
 }
 
 private struct PartsBody: Encodable { let parts: [Int] }

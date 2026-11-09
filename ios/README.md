@@ -18,6 +18,7 @@ The plan's MVP is **done**:
 - **Cotinha:** split what someone paid (your Pix key is remembered); "Por pessoa" adds up what you owe each person, with "Paguei tudo" to settle them at once; their Pix key to copy, "Já paguei", the payer's "Cobrar quem falta" (a notification), a badge with what you owe.
 - **Retrospectiva:** wedding countdown on the Diário; afterwards the admin's picks as stories.
 - **Noivos:** a one-time special effect when the bride or groom liked your post.
+- **Notificações** (the bell left of "Enviar", with an unread count) and **"Enviar só no Wi‑Fi"** in Enviar: off Wi‑Fi a ~720 px preview goes to the diary at once and the original waits for Wi‑Fi (also with the app closed); "Enviar agora" sends one anyway.
 - **@menções** in comments, **previsão do tempo** hora a hora in the Roteiro, a **page per place**, and **Tirar foto / Gravar vídeo** in Enviar.
 - **Enviar** (the yellow button at the top right): originals from the photo library with their own location and time, sent in the background (keeps going with the app closed), with the flight animation.
 - **Mapa:**
@@ -112,3 +113,5 @@ To force everyone onto a new version, raise `MARKETING_VERSION` in `project.yml`
 ## Secrets
 
 Never commit signing certificates, provisioning profiles, `Config/Local.xcconfig` or anything with keys. The root `.gitignore` already excludes them.
+
+- **Testing "só no Wi‑Fi" in the simulator** (always on Wi‑Fi): launch with `SIMCTL_CHILD_FORCE_NO_WIFI=1` (debug builds) to act as if off Wi‑Fi.

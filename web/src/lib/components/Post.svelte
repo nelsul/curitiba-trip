@@ -77,7 +77,11 @@
 		<div class="track" bind:this={track} onscroll={onScroll}>
 			{#each items as m (m.id)}
 				<div class="slide" onpointerup={(e) => tap(e, m)} role="presentation">
-					{#if m.status !== 'ready'}
+					{#if (m.status === 'preview' || m.status === 'processing') && m.image}
+						<img src={m.image} alt={m.caption || `Foto de ${p?.name ?? ''}`} loading="lazy" draggable="false" />
+						<span class="pending"><Icon name="clock" size={14} />
+							{m.status === 'preview' ? `${m.kind === 'video' ? 'Vídeo completo' : 'Foto completa'} chega quando ${p?.name ?? 'a pessoa'} estiver no Wi‑Fi` : 'Processando o original…'}</span>
+					{:else if m.status !== 'ready'}
 						<div class="ph">{m.status === 'failed' ? 'Não foi possível processar' : m.kind === 'video' ? 'Preparando o vídeo…' : 'Processando…'}</div>
 					{:else if m.kind === 'video' && m.video}
 						<!-- svelte-ignore a11y_media_has_caption -->
@@ -138,6 +142,10 @@
 	.slide img, .slide video { width: 100%; height: 100%; object-fit: cover; display: block; }
 	.slide video { object-fit: contain; background: #000; }
 	.ph { position: absolute; inset: 0; display: grid; place-items: center; color: #ddd; font-weight: 800; text-align: center; padding: 16px; background: repeating-linear-gradient(135deg, #222 0 14px, #2a2a2a 14px 28px); }
+	.pending {
+		position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+		border-radius: 12px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 0.8rem; font-weight: 800; pointer-events: none;
+	}
 	.dur { position: absolute; right: 10px; top: 10px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; pointer-events: none; }
 	.big-heart { position: absolute; left: 50%; top: 50%; translate: -50% -50%; color: #fff; pointer-events: none; filter: drop-shadow(0 4px 12px rgb(0 0 0 / 0.4)); animation: big-heart 0.9s ease-out forwards; }
 	.big-heart :global(svg) { fill: #fff; }

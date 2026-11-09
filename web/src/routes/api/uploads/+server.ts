@@ -37,10 +37,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const clientAssetId = clip(b.clientAssetId, 200) || null;
 	if (clientAssetId) {
 		const [prev] = await db()
-			.select({ id: media.id, status: media.status, uploadId: media.uploadId, originalKey: media.originalKey })
+			.select({ id: media.id, status: media.status, uploadId: media.uploadId, originalKey: media.originalKey, previewKey: media.previewKey })
 			.from(media)
 			.where(and(eq(media.userId, userId), eq(media.clientAssetId, clientAssetId)));
 		if (prev && prev.status !== 'uploading') return reply({ id: prev.id, duplicate: true, status: prev.status });
+		if (prev?.previewKey) {
+			// already in the diary with its preview (likes and comments included): start the original over in place
+			const { s3, bucket } = r2();
+			if (prev.uploadId) await s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: prev.originalKey, UploadId: prev.uploadId })).catch(() => {});
+			const mp = await s3.send(new CreateMultipartUploadCommand({ Bucket: bucket, Key: prev.originalKey, ContentType: b.type || undefined }));
+			await db().update(media).set({ uploadId: mp.UploadId!, sizeBytes: size }).where(eq(media.id, prev.id));
+			return reply({ id: prev.id, partSize: PART_SIZE, partCount: Math.ceil(size / PART_SIZE), preview: true });
+		}
 		if (prev) {
 			// an earlier attempt never finished: drop it and start over
 			const { s3, bucket } = r2();

@@ -1,3 +1,4 @@
+import { deleteObject } from '$lib/server/images';
 import { json as reply } from '@sveltejs/kit';
 import { AbortMultipartUploadCommand } from '@aws-sdk/client-s3';
 import { and, eq } from 'drizzle-orm';
@@ -13,6 +14,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 		const { s3, bucket } = r2();
 		await s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: m.originalKey, UploadId: m.uploadId })).catch(() => {});
 		await db().delete(media).where(and(eq(media.id, m.id), eq(media.status, 'uploading')));
+		await deleteObject(m.previewKey);
 	}
 	return reply({ ok: true });
 };

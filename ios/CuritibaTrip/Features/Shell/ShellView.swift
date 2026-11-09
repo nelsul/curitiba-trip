@@ -16,7 +16,7 @@ struct ShellView: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
-			TopBar(sending: tab == .enviar) { tab = .enviar }
+			TopBar(sending: tab == .enviar, onSend: { tab = .enviar }, bellActive: tab == .notificacoes, onBell: { tab = .notificacoes })
 			ZStack {
 				// each tab keeps its own navigation stack (detail pages push inside it)
 				switch tab {
@@ -26,6 +26,9 @@ struct ShellView: View {
 				case .enviar: Stacked { EnviarView() }
 				case .roteiro: Stacked { RoteiroView() }
 				case .mais: Stacked { MoreView() }
+				case .notificacoes: Stacked { NotificationsView(open: { route in
+					if let route { tab = .diario; notifier.openRoute = route } else { tab = .cotinha }
+				}) }
 				}
 			}
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -40,6 +43,13 @@ struct ShellView: View {
 			LocationSharing.shared.restore()
 			await checkCoupleLikes()
 			await Notifier.shared.start()
+		}
+		// the bell's count, every minute while the app is open
+		.task {
+			while !Task.isCancelled {
+				await NotificationsBadge.shared.refresh()
+				try? await Task.sleep(for: .seconds(60))
+			}
 		}
 		// the bride or groom liked one of my posts: the special effect, once
 		.overlay {
@@ -66,6 +76,7 @@ struct ShellView: View {
 			Task {
 				await checkCoupleLikes()
 				if let me = app.me?.id { await CotinhaBadge.shared.refresh(me: me) }
+				await NotificationsBadge.shared.refresh()
 			}
 		}
 		.onChange(of: notifier.openCotinha) { _, on in if on { tab = .cotinha; notifier.openCotinha = false } }

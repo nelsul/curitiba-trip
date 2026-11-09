@@ -4,6 +4,8 @@ import SwiftUI
 struct TopBar: View {
 	var sending = false
 	var onSend: () -> Void = {}
+	var bellActive = false
+	var onBell: () -> Void = {}
 
 	var body: some View {
 		HStack(spacing: 8) {
@@ -14,9 +16,16 @@ struct TopBar: View {
 				.background(RoundedRectangle(cornerRadius: 12).fill(Color.sea))
 				.background(RoundedRectangle(cornerRadius: 12).fill(Color.seaDark).offset(y: 3))
 				.rotationEffect(.degrees(-8))
-			Text("Curitiba").font(.display(24, relativeTo: .title2)).foregroundStyle(Color.ink)
-			Stamp(text: "11–18/11", size: 12)
-			Spacer()
+			// the dates stamp gives way on narrow phones (the bell and "Enviar" always fit)
+			ViewThatFits(in: .horizontal) {
+				HStack(spacing: 8) {
+					Text("Curitiba").font(.display(24, relativeTo: .title2)).foregroundStyle(Color.ink)
+					Stamp(text: "11–18/11", size: 12)
+				}
+				Text("Curitiba").font(.display(24, relativeTo: .title2)).foregroundStyle(Color.ink).lineLimit(1)
+			}
+			Spacer(minLength: 4)
+			BellButton(active: bellActive, action: onBell)
 			SendButton(active: sending, action: onSend)
 		}
 		.padding(.horizontal, 16)
@@ -29,6 +38,36 @@ struct TopBar: View {
 	}
 }
 
+/// The bell left of "Enviar": opens the notifications, with a red count of unread ones.
+private struct BellButton: View {
+	let active: Bool
+	let action: () -> Void
+	private var unread: Int { NotificationsBadge.shared.unread }
+
+	var body: some View {
+		Button(action: action) {
+			Icon(.bell, size: 22)
+				.foregroundStyle(active ? Color.sea : Color.ink)
+				.frame(width: 44, height: 44)
+				.background(Circle().fill(Color.surface))
+				.overlay(Circle().strokeBorder(active ? Color.sea : Color.line, lineWidth: 2.5))
+				.background(Circle().fill(Color.shadow).offset(y: 3))
+				.overlay(alignment: .topTrailing) {
+					if unread > 0 {
+						Text(unread > 99 ? "99+" : "\(unread)").font(.text(11, .extraBold)).foregroundStyle(.white)
+							.padding(.horizontal, 5).frame(minWidth: 20, minHeight: 20)
+							.background(Capsule().fill(Color.coral))
+							.overlay(Capsule().strokeBorder(Color.bg, lineWidth: 2))
+							.offset(x: 6, y: -6)
+					}
+				}
+		}
+		.buttonStyle(PressScale())
+		.accessibilityLabel(unread > 0 ? "Notificações, \(unread) novas" : "Notificações")
+		.accessibilityAddTraits(active ? .isSelected : [])
+	}
+}
+
 /// "Enviar": the raised yellow pill at the top right (web header).
 private struct SendButton: View {
 	let active: Bool
@@ -38,7 +77,7 @@ private struct SendButton: View {
 		Button(action: action) {
 			HStack(spacing: 6) {
 				Icon(.upload, size: 22)
-				Text("Enviar").font(.display(17))
+				Text("Enviar").font(.display(17)).lineLimit(1).fixedSize()
 			}
 			.foregroundStyle(Color.onSun)
 			.padding(.leading, 12).padding(.trailing, 16)
@@ -102,7 +141,7 @@ struct DaySign: View {
 }
 
 enum Tab: String, CaseIterable, Identifiable {
-	case diario, mapa, cotinha, roteiro, mais, enviar
+	case diario, mapa, cotinha, roteiro, mais, enviar, notificacoes
 	var id: String { rawValue }
 	/// The dock's tabs ("Enviar" lives in the top bar).
 	static let dock: [Tab] = [.diario, .mapa, .cotinha, .roteiro, .mais]
@@ -114,6 +153,7 @@ enum Tab: String, CaseIterable, Identifiable {
 		case .roteiro: "Roteiro"
 		case .mais: "Mais"
 		case .enviar: "Enviar"
+		case .notificacoes: "Notificações"
 		}
 	}
 	var icon: IconName {
@@ -124,6 +164,7 @@ enum Tab: String, CaseIterable, Identifiable {
 		case .roteiro: .ticket
 		case .mais: .user
 		case .enviar: .upload
+		case .notificacoes: .bell
 		}
 	}
 	var color: Color {
@@ -132,7 +173,7 @@ enum Tab: String, CaseIterable, Identifiable {
 		case .mapa: .sea
 		case .cotinha, .enviar: .sun
 		case .roteiro: .coral
-		case .mais: .plum
+		case .mais, .notificacoes: .plum
 		}
 	}
 }

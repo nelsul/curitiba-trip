@@ -57,6 +57,8 @@
 		{/if}
 	</figure>
 
+	{#if it.status === 'preview'}<p class="small muted pending">Esta é uma prévia em baixa resolução. O original chega quando {it.name} estiver no Wi‑Fi.</p>{/if}
+
 	<div class="like-row">
 		<LikeButton target={{ mediaId: it.id }} {likers} meId={data.me.id} onchange={(l) => (likers = l)} />
 		<LikedBy {likers} persons={personMap} meId={data.me.id} />
@@ -106,7 +108,7 @@
 			{it.originalName} · {fmtBytes(it.sizeBytes)}{#if it.width} · {it.width}×{it.height}{/if}{#if it.durationS} · {fmtDuration(it.durationS)}{/if}
 		</p>
 		<div class="row start">
-			{#if it.original}<a class="btn small sea" href={it.original}>Baixar original</a>{/if}
+			{#if it.original && it.status !== 'preview'}<a class="btn small sea" href={it.original}>Baixar original</a>{/if}
 			{#if mine || data.me.isAdmin}
 				<form method="POST" action="?/apagar" use:enhance={({ cancel }) => { if (!confirm('Apagar este arquivo para todo mundo? Não dá para desfazer.')) cancel(); }}>
 					<button class="btn small danger">Apagar</button>
@@ -120,6 +122,7 @@
 
 <style>
 	.back { margin-bottom: 8px; }
+	.pending { margin: -6px 0 10px; }
 	.viewer { margin: 8px 0 16px; padding: 8px 8px 22px; background: #fff; border-radius: 8px; display: grid; place-items: center; min-height: 200px; box-shadow: 0 6px 18px rgb(90 69 48 / 0.25); rotate: -0.6deg; animation: pop-in 0.5s var(--bounce) both; }
 	.viewer > :global(*) { background: #000; border-radius: 4px; }
 	.viewer img, .viewer video { width: 100%; height: auto; max-height: 80vh; object-fit: contain; }

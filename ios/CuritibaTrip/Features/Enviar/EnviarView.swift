@@ -47,6 +47,8 @@ struct EnviarView: View {
 					}
 				}
 
+				WifiOnlyCard()
+
 				if needsAccess {
 					VStack(alignment: .leading, spacing: 8) {
 						Text("Para enviar o original com o local, o app precisa ver todas as suas fotos.")
@@ -182,7 +184,7 @@ struct EnviarView: View {
 	private func send() {
 		for d in drafts {
 			uploader.add(assetId: d.id, caption: d.caption.trimmingCharacters(in: .whitespacesAndNewlines),
-						 deviceLocation: d.asset.location == nil && d.useHere ? here : nil)
+						 deviceLocation: d.asset.location == nil && d.useHere ? here : nil, wifiOnly: UploadNetwork.shared.wifiOnly)
 		}
 		withAnimation { drafts = [] }
 	}
@@ -315,6 +317,12 @@ private struct JobRow: View {
 		switch job.state {
 		case .waiting: Text("Na fila").font(.text(13)).foregroundStyle(Color.muted)
 		case .preparing: Text("Copiando o original…").font(.text(13)).foregroundStyle(Color.muted)
+		case .uploading where job.waitsForWifi && !UploadNetwork.shared.onWifi:
+			VStack(alignment: .leading, spacing: 6) {
+				Label { Text(job.previewSent == true ? "Esperando Wi‑Fi · a prévia já está no diário" : "Esperando Wi‑Fi") } icon: { Icon(.clock, size: 14) }
+					.font(.text(13, .bold)).foregroundStyle(Color.sky)
+				Button("Enviar agora") { uploader.sendNow(job.id) }.buttonStyle(.chunky(.secondary, small: true))
+			}
 		case .uploading:
 			Text("Voando… \(Int(Double(uploader.sent(job)) / Double(max(job.size, 1)) * 100))%").font(.text(13)).foregroundStyle(Color.muted)
 		case .finishing: Text("Pousando…").font(.text(13)).foregroundStyle(Color.muted)
@@ -411,5 +419,22 @@ struct CameraPicker: UIViewControllerRepresentable {
 		}
 
 		func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { done(nil) }
+	}
+}
+
+/// "Enviar só no Wi-Fi": the originals wait for Wi-Fi (a low-res preview goes to the diary right away).
+private struct WifiOnlyCard: View {
+	@Bindable private var network = UploadNetwork.shared
+
+	var body: some View {
+		Toggle(isOn: $network.wifiOnly) {
+			VStack(alignment: .leading, spacing: 2) {
+				Text("Enviar só no Wi‑Fi").font(.text(16, .bold)).foregroundStyle(Color.ink)
+				Text("Fora do Wi‑Fi, vai para o diário uma prévia leve; o original sobe sozinho quando o celular entrar no Wi‑Fi. Dá para mandar um agora em “Enviar agora”.")
+					.font(.text(13)).foregroundStyle(Color.muted)
+			}
+		}
+		.tint(.leaf)
+		.card()
 	}
 }

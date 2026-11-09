@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { AbortMultipartUploadCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
 import { and, eq } from 'drizzle-orm';
 import { checkins, db, media, users } from './db';
 import { mediaUrl, r2 } from './r2';
@@ -17,7 +17,8 @@ async function mediaRow(id: string) {
 		.from(media)
 		.innerJoin(users, eq(users.id, media.userId))
 		.where(eq(media.id, id));
-	if (!row || row.m.status === 'uploading') error(404, 'Não encontrado');
+	// still uploading: only shown once its low-res preview arrived (waiting for Wi-Fi)
+	if (!row || (row.m.status === 'uploading' && !row.m.previewKey)) error(404, 'Não encontrado');
 	return row;
 }
 
@@ -25,8 +26,8 @@ async function mediaRow(id: string) {
 export async function mediaDetail(id: string) {
 	const { m, name, color, avatarKey } = await mediaRow(id);
 	const [display, medium, video, poster, original, comments, photo, likers] = await Promise.all([
-		mediaUrl(m.displayKey),
-		mediaUrl(m.mediumKey),
+		mediaUrl(m.displayKey ?? m.previewKey),
+		mediaUrl(m.mediumKey ?? m.previewKey),
 		mediaUrl(m.videoKey),
 		mediaUrl(m.posterKey),
 		mediaUrl(m.originalKey, m.originalName),
@@ -42,7 +43,7 @@ export async function mediaDetail(id: string) {
 			color,
 			photo,
 			kind: m.kind,
-			status: m.status,
+			status: m.status === 'uploading' ? 'preview' : m.status,
 			error: m.error,
 			at: (m.takenAt ?? m.createdAt).toISOString(),
 			takenAtSource: m.takenAtSource,
@@ -91,8 +92,11 @@ export type Actor = { id: string; isAdmin: boolean };
 export async function deleteMedia(id: string, user: Actor) {
 	const { m } = await mediaRow(id);
 	if (m.userId !== user.id && !user.isAdmin) error(403, 'Só quem enviou pode apagar.');
-	const keys = [m.originalKey, m.displayKey, m.mediumKey, m.thumbKey, m.posterKey, m.videoKey].filter(Boolean) as string[];
+	const keys = [m.originalKey, m.displayKey, m.mediumKey, m.thumbKey, m.posterKey, m.videoKey, m.previewKey].filter(Boolean) as string[];
 	const { s3, bucket } = r2();
+	if (m.status === 'uploading' && m.uploadId) {
+		await s3.send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: m.originalKey, UploadId: m.uploadId })).catch(() => {});
+	}
 	await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys.map((Key) => ({ Key })) } }));
 	await db().delete(media).where(eq(media.id, m.id));
 }
