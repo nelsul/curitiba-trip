@@ -16,5 +16,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 		redirect(303, `/login${path === '/' ? '' : `?para=${encodeURIComponent(path)}`}`);
 	}
 	if ((path.startsWith('/admin') || path.startsWith('/api/admin')) && !event.locals.user?.isAdmin) error(403, 'Só para administradores.');
+	// Roteiro: only admins change the places and the days (everyone reads them and ticks "Fomos!")
+	if (
+		event.request.method !== 'GET' &&
+		(path.startsWith('/api/roteiro/places') || path.startsWith('/api/roteiro/days/')) &&
+		!event.locals.user?.isAdmin
+	)
+		error(403, 'Só administradores mudam o roteiro.');
 	return resolve(event);
 };

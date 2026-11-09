@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Roteiro (web /roteiro), the same for everyone and editable by everyone:
+/// Roteiro (web /roteiro), the same for everyone; only admins change places and days (everyone ticks "Fomos!"):
 /// - **Dia a dia:** day chips, a boarding-pass ticket per day with the route map and the stops ("Fomos?", Uber, Maps).
 /// - **Lugares:** every place to go or eat, with photos, hours, prices and "Pôr no roteiro".
 /// - **Hospedagem:** where everyone sleeps (admins set it up); each day leaves from and comes back to it.
@@ -116,10 +116,12 @@ struct RoteiroView: View {
 						.padding(.vertical, 4)
 					}
 				}
-				Chip(dashed: true, tint: .sea, action: { editingDay = DayEdit(day: nil, suggested: nextDate) }) {
-					VStack(spacing: 0) { Text("+").font(.display(17)); Text("dia").font(.text(11, .extraBold)) }.padding(.vertical, 4)
+				if isAdmin {
+					Chip(dashed: true, tint: .sea, action: { editingDay = DayEdit(day: nil, suggested: nextDate) }) {
+						VStack(spacing: 0) { Text("+").font(.display(17)); Text("dia").font(.text(11, .extraBold)) }.padding(.vertical, 4)
+					}
+					.accessibilityLabel("Adicionar dia")
 				}
-				.accessibilityLabel("Adicionar dia")
 			}
 			.padding(.vertical, 6)
 			.padding(.horizontal, 2)
@@ -129,7 +131,7 @@ struct RoteiroView: View {
 		else if data != nil {
 			VStack(spacing: 12) {
 				Text("O roteiro ainda está vazio.").font(.text(16)).foregroundStyle(Color.ink)
-				Button("Criar o primeiro dia") { editingDay = DayEdit(day: nil, suggested: nextDate) }.buttonStyle(.chunky(.sun))
+				if isAdmin { Button("Criar o primeiro dia") { editingDay = DayEdit(day: nil, suggested: nextDate) }.buttonStyle(.chunky(.sun)) }
 			}
 			.frame(maxWidth: .infinity).card(padding: 24)
 		}
@@ -201,8 +203,10 @@ struct RoteiroView: View {
 					Button { openURL(route) } label: { Label { Text("Rota do dia no Google Maps") } icon: { Icon(.map, size: 20) } }
 						.buttonStyle(.chunky(.sea, fullWidth: true))
 				}
-				Button { editingDay = DayEdit(day: d, suggested: d.date) } label: { Text("✎ Editar este dia") }
-					.buttonStyle(.chunky(.secondary, fullWidth: true))
+				if isAdmin {
+					Button { editingDay = DayEdit(day: d, suggested: d.date) } label: { Text("✎ Editar este dia") }
+						.buttonStyle(.chunky(.secondary, fullWidth: true))
+				}
 			}
 			.padding(16)
 		}
@@ -275,10 +279,12 @@ struct RoteiroView: View {
 							Text("\(n)").font(.display(13)).foregroundStyle(Color.onSun)
 								.frame(width: 24, height: 24).background(Circle().fill(Color.sun))
 						}
-						Text(s.time.isEmpty ? "Sem horário" : s.time).font(.display(13))
-							.foregroundStyle(visited ? Color.onLeaf : Color.onSun)
-							.padding(.horizontal, 10).padding(.vertical, 2)
-							.background(RoundedRectangle(cornerRadius: 10).fill(visited ? Color.leaf : Color.sun))
+						if !s.time.isEmpty {
+							Text(s.time).font(.display(13))
+								.foregroundStyle(visited ? Color.onLeaf : Color.onSun)
+								.padding(.horizontal, 10).padding(.vertical, 2)
+								.background(RoundedRectangle(cornerRadius: 10).fill(visited ? Color.leaf : Color.sun))
+						}
 					}
 					Text(p?.name ?? s.label).font(.display(19)).foregroundStyle(Color.ink).fixedSize(horizontal: false, vertical: true)
 					HStack(spacing: 6) {
@@ -305,9 +311,11 @@ struct RoteiroView: View {
 					Button { openURL(p.mapsURL) } label: { Icon(.map, size: 18) }
 						.buttonStyle(.chunky(.secondary, small: true))
 						.accessibilityLabel("Abrir no Google Maps")
-					Button { editingPlace = PlaceEdit(place: p) } label: { Text("✎") }
-						.buttonStyle(.chunky(.secondary, small: true))
-						.accessibilityLabel("Editar lugar")
+					if isAdmin {
+						Button { editingPlace = PlaceEdit(place: p) } label: { Text("✎") }
+							.buttonStyle(.chunky(.secondary, small: true))
+							.accessibilityLabel("Editar lugar")
+					}
 				}
 				Button { Task { await toggleVisit(s) } } label: {
 					Label { Text(visited ? "Fomos!" : "Fomos?") } icon: { Icon(.check, size: 18) }
@@ -327,6 +335,10 @@ struct RoteiroView: View {
 		Group {
 			if let photo = p.photos.first?.url {
 				RemoteImage(url: photo)
+			} else if !isAdmin {
+				Icon(.pin, size: 22).foregroundStyle(p.categoryInfo.color)
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+					.background(p.categoryInfo.color.opacity(0.18))
 			} else {
 				Button { editingPlace = PlaceEdit(place: p) } label: {
 					VStack(spacing: 2) { Icon(.camera, size: 22); Text("foto").font(.text(11, .extraBold)) }
@@ -409,12 +421,13 @@ struct RoteiroView: View {
 			.padding(.horizontal, 12).frame(minHeight: 44)
 			.background(RoundedRectangle(cornerRadius: 14).fill(Color.surface))
 			.overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.line, lineWidth: 2.5))
-			Button("＋ Lugar") { editingPlace = PlaceEdit(place: nil) }.buttonStyle(.chunky(.sun, small: true))
+			if isAdmin { Button("＋ Lugar") { editingPlace = PlaceEdit(place: nil) }.buttonStyle(.chunky(.sun, small: true)) }
 		}
 		ForEach(shownPlaces) { p in
 			PlaceCard(place: p, visited: visitedPlaces.contains(p.id),
 					  usedOn: days.filter { $0.stops.contains { $0.placeId == p.id } }.map(\.date),
-					  days: days, edit: { editingPlace = PlaceEdit(place: p) }, add: { date in Task { await add(p, to: date) } })
+					  days: days, edit: isAdmin ? { editingPlace = PlaceEdit(place: p) } : nil,
+					  add: isAdmin ? { date in Task { await add(p, to: date) } } : nil)
 		}
 		if shownPlaces.isEmpty && data != nil {
 			Text(query.isEmpty ? "Nenhum lugar aqui ainda." : "Nenhum lugar com esse nome.").font(.text(15)).foregroundStyle(Color.muted)
@@ -504,14 +517,15 @@ private struct PlaceCard: View {
 	let visited: Bool
 	let usedOn: [String]
 	let days: [RoteiroDay]
-	let edit: () -> Void
-	let add: (String) -> Void
+	/// admins only
+	let edit: (() -> Void)?
+	let add: ((String) -> Void)?
 	@Environment(\.openURL) private var openURL
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
 			ZStack(alignment: .topLeading) {
-				if place.photos.isEmpty {
+				if place.photos.isEmpty, let edit {
 					Button(action: edit) {
 						VStack(spacing: 6) { Icon(.camera, size: 26); Text("Adicionar fotos").font(.text(14, .extraBold)) }
 							.foregroundStyle(Color.muted)
@@ -519,6 +533,11 @@ private struct PlaceCard: View {
 							.background(Color.surface2)
 					}
 					.buttonStyle(.plain)
+				} else if place.photos.isEmpty {
+					VStack(spacing: 6) { Icon(.camera, size: 26); Text("Sem fotos ainda").font(.text(14, .extraBold)) }
+						.foregroundStyle(Color.muted)
+						.frame(maxWidth: .infinity, maxHeight: .infinity)
+						.background(Color.surface2)
 				} else {
 					TabView {
 						ForEach(place.photos) { ph in RemoteImage(url: ph.url) }
@@ -567,18 +586,20 @@ private struct PlaceCard: View {
 					}
 				}
 				.padding(.top, 4)
-				HStack {
-					Menu {
-						ForEach(days) { d in
-							Button("\(TripTime.shortWeekday(d.date)) \(d.date.suffix(2)) · \(d.title)") { add(d.date) }
+				if let add, let edit {
+					HStack {
+						Menu {
+							ForEach(days) { d in
+								Button("\(TripTime.shortWeekday(d.date)) \(d.date.suffix(2)) · \(d.title)") { add(d.date) }
+							}
+						} label: {
+							Text("+ Pôr no roteiro…").font(.text(14, .extraBold)).foregroundStyle(Color.sea)
 						}
-					} label: {
-						Text("+ Pôr no roteiro…").font(.text(14, .extraBold)).foregroundStyle(Color.sea)
+						Spacer()
+						Button("Editar", action: edit).font(.text(15, .extraBold)).foregroundStyle(Color.sea)
 					}
-					Spacer()
-					Button("Editar", action: edit).font(.text(15, .extraBold)).foregroundStyle(Color.sea)
+					.frame(minHeight: 44)
 				}
-				.frame(minHeight: 44)
 			}
 			.padding(14)
 		}

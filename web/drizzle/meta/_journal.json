@@ -64,6 +64,13 @@
       "when": 1794193115891,
       "tag": "0008_hospedagem",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794196603448,
+      "tag": "0009_roteiro_sem_eventos_fixos",
+      "breakpoints": true
     }
   ]
 }

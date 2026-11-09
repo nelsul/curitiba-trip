@@ -26,6 +26,8 @@
 	import { onMount } from 'svelte';
 
 	let { data } = $props();
+	/** only admins change places and days; everyone ticks "Fomos!" */
+	const admin = $derived(data.me.isAdmin);
 
 	/** computers: the day's map moves to a column beside the stops */
 	let wide = $state(false);
@@ -223,7 +225,7 @@
 					<strong>{l.day}</strong><span>{l.weekday}</span>
 				</button>
 			{/each}
-			<button role="tab" class="chip daybtn add" aria-label="Adicionar dia" aria-selected={editingDay === 'new'} onclick={() => (editingDay = 'new')}><strong>+</strong><span>dia</span></button>
+			{#if admin}<button role="tab" class="chip daybtn add" aria-label="Adicionar dia" aria-selected={editingDay === 'new'} onclick={() => (editingDay = 'new')}><strong>+</strong><span>dia</span></button>{/if}
 		</div>
 
 		<div class="day-layout" class:with-map={wide && editingDay !== 'new' && !!day && mapPoints.length > 0} class:editing={editingDay === 'current'}>
@@ -265,6 +267,8 @@
 											<div class="stop-top">
 												{#if p?.photos[0]}
 													<img class="thumb" src={p.photos[0].url} alt="Foto de {p.name}" loading="lazy" />
+												{:else if p && !admin}
+													<span class="thumb empty" style:--c={CATEGORY[p.category].color} aria-hidden="true"><Icon name="pin" size={22} /></span>
 												{:else if p}
 													<button class="thumb empty" style:--c={CATEGORY[p.category].color} onclick={() => (editingPlace = p)} aria-label="Adicionar foto de {p.name}">
 														<Icon name="camera" size={22} /><span>foto</span>
@@ -273,7 +277,7 @@
 												<div class="stop-text">
 													<div class="when">
 														{#if n}<span class="num" aria-label="Parada {n}">{n}</span>{/if}
-														<span class="time">{s.time || 'Sem horário'}</span>
+														{#if s.time}<span class="time">{s.time}</span>{/if}
 													</div>
 													<h3>{p?.name ?? s.label}</h3>
 													<span class="badge" style:--c={TRANSPORT[s.transport].color}>{TRANSPORT[s.transport].label}</span>
@@ -291,7 +295,7 @@
 													</button>
 													<a class="btn small uber" href={uberUrl(p)} target="_blank" rel="noopener"><Icon name="car" size={18} /> Pedir Uber</a>
 													<a class="btn small secondary icon" href={placeUrl(p)} target="_blank" rel="noopener" aria-label="Abrir no Google Maps" title="Google Maps"><Icon name="map" size={18} /></a>
-													<button class="btn small secondary icon" onclick={() => (editingPlace = p)} aria-label="Editar lugar ({p.name})" title="Editar lugar">✎</button>
+													{#if admin}<button class="btn small secondary icon" onclick={() => (editingPlace = p)} aria-label="Editar lugar ({p.name})" title="Editar lugar">✎</button>{/if}
 												</div>
 											{/if}
 										</div>
@@ -304,13 +308,13 @@
 							{#if googleRoute && !day.wedding}
 								<a class="btn sea block" href={googleRoute} target="_blank" rel="noopener"><Icon name="map" size={20} /> Rota do dia no Google Maps</a>
 							{/if}
-							<button class="btn secondary block edit" onclick={() => (editingDay = 'current')}>✎ Editar este dia</button>
+							{#if admin}<button class="btn secondary block edit" onclick={() => (editingDay = 'current')}>✎ Editar este dia</button>{/if}
 						{/if}
 					</div>
 				</article>
 			{/key}
 		{:else}
-			<div class="card empty-card"><p>O roteiro ainda está vazio.</p><button class="btn sun" onclick={() => (editingDay = 'new')}>Criar o primeiro dia</button></div>
+			<div class="card empty-card"><p>O roteiro ainda está vazio.</p>{#if admin}<button class="btn sun" onclick={() => (editingDay = 'new')}>Criar o primeiro dia</button>{/if}</div>
 		{/if}
 		</div>
 		{#if wide && editingDay !== 'new' && day && mapPoints.length}
@@ -383,13 +387,13 @@
 			</div>
 			<div class="search-row">
 				<label class="search"><Icon name="search" size={18} /><span class="sr-only">Procurar nos lugares</span><input type="search" bind:value={query} placeholder="Procurar" /></label>
-				<button class="btn sun small" onclick={() => (editingPlace = 'new')}>＋ Lugar</button>
+				{#if admin}<button class="btn sun small" onclick={() => (editingPlace = 'new')}>＋ Lugar</button>{/if}
 			</div>
 		</div>
 		{#if toast}<p class="toast" role="status">{toast}</p>{/if}
 		<div class="places">
 			{#each shown as p (p.id)}
-				<PlaceCard place={p} visited={visitedPlaces.has(p.id)} usedOn={usedOn.get(p.id) ?? []} days={data.days} onedit={() => (editingPlace = p)} onadd={(date) => addToDay(p, date)} />
+				<PlaceCard place={p} visited={visitedPlaces.has(p.id)} usedOn={usedOn.get(p.id) ?? []} days={data.days} onedit={admin ? () => (editingPlace = p) : undefined} onadd={admin ? (date) => addToDay(p, date) : undefined} />
 			{:else}
 				<p class="muted">Nenhum lugar {query ? 'com esse nome' : 'aqui ainda'}.</p>
 			{/each}

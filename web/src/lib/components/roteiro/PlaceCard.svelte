@@ -18,8 +18,9 @@
 		visited?: boolean;
 		/** all days, for "Pôr no roteiro" */
 		days?: { date: string; title: string }[];
-		onedit: () => void;
-		onadd: (date: string) => void;
+		/** admins only (left out for everyone else) */
+		onedit?: () => void;
+		onadd?: (date: string) => void;
 	} = $props();
 
 	let photo = $state(0);
@@ -53,7 +54,11 @@
 				<span class="dots" aria-hidden="true">{#each place.photos as ph, i (ph.id)}<i class:on={i === photo}></i>{/each}</span>
 			{/if}
 		{:else}
-			<button class="add-photo" onclick={onedit}><Icon name="camera" size={26} /><span>Adicionar fotos</span></button>
+			{#if onedit}
+				<button class="add-photo" onclick={onedit}><Icon name="camera" size={26} /><span>Adicionar fotos</span></button>
+			{:else}
+				<span class="add-photo" aria-hidden="true" style:cursor="default"><Icon name="camera" size={26} /><span>Sem fotos ainda</span></span>
+			{/if}
 		{/if}
 		<span class="cat" style:--c={cat.color}>{cat.label}</span>
 		{#if visited}<span class="been"><Icon name="check" size={14} /> Fomos!</span>{/if}
@@ -79,14 +84,16 @@
 			<a class="btn small secondary" href={placeUrl(place)} target="_blank" rel="noopener"><Icon name="map" size={18} /> Google Maps</a>
 			{#if place.link}<a class="btn small secondary" href={place.link} target="_blank" rel="noopener"><Icon name="expand" size={16} /> {linkLabel}</a>{/if}
 		</div>
+		{#if onadd && onedit}
 		<div class="foot">
 			<label class="sr-only" for="add-{place.id}">Pôr no roteiro</label>
-			<select id="add-{place.id}" class="add" bind:value={adding} onchange={() => { if (adding) { onadd(adding); adding = ''; } }}>
+			<select id="add-{place.id}" class="add" bind:value={adding} onchange={() => { if (adding) { onadd?.(adding); adding = ''; } }}>
 				<option value="">+ Pôr no roteiro…</option>
 				{#each days as d}{@const l = dayKeyLabel(d.date)}<option value={d.date}>{l.weekday} {l.day} · {d.title}</option>{/each}
 			</select>
 			<button class="link" onclick={onedit}>Editar</button>
 		</div>
+		{/if}
 	</div>
 </article>
 
