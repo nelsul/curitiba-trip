@@ -14,7 +14,11 @@ The plan and the Android-specific decisions are in [PLAN.md](PLAN.md).
   - pinch-zoom, video, likes, comments, caption/note editing, delete
   - "Salvar original na galeria" (a "Viagem" album)
   - "Corrigir" a photo's location: search a place by name or drag the map
-- **Galeria:** every photo and video full screen, swiping up like Reels; only the video on screen plays (looping, sound toggle), double tap likes.
+- **Diário + Reels:** tapping a post opens every photo and video full screen, swiping up like Reels (only the video on screen plays, double tap likes, share in a frame, owner/admin delete). "Todas as fotos" shows them in a grid; pick up to 9 photos to make one image with a frame (Polaroid, Passaporte, Noite, Casamento; post or story) and share it.
+- **Cotinha:** split what someone paid; their Pix key to copy, "Já paguei", the payer's "Cobrar quem falta" (a notification), a badge with what you owe.
+- **Retrospectiva:** wedding countdown on the Diário; afterwards the admin's picks as stories.
+- **Noivos:** a one-time special effect when the bride or groom liked your post.
+- **@menções** in comments, **previsão do tempo** hora a hora in the Roteiro, a **page per place**, and **Tirar foto / Gravar vídeo** in Enviar.
 - **Enviar** (the yellow button at the top right): originals with their own location and time, sent in the background with WorkManager (resumes after network loss or the app closing), with the flight animation.
 - **Mapa:**
   - MapLibre with the island style: polaroids, pins, people, filters
@@ -40,7 +44,7 @@ app/src/main/java/com/nelsul/curitibatrip/
   MainActivity, TripApp, AppState   start-up, who's signed in, notification taps
   data/          Api (OkHttp + kotlinx.serialization), TokenStore (Keystore), models, TripTime, Gallery, Location, LocationSharing
   ui/            theme (Tokens.kt generated, fonts, motion) and components (buttons, cards, chips, dock, forms, flight animation)
-  feature/       login, feed, galeria (Reels), detail (pages + comments), enviar, mapa (map, markers, check-in, picker with place search), roteiro, more, shell (tabs)
+  feature/       login, feed (+ grid, frames, couple effect), galeria (Reels), cotinha, retro, detail (pages + comments), enviar, mapa (map, markers, check-in, picker with place search), roteiro, more, shell (tabs)
   upload/        Uploads (job store), UploadWorker (R2 multipart), MediaReader (original + GPS from the gallery)
   background/    Notifier (activity, reminders, arrivals), BackgroundLocation (+ receivers)
 ```

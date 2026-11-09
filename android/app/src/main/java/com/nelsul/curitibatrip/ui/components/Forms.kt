@@ -64,11 +64,13 @@ fun AppTextField(
 	singleLine: Boolean = false,
 	minLines: Int = 1,
 	focusRequester: FocusRequester? = null,
+	keyboard: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
 ) {
 	var focused by remember { mutableStateOf(false) }
 	BasicTextField(
 		value = value,
 		onValueChange = onValueChange,
+		keyboardOptions = keyboard,
 		singleLine = singleLine,
 		minLines = minLines,
 		maxLines = if (singleLine) 1 else 6,

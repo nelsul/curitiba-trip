@@ -142,3 +142,63 @@ data class MapItem(
 
 /** GET /api/places */
 @Serializable data class PlaceResult(val name: String, val detail: String = "", val lat: Double, val lng: Double)
+
+// ── Cotinha (GET /api/splits) ──
+
+@Serializable data class SplitShare(val userId: String, val amountCents: Int, val paidAt: String? = null)
+
+@Serializable
+data class Split(
+	val id: String,
+	val title: String,
+	val totalCents: Int,
+	val payerId: String,
+	val pixKey: String = "",
+	val note: String = "",
+	val createdAt: String,
+	val remindedAt: String? = null,
+	val shares: List<SplitShare> = emptyList(),
+) { val open get() = shares.any { it.paidAt == null } }
+
+@Serializable data class SplitList(val splits: List<Split> = emptyList(), val myPix: String = "")
+@Serializable data class NewSplit(val title: String, val totalCents: Int, val pixKey: String, val note: String, val participants: List<String>)
+@Serializable data class PaidBody(val userId: String, val paid: Boolean)
+
+object Money {
+	private val format = java.text.NumberFormat.getCurrencyInstance(java.util.Locale("pt", "BR"))
+	/** 12345 → "R$ 123,45" */
+	fun brl(cents: Int): String = format.format(cents / 100.0).replace(' ', ' ')
+
+	/** "123,45" / "1.234,5" → cents */
+	fun cents(text: String): Int? {
+		var t = text.filter { it.isDigit() || it == ',' || it == '.' }
+		if (t.isEmpty()) return null
+		t = if (t.contains(',')) t.replace(".", "").replace(',', '.')
+		else if (t.count { it == '.' } > 1 || Regex("""\.\d{3}$""").containsMatchIn(t)) t.replace(".", "") else t
+		return t.toDoubleOrNull()?.let { Math.round(it * 100).toInt() }
+	}
+
+	/** Equal parts that always add up (the leftover cents go to the first people). */
+	fun parts(total: Int, n: Int): List<Int> {
+		if (n <= 0) return emptyList()
+		val base = total / n
+		return List(n) { base + if (it < total - base * n) 1 else 0 }
+	}
+}
+
+// ── Retrospectiva, the couple's likes, weather ──
+
+@Serializable data class Retro(val weddingAt: String, val items: List<FeedMedia> = emptyList())
+@Serializable data class RetroBody(val mediaIds: List<String>)
+
+@Serializable
+data class CoupleLike(val id: Long, val likerId: String, val role: String, val mediaId: String? = null, val checkinId: String? = null, val image: String? = null)
+@Serializable data class CoupleLikes(val likes: List<CoupleLike> = emptyList())
+@Serializable data class SeenBody(val upTo: Long)
+
+@Serializable data class WeatherHour(val time: String, val temp: Int, val rain: Int = 0, val kind: String)
+@Serializable data class WeatherDay(val date: String, val min: Int, val max: Int, val rain: Int = 0, val kind: String, val hours: List<WeatherHour> = emptyList())
+@Serializable data class WeatherData(val days: List<WeatherDay> = emptyList())
+
+/** When the wedding starts (the countdown target), same as web src/lib/trip.ts. */
+object Wedding { val at: java.time.Instant = java.time.OffsetDateTime.parse("2026-11-14T16:00:00-03:00").toInstant() }

@@ -182,7 +182,7 @@ fun MediaDetailScreen(id: String, contentPadding: PaddingValues, onBack: () -> U
 								permission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
 							} else save(item)
 						}, variant = ButtonVariant.Sea, small = true, enabled = saving == null && item.original != null, icon = IconName.Download)
-						if (mine) ChunkyButton("Apagar", { confirmDelete = true }, variant = ButtonVariant.Danger, small = true)
+						if (mine || app.me?.isAdmin == true) ChunkyButton("Apagar", { confirmDelete = true }, variant = ButtonVariant.Danger, small = true)
 					}
 					error?.let { Text(it, style = body(14, FontWeight.Bold), color = Palette.danger) }
 					CommentsSection("/api/media/$id/comments", d.comments) { detail = detail?.copy(comments = it) }

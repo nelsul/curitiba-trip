@@ -1,5 +1,8 @@
 package com.nelsul.curitibatrip.feature.roteiro
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import com.nelsul.curitibatrip.data.Route
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
@@ -108,7 +111,16 @@ private val dayMonth = DateTimeFormatter.ofPattern("dd/MM").withZone(TripTime.zo
  * **Hospedagem** (where everyone sleeps, set up by admins on the site; each day leaves from and comes back to it).
  */
 @Composable
-fun RoteiroScreen(contentPadding: PaddingValues) {
+fun RoteiroScreen(contentPadding: PaddingValues, openRoute: (Route) -> Unit = {}) {
+	val openPlace: (String) -> Unit = { openRoute(Route.Place(it)) }
+	CompositionLocalProvider(LocalOpenPlace provides openPlace) { RoteiroContent(contentPadding) }
+}
+
+/** Opens a place's own page (set by the Roteiro tab). */
+val LocalOpenPlace = staticCompositionLocalOf<(String) -> Unit> { {} }
+
+@Composable
+private fun RoteiroContent(contentPadding: PaddingValues) {
 	val app = LocalApp.current
 	val context = LocalContext.current
 	val scope = rememberCoroutineScope()
@@ -146,6 +158,7 @@ fun RoteiroScreen(contentPadding: PaddingValues) {
 		scope.launch { toast = text; delay(3000); toast = null }
 	}
 	LaunchedEffect(Unit) { load() }
+	LaunchedEffect(Unit) { Weather.load() }
 
 	val days = data?.days.orEmpty()
 	val places = data?.places.orEmpty()
@@ -350,6 +363,7 @@ private fun Ticket(
 				Text(d.who, style = body(14, FontWeight.Bold), color = Palette.muted)
 			}
 			if (d.lead.isNotEmpty()) Text(d.lead, style = body(17), color = Palette.ink)
+			Weather.days[d.date]?.let { WeatherCard(it) }
 			if (points.isNotEmpty() && style != null) {
 				key(d.date) {
 					RouteMap(style, d.date, points, Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(18.dp)).border(2.5.dp, Palette.line, RoundedCornerShape(18.dp)),
@@ -519,7 +533,11 @@ private fun StopCard(s: RoteiroStop, n: Int?, p: RoteiroPlace?, open: (String) -
 					if (s.time.isNotEmpty()) Text(s.time, style = display(13), color = if (visited) Palette.onLeaf else Palette.onSun,
 						modifier = Modifier.background(if (visited) Palette.leaf else Palette.sun, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 2.dp))
 				}
-				Text(p?.name ?: s.label, style = display(19), color = Palette.ink)
+				if (p != null) {
+					val openPlace = LocalOpenPlace.current
+					Text(buildAnnotatedString { append(p.name); withStyle(SpanStyle(color = Palette.sea)) { append(" ›") } }, style = display(19), color = Palette.ink,
+						modifier = Modifier.pressable({ openPlace(p.id) }).semantics { contentDescription = "${p.name}, ver detalhes" })
+				} else Text(s.label, style = display(19), color = Palette.ink)
 				Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 					Badge(t.label, t.color)
 					if (p != null) Badge(p.categoryInfo.label, p.categoryInfo.color)
@@ -618,7 +636,9 @@ private fun PlaceCard(p: RoteiroPlace, visited: Boolean, usedOn: List<String>, d
 			}
 		}
 		Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-			Text(p.name, style = display(20), color = Palette.ink)
+			val openPlace = LocalOpenPlace.current
+			Text(buildAnnotatedString { append(p.name); withStyle(SpanStyle(color = Palette.sea)) { append(" ›") } }, style = display(20), color = Palette.ink,
+				modifier = Modifier.pressable({ openPlace(p.id) }).semantics { contentDescription = "${p.name}, ver detalhes" })
 			if (p.address.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
 				Icon(IconName.Pin, Palette.muted, Modifier.padding(top = 2.dp), size = 14.dp)
 				Text(p.address, style = body(13), color = Palette.muted)
@@ -630,14 +650,18 @@ private fun PlaceCard(p: RoteiroPlace, visited: Boolean, usedOn: List<String>, d
 					append(" ${p.price}")
 				}, style = body(15), color = Palette.ink)
 			}
-			if (p.description.isNotEmpty()) Text(p.description, style = body(15), color = Palette.ink)
+			if (p.description.isNotEmpty()) Text(p.description, style = body(15), color = Palette.ink, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
 			if (usedOn.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
 				Icon(IconName.Ticket, Palette.leaf, size = 14.dp)
 				Text("No roteiro: " + usedOn.joinToString(", ") { "${TripTime.shortWeekday(it)} ${it.takeLast(2)}" }, style = body(13, FontWeight.Bold), color = Palette.leaf)
 			}
 			Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-				ChunkyButton("Pedir Uber", { open(p.uberUrl) }, variant = ButtonVariant.Uber, small = true, icon = IconName.Car)
-				ChunkyButton("Maps", { open(p.mapsUrl) }, variant = ButtonVariant.Secondary, small = true, icon = IconName.Map)
+				val openPlace = LocalOpenPlace.current
+				ChunkyButton("Detalhes", { openPlace(p.id) }, variant = ButtonVariant.Sea, small = true)
+				ChunkyButton("Uber", { open(p.uberUrl) }, variant = ButtonVariant.Uber, small = true, icon = IconName.Car)
+				Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "Abrir no Google Maps" }) {
+					ChunkyButton({ open(p.mapsUrl) }, variant = ButtonVariant.Secondary, small = true) { Icon(IconName.Map, Palette.ink, size = 18.dp) }
+				}
 				if (p.link.isNotEmpty()) Box(Modifier.semantics(mergeDescendants = true) { contentDescription = "Site ou Instagram" }) {
 					ChunkyButton({ open(if (p.link.startsWith("http")) p.link else "https://${p.link}") }, variant = ButtonVariant.Secondary, small = true) {
 						Icon(IconName.Expand, Palette.ink, size = 16.dp)

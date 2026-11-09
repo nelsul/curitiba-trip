@@ -81,5 +81,6 @@ class MainActivity : ComponentActivity() {
 		intent.getStringExtra("media")?.let { Notifier.openRoute = Route.Media(it) }
 		intent.getStringExtra("checkin")?.let { Notifier.openRoute = Route.Checkin(it) }
 		if (intent.getStringExtra("action") == "checkin") Notifier.openCheckin++
+		if (intent.getStringExtra("action") == "cotinha") Notifier.openCotinha++
 	}
 }

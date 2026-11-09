@@ -106,6 +106,7 @@ private fun PostHeader(person: Person?, subtitle: String, trailing: (@Composable
 /** A photo/video post: swipeable carousel, double-tap to like, heart, liked-by, caption, comments. */
 @Composable
 fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
+	val openReel = LocalOpenReel.current
 	val app = LocalApp.current
 	val scope = rememberCoroutineScope()
 	val pager = rememberPagerState { items.size }
@@ -140,7 +141,7 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 				MediaSlide(items[i], Modifier.pointerInput(items[i].id) {
 					detectTapGestures(
 						onDoubleTap = { if (!items[i].isVideo) { bigHeart++; setLike(items[i], true) } },
-						onTap = { open(Route.Media(items[i].id)) },
+						onTap = { if (items[i].status == "ready" && openReel != null) openReel(items[i].id) else open(Route.Media(items[i].id)) },
 					)
 				})
 			}
@@ -149,7 +150,7 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 		Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
 			LikeButton(likersOf(current).contains(app.me?.id)) { setLike(current, it) }
 			Icon(IconName.Chat, Palette.ink, Modifier.pressable({ open(Route.Media(current.id)) }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 26.dp)
-			Icon(IconName.Expand, Palette.ink, Modifier.pressable({ open(Route.Media(current.id)) }).padding(10.dp).semantics { contentDescription = "Abrir em tela cheia" }, size = 24.dp)
+			Icon(IconName.Expand, Palette.ink, Modifier.pressable({ if (current.status == "ready" && openReel != null) openReel(current.id) else open(Route.Media(current.id)) }).padding(10.dp).semantics { contentDescription = "Abrir em tela cheia" }, size = 24.dp)
 			Spacer(Modifier.weight(1f))
 			if (items.size > 1) Dots(items.size, pager.currentPage)
 			Spacer(Modifier.width(92.dp))

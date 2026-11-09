@@ -1,5 +1,7 @@
 package com.nelsul.curitibatrip.feature.enviar
 
+import androidx.compose.runtime.saveable.rememberSaveable
+import android.provider.MediaStore
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
@@ -144,6 +146,25 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 			added(items)
 		}
 	}
+	// the phone's camera: the photo/video goes to the gallery (Pictures/Movies › Curitiba), then into the list like a picked one
+	var captureUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+	fun captured(ok: Boolean) {
+		val uri = captureUri ?: return
+		captureUri = null
+		scope.launch {
+			if (!ok) { withContext(Dispatchers.IO) { runCatching { context.contentResolver.delete(uri, null, null) } }; return@launch }
+			val item = withContext(Dispatchers.IO) { runCatching { MediaReader.read(context, uri) }.getOrNull() }
+			if (item == null) message = "Não foi possível abrir o que foi gravado." else added(listOf(item))
+		}
+	}
+	val takePhoto = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured(it) }
+	val takeVideo = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { captured(it) }
+	fun capture(video: Boolean) {
+		val uri = runCatching { newCaptureUri(context, video) }.getOrNull()
+		if (uri == null) { message = "Não foi possível abrir a câmera."; return }
+		captureUri = uri
+		try { if (video) takeVideo.launch(uri) else takePhoto.launch(uri) } catch (e: Exception) { captureUri = null; message = "Nenhum app de câmera encontrado." }
+	}
 	// gallery access first (so we can send the original with its location), then the picker either way
 	val galleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
 		picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
@@ -155,6 +176,10 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 			Text("Fotos e vídeos vão no arquivo original, em qualidade total, com o local e a hora da própria foto. Pode fechar o app: o envio continua.",
 				style = body(16), color = Palette.muted)
 			PickerTile { galleryPermission.launch(galleryPermissions()) }
+			Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+				ChunkyButton("Tirar foto", { capture(false) }, Modifier.weight(1f), variant = ButtonVariant.Secondary, fullWidth = true, icon = IconName.Camera)
+				ChunkyButton("Gravar vídeo", { capture(true) }, Modifier.weight(1f), variant = ButtonVariant.Secondary, fullWidth = true, icon = IconName.Video)
+			}
 			if (noOriginals) Column(Modifier.fillMaxWidth().card(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text("Sem acesso às fotos: o local da foto não vem junto. Para enviar o original com o local, permita o acesso a fotos e vídeos.",
 					style = body(15, FontWeight.Bold), color = Palette.ink)
@@ -300,4 +325,16 @@ private fun JobRow(job: UploadJob, inFlight: Long?, open: (Route) -> Unit) {
 			}
 		}
 	}
+}
+
+/** A new, empty gallery entry for the camera app to write into (Pictures/Curitiba or Movies/Curitiba). */
+private fun newCaptureUri(context: android.content.Context, video: Boolean): Uri? {
+	val stamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+	val values = android.content.ContentValues().apply {
+		put(MediaStore.MediaColumns.DISPLAY_NAME, "curitiba_$stamp.${if (video) "mp4" else "jpg"}")
+		put(MediaStore.MediaColumns.MIME_TYPE, if (video) "video/mp4" else "image/jpeg")
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) put(MediaStore.MediaColumns.RELATIVE_PATH, if (video) "Movies/Curitiba" else "Pictures/Curitiba")
+	}
+	val base = if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+	return context.contentResolver.insert(base, values)
 }
