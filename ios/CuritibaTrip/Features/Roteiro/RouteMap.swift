@@ -16,13 +16,30 @@ struct RoutePoint: Hashable {
 	func hash(into h: inout Hasher) { h.combine(n); h.combine(name); h.combine(visited); h.combine(coordinate.latitude); h.combine(coordinate.longitude) }
 }
 
+/// Where the person sleeps: the day leaves from there ("start") and/or comes back there ("end").
+struct RouteHome: Hashable {
+	let id: String
+	let name: String
+	let emoji: String
+	let label: String
+	let coordinate: CLLocationCoordinate2D
+
+	static func == (a: RouteHome, b: RouteHome) -> Bool {
+		a.id == b.id && a.name == b.name && a.label == b.label
+			&& a.coordinate.latitude == b.coordinate.latitude && a.coordinate.longitude == b.coordinate.longitude
+	}
+	func hash(into h: inout Hasher) { h.combine(id); h.combine(coordinate.latitude); h.combine(coordinate.longitude) }
+}
+
 /// The day's map (web RouteMap): numbered pins (or the place's photo) and the route by street between them,
 /// colored by how you get there; walking legs and straight lines (no street route found) are dashed.
 struct RouteMap: UIViewRepresentable {
 	let styleURL: URL
 	let date: String
 	let points: [RoutePoint]
+	var homes: [RouteHome] = []
 	var onPick: (Int) -> Void = { _ in }
+	var onPickHome: (String) -> Void = { _ in }
 
 	func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -33,7 +50,7 @@ struct RouteMap: UIViewRepresentable {
 		map.attributionButtonPosition = .bottomRight
 		map.backgroundColor = UIColor(Color.bg)
 		map.maximumZoomLevel = 18
-		if let first = points.first { map.setCenter(first.coordinate, zoomLevel: 13, animated: false) }
+		if let first = homes.first?.coordinate ?? points.first?.coordinate { map.setCenter(first, zoomLevel: 13, animated: false) }
 		context.coordinator.map = map
 		return map
 	}
@@ -41,8 +58,9 @@ struct RouteMap: UIViewRepresentable {
 	func updateUIView(_ map: MLNMapView, context: Context) {
 		let c = context.coordinator
 		c.parent = self
-		if c.shown != points || c.date != date {
+		if c.shown != points || c.homes != homes || c.date != date {
 			c.shown = points
+			c.homes = homes
 			c.date = date
 			c.reload()
 		}
@@ -53,6 +71,7 @@ struct RouteMap: UIViewRepresentable {
 		var parent: RouteMap?
 		weak var map: MLNMapView?
 		var shown: [RoutePoint] = []
+		var homes: [RouteHome] = []
 		var date = ""
 		private var styleReady = false
 		private var lastSize = CGSize.zero
@@ -96,13 +115,16 @@ struct RouteMap: UIViewRepresentable {
 			guard let map, let parent else { return }
 			map.removeAnnotations(map.annotations ?? [])
 			map.addAnnotations(parent.points.map { StopAnnotation(point: $0) })
+			map.addAnnotations(parent.homes.map { HomeAnnotation(home: $0) })
 			fit()
 			guard styleReady else { return }
 			routeTask?.cancel()
-			let date = parent.date
-			let count = parent.points.count
+			// with "casa" the server also draws the way from and back to where you sleep
+			let path = "/api/roteiro/days/\(parent.date)/route"
+			let query: [String: String?] = parent.homes.isEmpty ? [:] : ["casa": "1"]
+			let count = parent.points.count + parent.homes.count
 			routeTask = Task { [weak self] in
-				guard count >= 2, let route: DayRoute = try? await API.shared.get("/api/roteiro/days/\(date)/route") else {
+				guard count >= 2, let route: DayRoute = try? await API.shared.get(path, query: query) else {
 					self?.setRoute([])
 					return
 				}
@@ -126,7 +148,7 @@ struct RouteMap: UIViewRepresentable {
 
 		func fit() {
 			guard let map, let parent, map.bounds.width > 0 else { return }
-			let coords = parent.points.map(\.coordinate)
+			let coords = parent.points.map(\.coordinate) + parent.homes.map(\.coordinate)
 			guard let first = coords.first else { return }
 			if coords.count == 1 { return map.setCenter(first, zoomLevel: 15, animated: false) }
 			let lats = coords.map(\.latitude), lngs = coords.map(\.longitude)
@@ -138,6 +160,7 @@ struct RouteMap: UIViewRepresentable {
 		}
 
 		func mapView(_ map: MLNMapView, viewFor annotation: MLNAnnotation) -> MLNAnnotationView? {
+			if let h = annotation as? HomeAnnotation { return HomePinView(home: h.home) }
 			guard let a = annotation as? StopAnnotation else { return nil }
 			return StopPinView(point: a.point)
 		}
@@ -145,6 +168,7 @@ struct RouteMap: UIViewRepresentable {
 		func mapView(_ map: MLNMapView, didSelect annotation: MLNAnnotation) {
 			map.deselectAnnotation(annotation, animated: false)
 			if let a = annotation as? StopAnnotation { parent?.onPick(a.point.n) }
+			if let h = annotation as? HomeAnnotation { parent?.onPickHome(h.home.id) }
 		}
 
 		func mapView(_ map: MLNMapView, annotationCanShowCallout annotation: MLNAnnotation) -> Bool { false }
@@ -156,6 +180,37 @@ final class StopAnnotation: NSObject, MLNAnnotation {
 	init(point: RoutePoint) { self.point = point }
 	var coordinate: CLLocationCoordinate2D { point.coordinate }
 	var title: String? { "\(point.n). \(point.name)" }
+}
+
+final class HomeAnnotation: NSObject, MLNAnnotation {
+	let home: RouteHome
+	init(home: RouteHome) { self.home = home }
+	var coordinate: CLLocationCoordinate2D { home.coordinate }
+	var title: String? { "\(home.label): \(home.name)" }
+}
+
+/// The stay on the map: its emoji on a sea-blue rounded square.
+final class HomePinView: MLNAnnotationView {
+	private var host: UIHostingController<AnyView>?
+
+	init(home: RouteHome) {
+		super.init(reuseIdentifier: nil)
+		frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+		let host = UIHostingController(rootView: AnyView(
+			Text(home.emoji).font(.system(size: 20))
+				.frame(width: 38, height: 38)
+				.background(RoundedRectangle(cornerRadius: 12).fill(Color.sea))
+				.overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(red: 1, green: 0.99, blue: 0.94), lineWidth: 3))
+				.shadow(color: .black.opacity(0.3), radius: 0, y: 3)))
+		host.view.backgroundColor = .clear
+		host.view.frame = bounds
+		host.view.isUserInteractionEnabled = false
+		addSubview(host.view)
+		self.host = host
+		accessibilityLabel = "\(home.label): \(home.name)"
+	}
+
+	required init?(coder: NSCoder) { fatalError() }
 }
 
 /// Hosts the SwiftUI pin inside MapLibre's annotation view.

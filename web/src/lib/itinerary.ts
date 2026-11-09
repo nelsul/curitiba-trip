@@ -48,7 +48,51 @@ export type RoteiroStop = {
 	visitedAt: string | null;
 	visitedBy: string | null;
 };
-export type RoteiroDay = { date: string; title: string; who: string; lead: string; wedding: boolean; stops: RoteiroStop[] };
+export type RoteiroDay = {
+	date: string;
+	title: string;
+	who: string;
+	lead: string;
+	wedding: boolean;
+	stops: RoteiroStop[];
+	/** the stay (hotel/Airbnb) the person reading leaves from that morning / goes back to that night, if any */
+	startStay: string | null;
+	endStay: string | null;
+};
+
+export type StayKind = 'hotel' | 'airbnb' | 'casa';
+
+export const STAY_KIND: Record<StayKind, { label: string; emoji: string }> = {
+	hotel: { label: 'Hotel', emoji: '🏨' },
+	airbnb: { label: 'Airbnb', emoji: '🏠' },
+	casa: { label: 'Casa', emoji: '🏡' }
+};
+
+/** Where people sleep, set up by admins. `checkIn` = first night, `checkOut` = the day they leave (null = whole trip). */
+export type RoteiroStay = {
+	id: string;
+	name: string;
+	kind: StayKind;
+	lat: number;
+	lng: number;
+	address: string;
+	link: string;
+	checkIn: string | null;
+	checkOut: string | null;
+	note: string;
+	/** user ids staying there */
+	guests: string[];
+};
+
+/** The stay `userId` wakes up in on `date` (slept there the night before). */
+export function morningStay(stays: RoteiroStay[], userId: string, date: string) {
+	return stays.find((s) => s.guests.includes(userId) && (!s.checkIn || s.checkIn < date) && (!s.checkOut || date <= s.checkOut)) ?? null;
+}
+
+/** The stay `userId` sleeps in on the night of `date`. */
+export function nightStay(stays: RoteiroStay[], userId: string, date: string) {
+	return stays.find((s) => s.guests.includes(userId) && (!s.checkIn || s.checkIn <= date) && (!s.checkOut || date < s.checkOut)) ?? null;
+}
 
 type LatLng = { lat: number; lng: number; name?: string; googlePlaceId?: string | null };
 

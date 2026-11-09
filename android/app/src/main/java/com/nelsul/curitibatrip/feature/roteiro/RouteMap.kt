@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -59,6 +60,9 @@ import org.maplibre.geojson.Point
 /** One numbered stop on the day's map. */
 data class RoutePoint(val n: Int, val name: String, val lat: Double, val lng: Double, val photo: String?, val visited: Boolean)
 
+/** Where the person sleeps: the day leaves from there ("start") and/or comes back there ("end"). */
+data class RouteHome(val id: String, val name: String, val emoji: String, val label: String, val lat: Double, val lng: Double)
+
 private val cream = Color(0xFFFFFCF0)
 
 /**
@@ -66,7 +70,10 @@ private val cream = Color(0xFFFFFCF0)
  * colored by how you get there; walking legs and straight lines (no street route found) are dashed.
  */
 @Composable
-fun RouteMap(styleJson: String, date: String, points: List<RoutePoint>, modifier: Modifier = Modifier, onPick: (Int) -> Unit = {}) {
+fun RouteMap(
+	styleJson: String, date: String, points: List<RoutePoint>, modifier: Modifier = Modifier, homes: List<RouteHome> = emptyList(),
+	onPick: (Int) -> Unit = {}, onPickHome: (String) -> Unit = {},
+) {
 	val context = LocalContext.current
 	val lifecycle = LocalLifecycleOwner.current.lifecycle
 	var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -79,7 +86,8 @@ fun RouteMap(styleJson: String, date: String, points: List<RoutePoint>, modifier
 				m.uiSettings.isLogoEnabled = false
 				m.uiSettings.isRotateGesturesEnabled = false
 				m.uiSettings.setAttributionMargins(0, 0, 24, 24)
-				points.firstOrNull()?.let { m.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(it.lat, it.lng), 13.0)) }
+				(homes.firstOrNull()?.let { LatLng(it.lat, it.lng) } ?: points.firstOrNull()?.let { LatLng(it.lat, it.lng) })
+					?.let { m.moveCamera(CameraUpdateFactory.newLatLngZoom(it, 13.0)) }
 				m.addOnCameraMoveListener { tick++ }
 				m.addOnCameraIdleListener { tick++ }
 				m.setStyle(Style.Builder().fromJson(styleJson)) { s ->
@@ -122,19 +130,22 @@ fun RouteMap(styleJson: String, date: String, points: List<RoutePoint>, modifier
 		}
 	}
 	// show the whole day, then draw the route by street
-	LaunchedEffect(style, date, points) {
+	LaunchedEffect(style, date, points, homes) {
 		val m = map ?: return@LaunchedEffect
 		val s = style ?: return@LaunchedEffect
-		when (points.size) {
+		val all = points.map { LatLng(it.lat, it.lng) } + homes.map { LatLng(it.lat, it.lng) }
+		when (all.size) {
 			0 -> {}
-			1 -> m.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(points[0].lat, points[0].lng), 15.0))
+			1 -> m.moveCamera(CameraUpdateFactory.newLatLngZoom(all[0], 15.0))
 			else -> {
-				val b = LatLngBounds.Builder().includes(points.map { LatLng(it.lat, it.lng) }).build()
+				val b = LatLngBounds.Builder().includes(all).build()
 				m.moveCamera(CameraUpdateFactory.newLatLngBounds(b, 110, 130, 110, 130))
 				if (m.cameraPosition.zoom > 15) m.moveCamera(CameraUpdateFactory.zoomTo(15.0))
 			}
 		}
-		val legs = if (points.size < 2) emptyList() else runCatching { Api.get<DayRoute>("/api/roteiro/days/$date/route").legs }.getOrDefault(emptyList())
+		// with "casa" the server also draws the way from and back to where you sleep
+		val query = if (homes.isEmpty()) emptyMap() else mapOf("casa" to "1")
+		val legs = if (all.size < 2) emptyList() else runCatching { Api.get<DayRoute>("/api/roteiro/days/$date/route", query).legs }.getOrDefault(emptyList())
 		val features = legs.mapNotNull { leg ->
 			val coords = leg.coordinates.filter { it.size == 2 }.map { Point.fromLngLat(it[0], it[1]) }
 			if (coords.size < 2) return@mapNotNull null
@@ -165,6 +176,24 @@ fun RouteMap(styleJson: String, date: String, points: List<RoutePoint>, modifier
 						.semantics { contentDescription = "${p.n}. ${p.name}" + if (p.visited) " (já fomos)" else "" },
 					contentAlignment = Alignment.Center,
 				) { StopPin(p) }
+			}
+			homes.forEach { h ->
+				val pt = m.projection.toScreenLocation(LatLng(h.lat, h.lng))
+				val half = with(density) { 22.dp.toPx() }
+				Box(
+					Modifier
+						.offset { IntOffset((pt.x - half).toInt(), (pt.y - half).toInt()) }
+						.size(44.dp)
+						.pressable({ onPickHome(h.id) })
+						.semantics { contentDescription = "${h.label}: ${h.name}" },
+					contentAlignment = Alignment.Center,
+				) {
+					Box(
+						Modifier.size(38.dp).shadow(3.dp, RoundedCornerShape(12.dp)).background(Palette.sea, RoundedCornerShape(12.dp))
+							.border(3.dp, cream, RoundedCornerShape(12.dp)),
+						contentAlignment = Alignment.Center,
+					) { Text(h.emoji, style = body(19)) }
+				}
 			}
 		}
 	}

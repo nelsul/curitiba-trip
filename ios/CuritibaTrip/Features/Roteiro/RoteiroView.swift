@@ -3,6 +3,7 @@ import SwiftUI
 /// Roteiro (web /roteiro), the same for everyone and editable by everyone:
 /// - **Dia a dia:** day chips, a boarding-pass ticket per day with the route map and the stops ("Fomos?", Uber, Maps).
 /// - **Lugares:** every place to go or eat, with photos, hours, prices and "Pôr no roteiro".
+/// - **Hospedagem:** where everyone sleeps (admins set it up on the site); each day leaves from and comes back to it.
 struct RoteiroView: View {
 	@Environment(AppState.self) private var app
 	@Environment(\.openURL) private var openURL
@@ -16,12 +17,14 @@ struct RoteiroView: View {
 	@State private var filter: RoteiroCategory?
 	@State private var query = ""
 	@State private var toast: String?
-	@State private var scrollTo: Int?
+	@State private var scrollTo: String?
 
 	private var days: [RoteiroDay] { data?.days ?? [] }
 	private var places: [RoteiroPlace] { data?.places ?? [] }
 	private var day: RoteiroDay? { days.first { $0.date == selected } ?? days.first }
+	private var stays: [RoteiroStay] { data?.stays ?? [] }
 	private func place(_ id: String?) -> RoteiroPlace? { id.flatMap { id in places.first { $0.id == id } } }
+	private func stay(_ id: String?) -> RoteiroStay? { id.flatMap { id in stays.first { $0.id == id } } }
 
 	var body: some View {
 		ScrollViewReader { proxy in
@@ -30,15 +33,19 @@ struct RoteiroView: View {
 					TitleRow(icon: .ticket, title: "Roteiro")
 					tabs
 					if let error, data == nil { EmptyState(text: error, retry: { Task { await load() } }) }
-					if tab == 0 { daysView } else { placesView }
+					switch tab {
+					case 0: daysView
+					case 1: placesView
+					default: staysView
+					}
 				}
 				.padding(16)
 				.frame(maxWidth: 640)
 				.frame(maxWidth: .infinity)
 			}
-			.onChange(of: scrollTo) { _, n in
-				guard let n else { return }
-				withAnimation { proxy.scrollTo("parada-\(n)", anchor: .center) }
+			.onChange(of: scrollTo) { _, id in
+				guard let id else { return }
+				withAnimation { proxy.scrollTo(id, anchor: .center) }
 				scrollTo = nil
 			}
 		}
@@ -66,10 +73,11 @@ struct RoteiroView: View {
 	/// "Dia a dia" / "Lugares": the sea-blue pill switch (web .tabs).
 	private var tabs: some View {
 		HStack(spacing: 6) {
-			ForEach([(0, "Dia a dia", IconName.calendar), (1, "Lugares (\(places.count))", IconName.pin)], id: \.0) { i, label, icon in
+			ForEach([(0, "Dia a dia", IconName.calendar), (1, "Lugares", IconName.pin), (2, "Hospedagem", IconName.home)], id: \.0) { i, label, icon in
 				Button { withAnimation(.bounce) { tab = i } } label: {
-					Label { Text(label) } icon: { Icon(icon, size: 18) }
-						.font(.display(16))
+					Label { Text(label).lineLimit(1).minimumScaleFactor(0.75) } icon: { Icon(icon, size: 16) }
+						.labelStyle(TightLabel())
+						.font(.display(15))
 						.foregroundStyle(tab == i ? Color.onSea : Color.muted)
 						.frame(maxWidth: .infinity, minHeight: 42)
 						.background {
@@ -140,6 +148,8 @@ struct RoteiroView: View {
 		let index = (days.firstIndex { $0.id == d.id } ?? 0) + 1
 		let pts = points(d)
 		let numbers = Dictionary(uniqueKeysWithValues: pts.map { ($0.stop, $0.point.n) })
+		let start = stay(d.startStay), end = stay(d.endStay)
+		let homes = homes(start: start, end: end)
 		VStack(spacing: 0) {
 			HStack(alignment: .center, spacing: 12) {
 				VStack(alignment: .leading, spacing: 2) {
@@ -167,17 +177,21 @@ struct RoteiroView: View {
 				}
 				if !d.lead.isEmpty { Text(d.lead).font(.text(17)).foregroundStyle(Color.ink) }
 				if !pts.isEmpty, let style {
-					RouteMap(styleURL: style, date: d.date, points: pts.map(\.point), onPick: { scrollTo = $0 })
+					RouteMap(styleURL: style, date: d.date, points: pts.map(\.point), homes: homes,
+							 onPick: { scrollTo = "parada-\($0)" }, onPickHome: { scrollTo = "casa-\($0)" })
 						.frame(height: 260)
 						.clipShape(RoundedRectangle(cornerRadius: 18))
 						.overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.line, lineWidth: 2.5))
 					legend(d)
 				}
+				if let start { homeStop(start, start: true).id("casa-start") }
 				ForEach(Array(d.stops.enumerated()), id: \.element.id) { i, s in
 					stop(s, n: numbers[s.id]).id(numbers[s.id].map { "parada-\($0)" } ?? s.id).popIn(delay: 0.1 + Double(i) * 0.07)
 				}
 				if d.stops.isEmpty { Text("Nenhuma parada ainda.").font(.text(15)).foregroundStyle(Color.muted) }
-				if let route = Roteiro.routeURL(d.stops.compactMap { place($0.placeId) }), !d.wedding {
+				if let end { homeStop(end, start: false).id("casa-end") }
+				if let route = Roteiro.routeURL([start?.coordinate].compactMap { $0 } + d.stops.compactMap { place($0.placeId)?.coordinate } + [end?.coordinate].compactMap { $0 }),
+				   !d.wedding {
 					Button { openURL(route) } label: { Label { Text("Rota do dia no Google Maps") } icon: { Icon(.map, size: 20) } }
 						.buttonStyle(.chunky(.sea, fullWidth: true))
 				}
@@ -190,6 +204,45 @@ struct RoteiroView: View {
 		.clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
 		.overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).strokeBorder(d.wedding ? Color.berry : Color.line, lineWidth: 2.5))
 		.background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(Color.shadow).offset(y: 5))
+	}
+
+	/// The stay pin(s): one when you leave from and come back to the same place.
+	private func homes(start: RoteiroStay?, end: RoteiroStay?) -> [RouteHome] {
+		let pin = { (s: RoteiroStay, id: String, label: String) in RouteHome(id: id, name: s.name, emoji: s.emoji, label: label, coordinate: s.coordinate) }
+		if let start, let end, start.id == end.id { return [pin(start, "start", "Saída e volta")] }
+		return [start.map { pin($0, "start", "Saída") }, end.map { pin($0, "end", "Volta") }].compactMap { $0 }
+	}
+
+	/// "Saída" / "Volta": where you sleep, at the start and end of the day.
+	private func homeStop(_ st: RoteiroStay, start: Bool) -> some View {
+		VStack(alignment: .leading, spacing: 8) {
+			HStack(alignment: .top, spacing: 10) {
+				Text(st.emoji).font(.system(size: 32))
+					.frame(width: 76, height: 76)
+					.background(RoundedRectangle(cornerRadius: 14).fill(Color.sea.opacity(0.22)))
+				VStack(alignment: .leading, spacing: 5) {
+					Label { Text(start ? "Saída" : "Volta") } icon: { Icon(.home, size: 13) }
+						.labelStyle(TightLabel())
+						.font(.display(13)).foregroundStyle(Color.onSea)
+						.padding(.horizontal, 10).padding(.vertical, 2)
+						.background(RoundedRectangle(cornerRadius: 10).fill(Color.sea))
+					Text(st.name).font(.display(19)).foregroundStyle(Color.ink).fixedSize(horizontal: false, vertical: true)
+					if !st.address.isEmpty { Text(st.address).font(.text(13)).foregroundStyle(Color.muted) }
+				}
+			}
+			HStack(spacing: 8) {
+				if !start {
+					Button { openURL(st.uberURL) } label: { Label { Text("Uber de volta") } icon: { Icon(.car, size: 18) } }
+						.buttonStyle(.chunky(.uber, small: true))
+				}
+				Button { openURL(st.mapsURL) } label: { Icon(.map, size: 18) }
+					.buttonStyle(.chunky(.secondary, small: true))
+					.accessibilityLabel("Abrir \(st.name) no Google Maps")
+			}
+		}
+		.padding(12)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color.sea, style: StrokeStyle(lineWidth: 2.5, dash: [7, 5])))
 	}
 
 	private func legend(_ d: RoteiroDay) -> some View {
@@ -292,6 +345,17 @@ struct RoteiroView: View {
 
 	private func month(_ date: String) -> String {
 		["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"][max(0, min(11, (Int(date.dropFirst(5).prefix(2)) ?? 11) - 1))]
+	}
+
+	// MARK: Hospedagem
+
+	@ViewBuilder private var staysView: some View {
+		Text("O dia a dia de cada pessoa começa e termina onde ela está hospedada. Quem é administrador muda a hospedagem pelo site.")
+			.font(.text(14)).foregroundStyle(Color.muted).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+		ForEach(stays) { st in StayCard(stay: st, mine: st.guests.contains(app.me?.id ?? "")) }
+		if stays.isEmpty && data != nil {
+			Text("Nenhuma hospedagem cadastrada ainda.").font(.text(15)).foregroundStyle(Color.muted).frame(maxWidth: .infinity).card(padding: 24)
+		}
 	}
 
 	// MARK: Lugares
@@ -500,6 +564,82 @@ private struct PlaceCard: View {
 			Text(label).font(.text(13, .extraBold)).foregroundStyle(Color.muted).frame(width: 60, alignment: .leading)
 			value.font(.text(15)).foregroundStyle(Color.ink)
 		}
+	}
+}
+
+/// A stay in "Hospedagem": type, dates, address, who sleeps there, Uber, Maps and the booking link.
+private struct StayCard: View {
+	let stay: RoteiroStay
+	let mine: Bool
+	@Environment(AppState.self) private var app
+	@Environment(\.openURL) private var openURL
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			HStack(spacing: 12) {
+				Text(stay.emoji).font(.system(size: 30))
+					.frame(width: 56, height: 56)
+					.background(RoundedRectangle(cornerRadius: 14).fill(Color.sea.opacity(0.22)))
+				VStack(alignment: .leading, spacing: 4) {
+					Text(stay.name).font(.display(20)).foregroundStyle(Color.ink)
+					HStack(spacing: 6) {
+						pill(stay.kindLabel, .sea)
+						if mine { pill("Você fica aqui", .leaf) }
+					}
+				}
+			}
+			HStack(spacing: 16) {
+				Text("\(Text("Chegada").bold()) \(stay.checkIn.map(day) ?? "início da viagem")")
+				Text("\(Text("Saída").bold()) \(stay.checkOut.map(day) ?? "fim da viagem")")
+			}
+			.font(.text(14)).foregroundStyle(Color.ink)
+			if !stay.address.isEmpty { Text(stay.address).font(.text(13)).foregroundStyle(Color.muted) }
+			ScrollView(.horizontal, showsIndicators: false) {
+				HStack(spacing: 6) {
+					ForEach(stay.guests, id: \.self) { g in
+						if let p = app.person(g) {
+							HStack(spacing: 6) {
+								AvatarView(name: p.name, color: p.tint, photo: p.photo, size: 26)
+								Text(p.name).font(.text(14, .extraBold)).foregroundStyle(Color.ink)
+							}
+							.padding(.leading, 2).padding(.trailing, 10).padding(.vertical, 2)
+							.background(Capsule().fill(Color.surface2))
+						}
+					}
+				}
+				.padding(.vertical, 2)
+			}
+			if !stay.note.isEmpty { Text(stay.note).font(.text(14)).foregroundStyle(Color.ink) }
+			HStack(spacing: 8) {
+				Button { openURL(stay.uberURL) } label: { Label { Text("Pedir Uber") } icon: { Icon(.car, size: 18) } }
+					.buttonStyle(.chunky(.uber, small: true))
+				Button { openURL(stay.mapsURL) } label: { Icon(.map, size: 18) }
+					.buttonStyle(.chunky(.secondary, small: true))
+					.accessibilityLabel("Abrir no Google Maps")
+				if let url = stay.linkURL {
+					Button { openURL(url) } label: { Text("Reserva") }.buttonStyle(.chunky(.secondary, small: true))
+				}
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.card(padding: 14)
+		.overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).strokeBorder(mine ? Color.leaf : .clear, lineWidth: 2.5))
+		.popIn()
+	}
+
+	private func day(_ key: String) -> String { "\(TripTime.shortWeekday(key)) \(key.suffix(2))/\(key.dropFirst(5).prefix(2))" }
+
+	private func pill(_ text: String, _ color: Color) -> some View {
+		Text(text).font(.text(12, .extraBold)).foregroundStyle(color)
+			.padding(.horizontal, 9).padding(.vertical, 1)
+			.overlay(Capsule().strokeBorder(color, lineWidth: 2))
+	}
+}
+
+/// Icon and text closer together than the default Label.
+private struct TightLabel: LabelStyle {
+	func makeBody(configuration: Configuration) -> some View {
+		HStack(spacing: 4) { configuration.icon; configuration.title }
 	}
 }
 

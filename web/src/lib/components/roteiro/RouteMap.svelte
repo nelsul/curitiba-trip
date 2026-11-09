@@ -4,13 +4,25 @@
 	import { TRANSPORT, type Transport } from '$lib/itinerary';
 
 	type Point = { n: number; name: string; lat: number; lng: number; transport: Transport; photo?: string | null; visited?: boolean };
+	/** where the person sleeps: the day starts and/or ends there */
+	type Home = { id: string; name: string; lat: number; lng: number; emoji: string; label: string };
 	let {
 		date,
 		points,
+		homes = [],
 		onpick,
+		onpickhome,
 		active = null,
 		height = '280px'
-	}: { date: string; points: Point[]; onpick?: (n: number) => void; active?: number | null; height?: string } = $props();
+	}: {
+		date: string;
+		points: Point[];
+		homes?: Home[];
+		onpick?: (n: number) => void;
+		onpickhome?: (id: string) => void;
+		active?: number | null;
+		height?: string;
+	} = $props();
 
 	const pins = new Map<number, HTMLElement>();
 	$effect(() => {
@@ -20,7 +32,7 @@
 
 	let note = $state('');
 	// svelte-ignore state_referenced_locally
-	const first = points[0];
+	const first = homes[0] ?? points[0];
 
 	/** CSS var → color the map can use */
 	function cssColor(v: string) {
@@ -71,23 +83,37 @@
 				dot.append(ok);
 			}
 			el.append(dot);
-			if (p.visited) el.setAttribute('aria-label', `${p.n}. ${p.name} (já fomos)`);
-			el.setAttribute('aria-label', `${p.n}. ${p.name}`);
+			el.setAttribute('aria-label', `${p.n}. ${p.name}${p.visited ? ' (já fomos)' : ''}`);
 			el.onclick = () => onpick?.(p.n);
 			pins.set(p.n, el);
 			new ml.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
 			bounds.extend([p.lng, p.lat]);
 		}
+		for (const h of homes) {
+			const el = document.createElement('button');
+			el.type = 'button';
+			el.className = 'route-stop home';
+			const dot = document.createElement('span');
+			dot.textContent = h.emoji;
+			el.append(dot);
+			el.setAttribute('aria-label', `${h.label}: ${h.name}`);
+			el.title = `${h.label}: ${h.name}`;
+			el.onclick = () => onpickhome?.(h.id);
+			new ml.Marker({ element: el }).setLngLat([h.lng, h.lat]).addTo(map);
+			bounds.extend([h.lng, h.lat]);
+		}
+		const total = points.length + homes.length;
 		const fit = () => {
-			if (points.length > 1) map.fitBounds(bounds, { padding: { top: 40, left: 40, right: 60, bottom: 56 }, maxZoom: 15, duration: 0 });
+			if (total > 1) map.fitBounds(bounds, { padding: { top: 40, left: 40, right: 60, bottom: 56 }, maxZoom: 15, duration: 0 });
 		};
 		fit();
 		// the column changes width (editing a day, resizing the window): show the whole day again
 		map.on('resize', fit);
 
-		if (points.length < 2) return;
+		if (total < 2) return;
 		try {
-			const r = await fetch(`/api/roteiro/days/${date}/route`);
+			// the route depends on where you sleep: a new stay gets a new URL (the answer is cached for 5 min)
+			const r = await fetch(`/api/roteiro/days/${date}/route${homes.length ? `?casa=${homes.map((h) => `${h.lat.toFixed(5)},${h.lng.toFixed(5)}`).join(';')}` : ''}`);
 			if (!r.ok) throw new Error();
 			const { legs } = (await r.json()) as { legs: { transport: Transport; coordinates: [number, number][]; routed: boolean }[] };
 			(map.getSource('route') as GeoJSONSource | undefined)?.setData({
@@ -131,6 +157,7 @@
 		background: var(--leaf); color: var(--on-leaf); font: 800 0.7rem/1 var(--font-body, sans-serif); font-style: normal; border: 2px solid #fffcf0;
 	}
 	.route-map :global(.route-stop.visited span:not(.photo)) { background: var(--leaf); color: var(--on-leaf); }
+	.route-map :global(.route-stop.home span) { width: 38px; height: 38px; border-radius: 12px; background: var(--sea); font-size: 1.15rem; }
 	.route-map :global(.route-stop.on) { z-index: 2; }
 	.route-map :global(.route-stop.on span) { transform: scale(1.35); background: var(--coral); color: #fff; }
 </style>

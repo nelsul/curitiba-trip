@@ -57,15 +57,25 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/roteiro` | → `{ places, days }`. Place: `{ id, name, category: comer\|passeio\|outro, lat, lng, address, hours, price, priceLevel (0–4 or null), description, link, googlePlaceId, photos: [{ id, url }] }`. Day: `{ date, title, who, lead, wedding, stops: [{ id, time, placeId, label, transport, note, visitedAt, visitedBy }] }` |
+| GET | `/api/roteiro` | → `{ places, stays, days }`. Stay: see Hospedagem below. Each day also has `startStay` / `endStay`: the id of the stay the person asking wakes up in / sleeps in that day (or null). Place: `{ id, name, category: comer\|passeio\|outro, lat, lng, address, hours, price, priceLevel (0–4 or null), description, link, googlePlaceId, photos: [{ id, url }] }`. Day: `{ date, title, who, lead, wedding, stops: [{ id, time, placeId, label, transport, note, visitedAt, visitedBy }] }` |
 | POST | `/api/roteiro/places` | Place fields (name, category, lat, lng required) → `{ id }` (201) |
 | PATCH / DELETE | `/api/roteiro/places/:id` | Edit, or delete (stops that used it keep its name as `label`) |
 | POST | `/api/roteiro/places/:id/photos` | Body: one image (JPG/PNG/WebP, ≤ 2 MB; the apps send 1600 px JPEG) → `{ id, url }`. Max 12 per place. |
 | DELETE | `/api/roteiro/places/:id/photos/:photoId` | |
 | PUT | `/api/roteiro/days/:date` | `{ title, who, lead, wedding, stops: [{ id?, time, placeId \| label, transport, note }] }` replaces the day, stops in the order sent. Send each existing stop's `id` so its "Fomos!" tick is kept. Times like `9h35` or `14h` get the apps' 30-min reminder. |
 | DELETE | `/api/roteiro/days/:date` | |
-| GET | `/api/roteiro/days/:date/route` | → `{ legs: [{ transport, coordinates: [[lng, lat]…], routed }] }`: the street route between consecutive stops with places (OpenStreetMap routing; `routed: false` = straight line) |
+| GET | `/api/roteiro/days/:date/route` | → `{ legs: [{ transport, coordinates: [[lng, lat]…], routed }] }`: the street route between consecutive stops with places (OpenStreetMap routing; `routed: false` = straight line). With `?casa=1` it also starts at the asker's morning stay and ends at their night stay (the way back by the last leg's transport, Uber after Linha Turismo/Graciosa). |
 | POST | `/api/roteiro/stops/:id/visited` | `{ visited }` → `{ visitedAt, visitedBy }`. "Fomos!": one tick counts for the whole group. |
+
+### Hospedagem (admins only)
+
+Where people sleep. Everyone reads them in `GET /api/roteiro`; only admins change them. A stay covers the nights from `checkIn` (first night) to the day before `checkOut` (the day they leave); null = from the start / until the end of the trip. So on the check-in day the person's Roteiro ends there, on the check-out day it starts there. Nobody can be in two stays on the same night (400).
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/admin/stays` | → `{ stays: [{ id, name, kind: hotel\|airbnb\|casa, lat, lng, address, link, checkIn, checkOut, note, guests: [userId] }] }` |
+| POST | `/api/admin/stays` | Stay fields (name, lat, lng required; `guests` = user ids) → `{ id }` (201) |
+| PUT / DELETE | `/api/admin/stays/:id` | Replace (guest list included), or delete |
 
 ## For the app's background work
 
