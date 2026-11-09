@@ -3,12 +3,13 @@
 	import { onMount } from 'svelte';
 	import { restoreSharing, loc } from '$lib/location.svelte';
 	import { ICONS } from '$lib/components/Icon.svelte';
-	let { children } = $props();
+	import CoupleLove from '$lib/components/CoupleLove.svelte';
+	let { children, data } = $props();
 
 	const items = [
 		{ href: '/', label: 'Linha do tempo', short: 'Diário', color: 'var(--leaf)', icon: 'M6 4h9l3 3v13H6zM9 10h6M9 14h6M9 18h3' },
 		{ href: '/mapa', label: 'Mapa', short: 'Mapa', color: 'var(--sea)', icon: 'M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zm0 0v14m6-12v14' },
-		{ href: '/galeria', label: 'Galeria', short: 'Galeria', color: 'var(--sun)', icon: ICONS.gallery },
+		{ href: '/cotinha', label: 'Cotinha', short: 'Cotinha', color: 'var(--sun)', icon: ICONS.wallet },
 		{ href: '/roteiro', label: 'Roteiro', short: 'Roteiro', color: 'var(--coral)', icon: 'M3 9a2 2 0 0 0 0 4v5h18v-5a2 2 0 0 0 0-4V5H3zM14 5v2m0 3v2m0 3v3' },
 		{ href: '/mais', label: 'Mais', short: 'Mais', color: 'var(--plum)', icon: 'M12 8a4 4 0 1 0 0 .01M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6' }
 	];
@@ -37,6 +38,8 @@
 </header>
 
 {@render children()}
+
+<CoupleLove persons={data.persons} />
 
 <nav class="dock" aria-label="Principal">
 	{#each items as it}

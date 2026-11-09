@@ -74,7 +74,7 @@ struct MediaDetailView: View {
 							}
 							.buttonStyle(.chunky(.sea, small: true))
 							.disabled(saving != nil || item.original == nil)
-							if mine {
+							if mine || app.me?.isAdmin == true {
 								Button("Apagar") { confirmDelete = true }.buttonStyle(.chunky(.danger, small: true))
 							}
 						}
@@ -249,9 +249,9 @@ struct CheckinDetailView: View {
 							.frame(maxWidth: .infinity, alignment: .leading)
 							.card(padding: 0, radius: 18)
 					}
-					if mine {
+					if mine || app.me?.isAdmin == true {
 						HStack {
-							Button(item.note.isEmpty ? "Adicionar texto" : "Editar texto") { editing = true }.font(.text(15, .extraBold)).tint(.leaf)
+							if mine { Button(item.note.isEmpty ? "Adicionar texto" : "Editar texto") { editing = true }.font(.text(15, .extraBold)).tint(.leaf) }
 							Spacer()
 							Button("Apagar check-in") { confirmDelete = true }.buttonStyle(.chunky(.danger, small: true))
 						}

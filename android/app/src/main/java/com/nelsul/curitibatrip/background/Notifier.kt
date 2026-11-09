@@ -1,5 +1,6 @@
 package com.nelsul.curitibatrip.background
 
+import com.nelsul.curitibatrip.data.Money
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -57,6 +58,7 @@ object Notifier {
 	/** Where a tapped notification wants to go (the shell picks these up). */
 	var openRoute by mutableStateOf<Route?>(null)
 	var openCheckin by mutableStateOf(0)
+	var openCotinha by mutableStateOf(0)
 
 	private fun prefs(c: Context) = c.getSharedPreferences("avisos", Context.MODE_PRIVATE)
 	fun isOn(c: Context, k: Kind) = prefs(c).getBoolean(k.pref, k.default)
@@ -78,7 +80,7 @@ object Notifier {
 
 	fun createChannels(c: Context) {
 		val nm = c.getSystemService(NotificationManager::class.java)
-		nm.createNotificationChannel(NotificationChannel(CHANNEL_ACTIVITY, "Novidades do grupo", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "Fotos, check-ins, comentários e curtidas" })
+		nm.createNotificationChannel(NotificationChannel(CHANNEL_ACTIVITY, "Novidades do grupo", NotificationManager.IMPORTANCE_DEFAULT).apply { description = "Fotos, check-ins, comentários, curtidas, marcações e cotinhas" })
 		nm.createNotificationChannel(NotificationChannel(CHANNEL_ITINERARY, "Lembretes do roteiro", NotificationManager.IMPORTANCE_HIGH).apply { description = "30 minutos antes de cada parada" })
 		nm.createNotificationChannel(NotificationChannel(CHANNEL_ARRIVAL, "Chegadas", NotificationManager.IMPORTANCE_HIGH).apply { description = "Chegou num lugar do roteiro? Fazer check-in" })
 	}
@@ -104,16 +106,17 @@ object Notifier {
 	private fun canPost(c: Context) = Build.VERSION.SDK_INT < 33 ||
 		c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-	fun post(c: Context, channel: String, id: String, title: String, body: String, route: Route? = null, checkin: Boolean = false) {
+	fun post(c: Context, channel: String, id: String, title: String, body: String, route: Route? = null, checkin: Boolean = false, action: String? = null) {
 		if (!canPost(c)) return
 		val intent = Intent(c, MainActivity::class.java).apply {
 			flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
 			when (route) {
 				is Route.Media -> putExtra("media", route.id)
 				is Route.Checkin -> putExtra("checkin", route.id)
-				null -> {}
+				else -> {}
 			}
 			if (checkin) putExtra("action", "checkin")
+			if (action != null) putExtra("action", action)
 		}
 		val pi = PendingIntent.getActivity(c, id.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 		val n = NotificationCompat.Builder(c, channel)
@@ -150,6 +153,17 @@ object Notifier {
 			post(c, CHANNEL_ACTIVITY, "likes-$uid-${a.now}", "${name(uid)} curtiu ${if (n == 1) "seu post" else "$n posts seus"} ❤️", "",
 				first.mediaId?.let { Route.Media(it) } ?: first.checkinId?.let { Route.Checkin(it) })
 		}
+		// @mentions (skip the ones already notified as a comment on my post)
+		val commented = a.comments.map { it.id }.toSet()
+		for (k in a.mentions) if (k.id !in commented) post(c, CHANNEL_ACTIVITY, "mention-${k.id}", "${name(k.userId)} marcou você num comentário", k.body,
+			k.mediaId?.let { Route.Media(it) } ?: k.checkinId?.let { Route.Checkin(it) })
+		// cotinha: new ones I owe, the payer's reminders, and who paid me
+		for (s in a.splits) {
+			val pix = if (s.pixKey.isEmpty()) "" else " · Pix: ${s.pixKey}"
+			val title = if (s.kind == "reminder") "${name(s.payerId)} está cobrando: ${s.title}" else "${name(s.payerId)} criou uma cotinha: ${s.title}"
+			post(c, CHANNEL_ACTIVITY, "split-${s.id}-${s.at}", title, "Sua parte: ${Money.brl(s.amountCents)}$pix", action = "cotinha")
+		}
+		for (p in a.splitPaid) post(c, CHANNEL_ACTIVITY, "paid-${p.id}-${p.userId}", "${name(p.userId)} pagou ${Money.brl(p.amountCents)}", "Cotinha: ${p.title}", action = "cotinha")
 		prefs(c).edit().putString(SINCE, a.now).apply()
 	}
 
@@ -173,7 +187,12 @@ object Notifier {
 }
 
 @Serializable
-data class Activity(val now: String, val posts: List<Posts> = emptyList(), val checkins: List<Checkin> = emptyList(), val comments: List<Comment> = emptyList(), val likes: List<Like> = emptyList()) {
+data class Activity(
+	val now: String, val posts: List<Posts> = emptyList(), val checkins: List<Checkin> = emptyList(), val comments: List<Comment> = emptyList(), val likes: List<Like> = emptyList(),
+	val mentions: List<Comment> = emptyList(), val splits: List<Split> = emptyList(), val splitPaid: List<Paid> = emptyList(),
+) {
+	@Serializable data class Split(val id: String, val title: String, val payerId: String, val pixKey: String = "", val amountCents: Int, val kind: String, val at: String)
+	@Serializable data class Paid(val id: String, val title: String, val userId: String, val amountCents: Int)
 	@Serializable data class Posts(val userId: String, val photos: Int = 0, val videos: Int = 0, val firstId: String)
 	@Serializable data class Checkin(val id: String, val userId: String, val note: String = "")
 	@Serializable data class Comment(val id: String, val userId: String, val body: String, val mediaId: String? = null, val checkinId: String? = null)

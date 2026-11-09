@@ -1,6 +1,28 @@
 package com.nelsul.curitibatrip.feature.feed
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import com.nelsul.curitibatrip.data.FeedMedia
+import com.nelsul.curitibatrip.data.Ok
+import com.nelsul.curitibatrip.data.Retro
+import com.nelsul.curitibatrip.data.RetroBody
+import com.nelsul.curitibatrip.data.Route
+import com.nelsul.curitibatrip.feature.galeria.MediaLibrary
+import com.nelsul.curitibatrip.feature.galeria.ReelsOverlay
+import com.nelsul.curitibatrip.ui.components.pressable
+import com.nelsul.curitibatrip.ui.theme.display
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
@@ -103,39 +125,108 @@ class FeedModel {
 	}
 }
 
-/** Diário: Instagram-style feed under wooden day signs, newest first (same as the web and iOS). */
+/** Opens the full-screen reels at a photo/video (provided by the Diário). */
+val LocalOpenReel = staticCompositionLocalOf<((String) -> Unit)?> { null }
+
+/**
+ * Diário: Instagram-style feed under wooden day signs, newest first (same as the web and iOS). Tapping a photo opens
+ * the reels; "Todas as fotos" shows every photo/video in a grid, where they can be picked for a share frame.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 	val app = LocalApp.current
 	val model = remember { FeedModel() }
+	val library = remember { MediaLibrary() }
 	val scope = rememberCoroutineScope()
 	val list = rememberLazyListState()
 	var refreshing by remember { mutableStateOf(false) }
+	var grid by rememberSaveable { mutableStateOf(false) }
+	var reel by remember { mutableStateOf<String?>(null) }
+	var selecting by remember { mutableStateOf(false) }
+	val selected = remember { mutableStateListOf<String>() }
+	var framing by remember { mutableStateOf<List<FeedMedia>?>(null) }
+	var toast by remember { mutableStateOf<String?>(null) }
+	val isAdmin = app.me?.isAdmin == true
+	val media = library.filtered(model.day, model.person)
 
 	LaunchedEffect(app.feedVersion, model.day, model.person) { model.refresh(app) }
+	LaunchedEffect(app.feedVersion, grid) { if (grid || library.items.isNotEmpty()) library.refresh(app) }
+	LaunchedEffect(grid) { selecting = false; selected.clear() }
+	LaunchedEffect(toast) { if (toast != null) { kotlinx.coroutines.delay(3000); toast = null } }
+	val openReel: (String) -> Unit = { id -> scope.launch { if (library.items.none { it.id == id }) library.refresh(app); reel = id } }
+	fun addToRetro() = scope.launch {
+		try {
+			val r: Retro = Api.get("/api/retro")
+			val ids = r.items.map { it.id } + selected.filter { id -> r.items.none { it.id == id } }
+			Api.putJson<RetroBody, Ok>("/api/admin/retro", RetroBody(ids))
+			toast = "${selected.size} na retrospectiva (${ids.size} no total)."
+			selecting = false
+			selected.clear()
+		} catch (e: Exception) { app.handle(e); toast = e.message }
+	}
 	// load the next page when the last post comes into view
 	val nearEnd by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= list.layoutInfo.totalItemsCount - 2 } ?: false } }
 	LaunchedEffect(Unit) { snapshotFlow { nearEnd }.collect { if (it && model.posts.isNotEmpty()) model.loadMore(app) } }
 
+	reel?.let { start ->
+		ReelsOverlay(if (media.any { it.id == start }) media else library.items, start, onClose = { reel = null }, open = open, onShare = { framing = listOf(it) })
+	}
+	framing?.let { FrameMakerDialog(it) { framing = null } }
+
+	CompositionLocalProvider(LocalOpenReel provides openReel) { Box(Modifier.fillMaxSize()) {
 	PullToRefreshBox(
 		isRefreshing = refreshing,
-		onRefresh = { scope.launch { refreshing = true; model.refresh(app); refreshing = false } },
+		onRefresh = { scope.launch { refreshing = true; model.refresh(app); if (grid) library.refresh(app); refreshing = false } },
 		modifier = Modifier.fillMaxSize(),
 	) {
 		LazyColumn(
 			state = list,
 			contentPadding = contentPadding,
 			horizontalAlignment = Alignment.CenterHorizontally,
-			verticalArrangement = Arrangement.spacedBy(22.dp),
+			// the photo grid's rows sit 3 dp apart, like a phone gallery
+			verticalArrangement = Arrangement.spacedBy(if (grid) 3.dp else 22.dp),
 			modifier = Modifier.fillMaxSize(),
 		) {
 			item(key = "title") {
 				Column(Modifier.widthIn(max = 600.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 					TitleRow(IconName.Journal, "Diário da viagem", Modifier.padding(start = 16.dp, top = 12.dp))
+					CountdownCard({ open(Route.Retro) }, Modifier.padding(horizontal = 16.dp))
+					ModeSwitch(grid, { grid = it }, Modifier.padding(horizontal = 16.dp))
 					FeedFilters(model)
 				}
 			}
+			if (grid) {
+				item(key = "grid-bar") {
+					Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 19.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+						Row(verticalAlignment = Alignment.CenterVertically) {
+							Text("${media.size} ${if (media.size == 1) "item" else "itens"}", style = body(14), color = Palette.muted, modifier = Modifier.weight(1f))
+							ChunkyButton(if (selecting) "Cancelar" else "Selecionar", { selecting = !selecting; selected.clear() },
+								variant = if (selecting) ButtonVariant.Secondary else ButtonVariant.Leaf, small = true)
+						}
+						if (selecting) Text("Escolha até ${Frames.MAX} fotos para juntar numa imagem com moldura.", style = body(14), color = Palette.muted)
+					}
+				}
+				val shown = if (selecting && !isAdmin) media.filter { !it.isVideo } else media
+				if (shown.isEmpty()) item(key = "grid-empty") {
+					val e = library.error
+					when {
+						e != null -> EmptyState(e, retry = { scope.launch { library.refresh(app) } })
+						!library.loading -> EmptyState("Nenhuma foto ou vídeo com esses filtros.")
+					}
+				}
+				itemsIndexed(shown.chunked(3), key = { _, row -> "g" + row.first().id }) { _, row ->
+					Box(Modifier.widthIn(max = 600.dp).fillMaxWidth()) {
+						MediaGridRow(row, selecting, selected) { m ->
+							if (!selecting) reel = m.id
+							else if (m.id in selected) selected.remove(m.id)
+							else if (selected.size < (if (isAdmin) 300 else Frames.MAX)) selected.add(m.id)
+						}
+					}
+				}
+				if (library.loading && library.items.isEmpty()) item(key = "grid-loading") { CircularProgressIndicator(color = Palette.sea, modifier = Modifier.padding(16.dp)) }
+				if (selecting) item(key = "grid-space") { Spacer(Modifier.height(90.dp)) }
+			} else {
 			if (model.posts.isEmpty()) {
 				item(key = "empty") {
 					val error = model.error
@@ -156,6 +247,45 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 				}
 			}
 			if (model.loading && !refreshing) item(key = "loading") { CircularProgressIndicator(color = Palette.sea, modifier = Modifier.padding(16.dp)) }
+			}
+		}
+	}
+	if (selecting && selected.isNotEmpty()) {
+		val picked = selected.mapNotNull { id -> library.items.firstOrNull { it.id == id } }
+		Row(
+			Modifier.align(Alignment.BottomCenter).padding(contentPadding).padding(horizontal = 12.dp).widthIn(max = 560.dp).fillMaxWidth().card(12.dp),
+			verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+		) {
+			Text("${selected.size} ${if (selected.size == 1) "escolhida" else "escolhidas"}", style = body(16, FontWeight.ExtraBold), color = Palette.ink, modifier = Modifier.weight(1f))
+			if (isAdmin) ChunkyButton("Retrô", { addToRetro() }, variant = ButtonVariant.Secondary, small = true, icon = IconName.Sparkle)
+			ChunkyButton("Moldura", { framing = picked }, variant = ButtonVariant.Sun, small = true, icon = IconName.Frame,
+				enabled = picked.size <= Frames.MAX && picked.none { it.isVideo })
+		}
+	}
+	toast?.let {
+		Text(it, style = body(14, FontWeight.ExtraBold), color = Palette.onLeaf,
+			modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 190.dp).background(Palette.leaf, CircleShape).padding(horizontal = 16.dp, vertical = 8.dp))
+	}
+	} }
+}
+
+/** Diário (posts) or Todas as fotos (the grid). */
+@Composable
+private fun ModeSwitch(grid: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+	Row(
+		modifier.fillMaxWidth().background(Palette.surface, CircleShape).border(2.5.dp, Palette.line, CircleShape).padding(4.dp),
+		horizontalArrangement = Arrangement.spacedBy(6.dp),
+	) {
+		listOf(false to (IconName.Journal to "Diário"), true to (IconName.Grid to "Todas as fotos")).forEach { (value, v) ->
+			val on = grid == value
+			Row(
+				Modifier.weight(1f).heightIn(min = 40.dp).background(if (on) Palette.sea else Color.Transparent, CircleShape).pressable({ onChange(value) })
+					.semantics { selected = on; role = Role.Tab },
+				verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+			) {
+				Icon(v.first, if (on) Palette.onSea else Palette.muted, size = 18.dp)
+				Text(" " + v.second, style = display(16), color = if (on) Palette.onSea else Palette.muted)
+			}
 		}
 	}
 }

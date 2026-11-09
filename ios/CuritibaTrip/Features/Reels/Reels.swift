@@ -2,107 +2,129 @@ import AVFoundation
 import Observation
 import SwiftUI
 
-/// Every photo and video (no check-ins), newest first, paged through GET /api/feed.
+/// Every photo and video (no check-ins), newest first: the Diário's grid ("Todas as fotos") and the reels.
+/// Loads every page of GET /api/feed (a trip has a few hundred items at most).
 @MainActor @Observable
-final class GaleriaModel {
+final class MediaLibrary {
 	var items: [FeedMedia] = []
 	var loading = false
 	var error: String?
-	private var cursor: String?
-	private var reachedEnd = false
 
 	func refresh(app: AppState) async {
-		cursor = nil
-		reachedEnd = false
-		await load(app: app, replace: true)
-	}
-
-	/// Loads the next page a few items before the end, so swiping never waits.
-	func loadMoreIfNeeded(near item: FeedMedia, app: AppState) async {
-		guard !reachedEnd, !loading, let i = items.firstIndex(where: { $0.id == item.id }), i >= items.count - 4 else { return }
-		await load(app: app, replace: false)
-	}
-
-	private func load(app: AppState, replace: Bool) async {
+		guard !loading else { return }
 		loading = true
 		defer { loading = false }
 		do {
 			var found: [FeedMedia] = []
-			// a page may be all check-ins: keep going until there's something to show
+			var cursor: String?
 			repeat {
-				let page: FeedPage = try await API.shared.get("/api/feed", query: ["limit": "30", "before": replace && found.isEmpty && cursor == nil ? nil : cursor])
+				let page: FeedPage = try await API.shared.get("/api/feed", query: ["limit": "50", "before": cursor])
 				for post in page.posts {
 					if case .media(_, _, _, _, let media) = post {
-						// carousels are oldest → newest inside; the Galeria is newest first
+						// carousels are oldest → newest inside; the grid is newest first
 						found += media.reversed().filter { $0.status == "ready" && ($0.image != nil || $0.video != nil) }
 					}
 				}
 				cursor = page.nextCursor
-				reachedEnd = page.nextCursor == nil
-			} while found.isEmpty && !reachedEnd
-			items = replace ? found : items + found.filter { f in !items.contains { $0.id == f.id } }
+			} while cursor != nil
+			items = found
 			error = nil
 		} catch {
 			app.handle(error)
 			self.error = error.localizedDescription
 		}
 	}
-}
 
-/// Galeria: full-screen photos and videos, swiping up like Reels. Only the one on screen plays.
-struct GaleriaView: View {
-	@Environment(AppState.self) private var app
-	@State private var model = GaleriaModel()
-	@State private var current: String?
-	@State private var muted = false
-	/// False while another page (a detail) covers the Galeria or the tab is gone.
-	@State private var onScreen = false
-
-	var body: some View {
-		GeometryReader { geo in
-			ScrollView(.vertical) {
-				LazyVStack(spacing: 0) {
-					ForEach(model.items) { m in
-						ReelView(media: m, person: app.person(m.userId), playing: onScreen && current == m.id, muted: $muted)
-							.frame(width: geo.size.width, height: geo.size.height)
-							.task { await model.loadMoreIfNeeded(near: m, app: app) }
-					}
-				}
-				.scrollTargetLayout()
-			}
-			.scrollTargetBehavior(.paging)
-			.scrollPosition(id: $current)
-			.scrollIndicators(.hidden)
-			.contentMargins(.bottom, 0, for: .scrollContent)
-			.overlay {
-				if model.items.isEmpty {
-					if model.loading { ProgressView().tint(.sea) }
-					else if let e = model.error { EmptyState(text: e, retry: { Task { await model.refresh(app: app) } }) }
-					else { EmptyState(text: "Nenhuma foto ou vídeo ainda.") }
-				}
-			}
-		}
-		.background(Color.black)
-		// the floating dock covers the bottom: pages end above it
-		.padding(.bottom, 92)
-		.background(Color.bg)
-		.refreshable { await model.refresh(app: app) }
-		.task {
-			if model.items.isEmpty { await model.refresh(app: app) }
-			if current == nil { current = model.items.first?.id }
-		}
-		.onAppear { onScreen = true }
-		.onDisappear { onScreen = false }
-		.onChange(of: app.feedVersion) { Task { await model.refresh(app: app) } }
+	func filtered(day: String?, person: String?) -> [FeedMedia] {
+		items.filter { (day == nil || $0.day == day) && (person == nil || $0.userId == person) }
 	}
 }
 
+/// Full-screen reels over the Diário, starting at the post that was tapped. Only the one on screen plays.
+struct ReelsScreen: View {
+	let items: [FeedMedia]
+	let start: String
+	@Environment(AppState.self) private var app
+	@Environment(\.dismiss) private var dismiss
+	@State private var current: String?
+	@State private var muted = false
+	@State private var framing: [FeedMedia]?
+	@State private var deleting: FeedMedia?
+	@State private var gone: Set<String> = []
+
+	var body: some View {
+		NavigationStack {
+			GeometryReader { geo in
+				ScrollView(.vertical) {
+					LazyVStack(spacing: 0) {
+						ForEach(items.filter { !gone.contains($0.id) }) { m in
+							ReelView(media: m, person: app.person(m.userId), playing: current == m.id, muted: $muted,
+									 onShare: m.isVideo ? nil : { framing = [m] },
+									 onDelete: m.userId == app.me?.id || app.me?.isAdmin == true ? { deleting = m } : nil)
+								.frame(width: geo.size.width, height: geo.size.height)
+								.id(m.id)
+						}
+					}
+					.scrollTargetLayout()
+				}
+				.scrollTargetBehavior(.paging)
+				.scrollPosition(id: $current)
+				.scrollIndicators(.hidden)
+			}
+			.background(Color.black)
+			.overlay(alignment: .topLeading) {
+				Button { dismiss() } label: {
+					Icon(.close, size: 20).foregroundStyle(.white).frame(width: 44, height: 44).background(Circle().fill(.black.opacity(0.45)))
+				}
+				.padding(12)
+				.accessibilityLabel("Voltar ao diário")
+			}
+			.toolbar(.hidden, for: .navigationBar)
+			.navigationDestination(for: Route.self) { route in
+				switch route {
+				case .media(let id): MediaDetailView(id: id)
+				case .checkin(let id): CheckinDetailView(id: id)
+				}
+			}
+			.onAppear { if current == nil { current = start } }
+			.sheet(item: Binding(get: { framing.map(FrameSelection.init) }, set: { framing = $0?.items })) { sel in FrameMakerView(items: sel.items) }
+			.confirmationDialog("Apagar esta foto/vídeo para todo mundo? Não dá para desfazer.",
+								isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+				Button("Apagar", role: .destructive) { Task { await remove() } }
+			}
+		}
+		.tint(.ink)
+	}
+
+	private func remove() async {
+		guard let m = deleting else { return }
+		do {
+			try await API.shared.delete("/api/media/\(m.id)")
+			withAnimation { _ = gone.insert(m.id) }
+			app.feedChanged()
+			if items.allSatisfy({ gone.contains($0.id) }) { dismiss() }
+		} catch {
+			app.handle(error)
+		}
+	}
+}
+
+/// The photos picked for a frame (sheet item).
+struct FrameSelection: Identifiable {
+	let items: [FeedMedia]
+	var id: String { items.map(\.id).joined(separator: ",") }
+}
+
 /// One full-screen page: the photo or looping video, the like/comments rail and who posted it.
-private struct ReelView: View {
+struct ReelView: View {
 	let media: FeedMedia
 	let person: Person?
 	let playing: Bool
 	@Binding var muted: Bool
+	/// photos: put it in a frame and share
+	var onShare: (() -> Void)? = nil
+	/// owner or admin
+	var onDelete: (() -> Void)? = nil
 	@Environment(AppState.self) private var app
 	@State private var likers: [String]?
 	@State private var bigHeart = 0
@@ -143,7 +165,7 @@ private struct ReelView: View {
 				.accessibilityLabel(muted ? "Ligar o som" : "Desligar o som")
 			}
 		}
-		.overlay(alignment: .bottomTrailing) { rail.padding(.trailing, 6).padding(.bottom, 18) }
+		.overlay(alignment: .bottomTrailing) { rail.padding(.trailing, 6).padding(.bottom, 30) }
 		.overlay(alignment: .bottomLeading) { info }
 		.clipped()
 		.accessibilityElement(children: .contain)
@@ -159,9 +181,19 @@ private struct ReelView: View {
 				.accessibilityLabel("Comentários")
 				.padding(.top, 6)
 			if media.comments > 0 { count(media.comments) }
+			if let onShare {
+				Button(action: onShare) { Icon(.share, size: 26).frame(width: 44, height: 44) }
+					.accessibilityLabel("Compartilhar com moldura")
+					.padding(.top, 6)
+			}
 			NavigationLink(value: Route.media(media.id)) { Icon(.expand, size: 26).frame(width: 44, height: 44) }
 				.accessibilityLabel("Abrir detalhes")
 				.padding(.top, 6)
+			if let onDelete {
+				Button(action: onDelete) { Icon(.trash, size: 24).frame(width: 44, height: 44) }
+					.accessibilityLabel("Apagar")
+					.padding(.top, 6)
+			}
 		}
 		.foregroundStyle(.white)
 		.shadow(color: .black.opacity(0.6), radius: 3)

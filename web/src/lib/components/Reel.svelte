@@ -10,8 +10,19 @@
 		m,
 		person,
 		meId,
-		muted = $bindable()
-	}: { m: FeedMedia; person: Person | undefined; meId: string; muted: boolean } = $props();
+		muted = $bindable(),
+		onshare,
+		ondelete
+	}: {
+		m: FeedMedia;
+		person: Person | undefined;
+		meId: string;
+		muted: boolean;
+		/** photos: put it in a frame and share */
+		onshare?: () => void;
+		/** owner or admin */
+		ondelete?: () => void;
+	} = $props();
 
 	let likers = $state<string[]>([]);
 	$effect(() => {
@@ -74,7 +85,9 @@
 		{#if likers.length}<span class="n">{likers.length}</span>{/if}
 		<a href="/m/{m.id}#comentarios" aria-label="Comentários"><Icon name="chat" size={28} /></a>
 		{#if m.comments}<span class="n">{m.comments}</span>{/if}
+		{#if onshare}<button class="rb" onclick={onshare} aria-label="Compartilhar com moldura"><Icon name="share" size={26} /></button>{/if}
 		<a href="/m/{m.id}" aria-label="Abrir detalhes"><Icon name="expand" size={26} /></a>
+		{#if ondelete}<button class="rb" onclick={ondelete} aria-label="Apagar"><Icon name="trash" size={24} /></button>{/if}
 	</div>
 
 	<div class="info">
@@ -113,6 +126,7 @@
 		position: absolute; right: 8px; bottom: 24px; display: grid; justify-items: center; gap: 2px; color: #fff;
 		filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.6));
 	}
+	.rb { display: grid; place-items: center; min-width: 44px; min-height: 44px; margin-top: 8px; border: 0; background: none; color: #fff; cursor: pointer; }
 	.rail a { display: grid; place-items: center; min-width: 44px; min-height: 44px; color: #fff; margin-top: 8px; }
 	.like { --ink: #fff; color: #fff; }
 	.n { font-size: 0.8rem; font-weight: 800; margin-top: -6px; }

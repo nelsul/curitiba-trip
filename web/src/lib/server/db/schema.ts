@@ -23,8 +23,14 @@ export const users = pgTable('users', {
 	color: text('color').notNull().default('#2F5A40'),
 	avatarKey: text('avatar_key'), // R2 key of the profile photo (avatars/<userId>/<random>.webp)
 	isAdmin: boolean('is_admin').notNull().default(false),
+	/** 'noivo' | 'noiva' when this person is getting married (their likes get a special effect) */
+	couple: text('couple').$type<CoupleRole>(),
+	/** id of the last like from the couple this person already saw the effect for */
+	seenCoupleLike: bigint('seen_couple_like', { mode: 'number' }).notNull().default(0),
 	createdAt: createdAt()
 });
+
+export type CoupleRole = 'noivo' | 'noiva';
 
 export const loginCodes = pgTable(
 	'login_codes',
@@ -151,6 +157,20 @@ export const comments = pgTable(
 		createdAt: createdAt()
 	},
 	(t) => [index('comments_media_idx').on(t.mediaId), index('comments_checkin_idx').on(t.checkinId)]
+);
+
+/** People @mentioned in a comment (parsed from the text on the server). */
+export const commentMentions = pgTable(
+	'comment_mentions',
+	{
+		commentId: uuid('comment_id')
+			.notNull()
+			.references(() => comments.id, { onDelete: 'cascade' }),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' })
+	},
+	(t) => [uniqueIndex('comment_mentions_pk').on(t.commentId, t.userId), index('comment_mentions_user_idx').on(t.userId)]
 );
 
 export const likes = pgTable(
@@ -286,3 +306,45 @@ export const stayGuests = pgTable(
 );
 
 export type Stay = typeof stays.$inferSelect;
+
+// ── Cotinha: splitting what someone paid. The payer leaves their Pix key; everyone marks when they paid. ──
+
+export const splits = pgTable('splits', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	title: text('title').notNull(),
+	totalCents: integer('total_cents').notNull(),
+	/** who paid and receives the Pix */
+	payerId: uuid('payer_id')
+		.notNull()
+		.references(() => users.id, { onDelete: 'cascade' }),
+	pixKey: text('pix_key').notNull().default(''),
+	note: text('note').notNull().default(''),
+	/** last time the payer asked everyone to pay (shows up as a notification) */
+	remindedAt: timestamp('reminded_at', { withTimezone: true }),
+	createdAt: createdAt()
+});
+
+export const splitShares = pgTable(
+	'split_shares',
+	{
+		splitId: uuid('split_id')
+			.notNull()
+			.references(() => splits.id, { onDelete: 'cascade' }),
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		amountCents: integer('amount_cents').notNull(),
+		paidAt: timestamp('paid_at', { withTimezone: true }),
+		paidBy: uuid('paid_by').references(() => users.id, { onDelete: 'set null' })
+	},
+	(t) => [uniqueIndex('split_shares_pk').on(t.splitId, t.userId), index('split_shares_user_idx').on(t.userId)]
+);
+
+// ── Retrospectiva: photos/videos the admin picked, in their order, shown after the wedding ──
+
+export const retroItems = pgTable('retro_items', {
+	mediaId: uuid('media_id')
+		.primaryKey()
+		.references(() => media.id, { onDelete: 'cascade' }),
+	position: integer('position').notNull()
+});

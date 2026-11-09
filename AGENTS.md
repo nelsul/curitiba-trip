@@ -15,7 +15,7 @@ One monorepo, three clients sharing one API and one look:
 | `android/` | Native Android app (Android 8+, target 37) | Kotlin, Jetpack Compose, OkHttp + kotlinx.serialization, Coil 3, WorkManager, MapLibre Android |
 | `design/` | Single source of the look | `tokens.json`, `build-tokens.mjs`, `build-icons.mjs`, `app-icon.svg` |
 
-The iOS and Android apps are twins: same screens (Login, Diário, Mapa, Galeria, Roteiro, Mais, and Enviar from the top bar), same behavior, same API. A feature added to one usually belongs in the other, and often on the website too. The feature table in README.md shows what exists where.
+The iOS and Android apps are twins: same screens (Login, Diário with the reels and photo grid, Mapa, Cotinha, Roteiro, Mais with the Retrospectiva, and Enviar from the top bar), same behavior, same API. A feature added to one usually belongs in the other, and often on the website too. The feature table in README.md shows what exists where.
 
 ## Where to read more
 

@@ -21,7 +21,15 @@ The interface is 100% in Portuguese (pt-BR). Code, comments and commit messages 
 |---|---|---|---|
 | Login: pick your name, 6-digit code by email | ✔ | ✔ | ✔ |
 | **Diário:** feed newest first, carousels, likes, comments, day/person filters | ✔ | ✔ | ✔ |
-| **Galeria:** every photo and video full screen, swipe up like Reels; only the video on screen plays | ✔ | ✔ | ✔ |
+| **Reels:** tap a post in the Diário for every photo and video full screen, swiping up; only the video on screen plays | ✔ | ✔ | ✔ |
+| **Todas as fotos:** grid of every photo/video; pick up to 9 for one image with a frame, shared to Instagram/WhatsApp | ✔ | ✔ | ✔ |
+| **Cotinha:** split purchases, the payer's Pix key, mark paid, reminders | ✔ | ✔ | ✔ |
+| **Retrospectiva:** wedding countdown, then the admin's picks as stories | ✔ | ✔ | ✔ |
+| **@menções** in comments (notify the person) | ✔ | ✔ | ✔ |
+| Special effect when the bride/groom like your post | ✔ | ✔ | ✔ |
+| Hour-by-hour weather in the Roteiro; a page per place | ✔ | ✔ | ✔ |
+| Take a photo / record a video in Enviar | ✔ | ✔ | ✔ |
+| Admins delete anyone's photos, videos, check-ins and comments | ✔ | ✔ | ✔ |
 | **Enviar** (yellow button, top right): originals in full quality with their own location and time | ✔ | ✔ (keeps sending with the app closed) | ✔ (keeps sending with the app closed) |
 | **Mapa:** polaroids, check-ins, live sharing, "go to where I am", check-in with a map picture | ✔ | ✔ | ✔ |
 | Mark or fix a photo's location: search a place by name, or pick it on the map | ✔ | ✔ | ✔ |

@@ -107,7 +107,7 @@
 		</p>
 		<div class="row start">
 			{#if it.original}<a class="btn small sea" href={it.original}>Baixar original</a>{/if}
-			{#if mine}
+			{#if mine || data.me.isAdmin}
 				<form method="POST" action="?/apagar" use:enhance={({ cancel }) => { if (!confirm('Apagar este arquivo para todo mundo? Não dá para desfazer.')) cancel(); }}>
 					<button class="btn small danger">Apagar</button>
 				</form>
@@ -115,7 +115,7 @@
 		</div>
 	</section>
 
-	<Comments comments={data.comments} meId={data.me.id} error={form?.commentError} />
+	<Comments comments={data.comments} meId={data.me.id} isAdmin={data.me.isAdmin} persons={data.persons} error={form?.commentError} />
 </main>
 
 <style>

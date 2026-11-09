@@ -49,13 +49,13 @@
 	<div class="map"><LocationPicker lat={it.lat} lng={it.lng} color={it.color} /></div>
 	<p class="small"><a href="/mapa?foco={it.lat},{it.lng}">Ver no mapa da viagem</a> · <a href="https://www.google.com/maps/search/?api=1&query={it.lat},{it.lng}" target="_blank" rel="noopener">Google Maps</a></p>
 
-	{#if mine}
+	{#if mine || data.me.isAdmin}
 		<form method="POST" action="?/apagar" use:enhance={({ cancel }) => { if (!confirm('Apagar este check-in?')) cancel(); }}>
 			<button class="btn small danger">Apagar check-in</button>
 		</form>
 	{/if}
 
-	<Comments comments={data.comments} meId={data.me.id} error={form?.commentError} />
+	<Comments comments={data.comments} meId={data.me.id} isAdmin={data.me.isAdmin} persons={data.persons} error={form?.commentError} />
 </main>
 
 <style>

@@ -201,3 +201,93 @@ struct MapData: Decodable, Sendable {
 }
 
 struct CheckinCreated: Decodable, Sendable { let id: String }
+
+// MARK: - Cotinha (GET /api/splits)
+
+struct SplitShare: Codable, Hashable, Sendable { let userId: String; let amountCents: Int; let paidAt: String? }
+
+struct Split: Codable, Identifiable, Hashable, Sendable {
+	let id: String
+	let title: String
+	let totalCents: Int
+	let payerId: String
+	let pixKey: String
+	let note: String
+	let createdAt: String
+	let remindedAt: String?
+	let shares: [SplitShare]
+	var open: Bool { shares.contains { $0.paidAt == nil } }
+}
+
+struct SplitList: Decodable, Sendable { let splits: [Split]; let myPix: String }
+struct NewSplit: Encodable, Sendable { let title: String; let totalCents: Int; let pixKey: String; let note: String; let participants: [String] }
+struct PaidBody: Encodable, Sendable { let userId: String; let paid: Bool }
+
+enum Money {
+	/// 12345 → "R$ 123,45"
+	static func brl(_ cents: Int) -> String {
+		let f = NumberFormatter()
+		f.numberStyle = .currency
+		f.locale = Locale(identifier: "pt_BR")
+		return f.string(from: NSNumber(value: Double(cents) / 100)) ?? "R$ \(cents / 100)"
+	}
+
+	/// "123,45" / "1.234,5" → cents
+	static func cents(_ text: String) -> Int? {
+		var t = text.filter { "0123456789,.".contains($0) }
+		guard !t.isEmpty else { return nil }
+		if t.contains(",") { t = t.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".") }
+		else if t.filter({ $0 == "." }).count > 1 || t.range(of: #"\.\d{3}$"#, options: .regularExpression) != nil { t = t.replacingOccurrences(of: ".", with: "") }
+		guard let v = Double(t) else { return nil }
+		return Int((v * 100).rounded())
+	}
+
+	/// Equal parts that always add up (the leftover cents go to the first people).
+	static func parts(_ total: Int, _ n: Int) -> [Int] {
+		guard n > 0 else { return [] }
+		let base = total / n
+		return (0..<n).map { base + ($0 < total - base * n ? 1 : 0) }
+	}
+}
+
+// MARK: - Retrospectiva, the couple's likes, weather
+
+struct Retro: Decodable, Sendable { let weddingAt: String; let items: [FeedMedia] }
+struct RetroBody: Encodable, Sendable { let mediaIds: [String] }
+
+struct CoupleLike: Decodable, Identifiable, Sendable {
+	let id: Int
+	let likerId: String
+	let role: String // noivo | noiva
+	let mediaId: String?
+	let checkinId: String?
+	let image: URL?
+}
+struct CoupleLikes: Decodable, Sendable { let likes: [CoupleLike] }
+struct SeenBody: Encodable, Sendable { let upTo: Int }
+
+struct WeatherHour: Decodable, Hashable, Sendable { let time: String; let temp: Int; let rain: Int; let kind: String }
+struct WeatherDay: Decodable, Hashable, Sendable {
+	let date: String
+	let min: Int
+	let max: Int
+	let rain: Int
+	let kind: String
+	let hours: [WeatherHour]
+}
+struct WeatherData: Decodable, Sendable { let days: [WeatherDay] }
+
+enum Weather {
+	static func icon(_ kind: String) -> IconName {
+		switch kind { case "sun": .sun; case "partly": .partly; case "cloud": .cloud; case "fog": .fog; case "storm": .storm; default: .rain }
+	}
+	static func label(_ kind: String) -> String {
+		switch kind { case "sun": "Sol"; case "partly": "Sol entre nuvens"; case "cloud": "Nublado"; case "fog": "Neblina"; case "storm": "Tempestade"; default: "Chuva" }
+	}
+	static func color(_ t: Int) -> Color { t >= 26 ? .coral : t >= 20 ? .sun : t >= 14 ? .leaf : .sky }
+}
+
+/// The trip's wedding start (countdown target), same as web src/lib/trip.ts.
+enum Wedding {
+	static let at = TripTime.date("2026-11-14T16:00:00.000-03:00") ?? Date(timeIntervalSince1970: 1_794_682_800)
+}

@@ -11,7 +11,7 @@
 
 <main class="page narrow">
 	<div class="title-row"><span class="title-icon"><Icon name="people" size={26} /></span><h1>Pessoas</h1></div>
-	<p class="muted">Só quem está nesta lista consegue entrar. Toque na foto de alguém para trocar.</p>
+	<p class="muted">Só quem está nesta lista consegue entrar. Toque na foto de alguém para trocar. Quando a noiva ou o noivo curte um post, a pessoa vê um efeito especial.</p>
 	{#if form?.error}<p class="error" role="alert">{form.error}</p>{/if}
 	{#if form?.added}<p role="status">{form.added} foi adicionado(a). Já pode entrar com o e-mail.</p>{/if}
 
@@ -30,6 +30,14 @@
 					<input name="name" value={u.name} aria-label="Nome de {u.name}" />
 					<input type="color" name="color" value={u.color} aria-label="Cor de {u.name}" />
 					<button class="btn small secondary">Salvar</button>
+				</form>
+				<form method="POST" action="?/noivos" use:enhance={() => async ({ update }) => update({ reset: false })} class="edit">
+					<input type="hidden" name="id" value={u.id} />
+					<label class="couple small"><Icon name="ring" size={16} /> Casando?
+						<select name="couple" value={u.couple ?? ''} onchange={(e) => e.currentTarget.form?.requestSubmit()}>
+							<option value="">Não</option><option value="noiva">Noiva</option><option value="noivo">Noivo</option>
+						</select>
+					</label>
 				</form>
 				{#if u.items === 0 && u.id !== data.me.id}
 					<form method="POST" action="?/remover" use:enhance={({ cancel }) => { if (!confirm(`Remover ${u.name}?`)) cancel(); }}>
@@ -62,6 +70,8 @@
 	.grow p { margin: 4px 0 0; overflow-wrap: anywhere; }
 	input[type='color'] { width: 44px; height: 44px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); flex: none; }
 	.add { display: grid; gap: 10px; }
+	.couple { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+	.couple select { width: auto; min-height: 40px; }
 	.add h2 { margin: 0; }
 	.add label { display: grid; gap: 4px; font-weight: 600; }
 	.add .inline { display: flex; align-items: center; gap: 10px; }

@@ -4,6 +4,16 @@ import SwiftUI
 struct FeedView: View {
 	@Environment(AppState.self) private var app
 	@State private var model = FeedModel()
+	/// every photo/video: the grid and the reels
+	@State private var library = MediaLibrary()
+	@State private var grid = false
+	@State private var reel: ReelStart?
+	@State private var selecting = false
+	@State private var selected: [String] = []
+	@State private var framing: FrameSelection?
+	@State private var toast: String?
+
+	private var media: [FeedMedia] { library.filtered(day: model.day, person: model.person) }
 
 	var body: some View {
 		ScrollView {
@@ -11,7 +21,113 @@ struct FeedView: View {
 				TitleRow(icon: .journal, title: "Diário da viagem")
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.padding(.horizontal, 16)
+				NavigationLink { RetroView() } label: { CountdownCard() }
+					.buttonStyle(.plain)
+					.padding(.horizontal, 16)
+				ModeSwitch(grid: $grid).padding(.horizontal, 16)
 				FeedFilters(model: model)
+				if grid { gridContent } else { posts }
+				if model.loading || (grid && library.loading && library.items.isEmpty) { ProgressView().tint(.sea).padding() }
+			}
+			.padding(.top, 12)
+			.padding(.bottom, selecting ? 120 : 24)
+			.frame(maxWidth: 600)
+			.frame(maxWidth: .infinity)
+		}
+		.environment(\.openReel) { id in
+			Task {
+				if !library.items.contains(where: { $0.id == id }) { await library.refresh(app: app) }
+				reel = ReelStart(id: id)
+			}
+		}
+		.overlay(alignment: .bottom) { selectionBar }
+		.overlay(alignment: .bottom) {
+			if let toast {
+				Text(toast).font(.text(14, .extraBold)).foregroundStyle(Color.onLeaf)
+					.padding(.horizontal, 16).padding(.vertical, 8).background(Capsule().fill(Color.leaf))
+					.padding(.bottom, 180).transition(.opacity)
+			}
+		}
+		.fullScreenCover(item: $reel) { r in ReelsScreen(items: media.contains { $0.id == r.id } ? media : library.items, start: r.id) }
+		.sheet(item: $framing) { f in FrameMakerView(items: f.items) }
+		.refreshable {
+			await model.refresh(app: app)
+			if grid { await library.refresh(app: app) }
+		}
+		.task { if model.posts.isEmpty { await model.refresh(app: app) } }
+		.onChange(of: grid) { _, on in
+			selecting = false
+			selected = []
+			if on && library.items.isEmpty { Task { await library.refresh(app: app) } }
+		}
+		.onChange(of: app.feedVersion) { Task {
+			await model.refresh(app: app)
+			if !library.items.isEmpty { await library.refresh(app: app) }
+		} }
+		.onChange(of: model.day) { Task { await model.refresh(app: app) } }
+		.onChange(of: model.person) { Task { await model.refresh(app: app) } }
+	}
+
+	@ViewBuilder private var gridContent: some View {
+		HStack {
+			Text("\(media.count) \(media.count == 1 ? "item" : "itens")").font(.text(14)).foregroundStyle(Color.muted)
+			Spacer()
+			Button(selecting ? "Cancelar" : "Selecionar") { selecting.toggle(); selected = [] }
+				.buttonStyle(.chunky(selecting ? .secondary : .leaf, small: true))
+		}
+		.padding(.horizontal, 16)
+		if selecting {
+			Text("Escolha até \(Frames.max) fotos para juntar numa imagem com moldura.")
+				.font(.text(14)).foregroundStyle(Color.muted).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
+		}
+		if let e = library.error, library.items.isEmpty {
+			EmptyState(text: e, retry: { Task { await library.refresh(app: app) } })
+		} else if media.isEmpty && !library.loading {
+			EmptyState(text: "Nenhuma foto ou vídeo com esses filtros.")
+		}
+		MediaGrid(items: selecting && app.me?.isAdmin != true ? media.filter { !$0.isVideo } : media, selecting: selecting, selected: $selected,
+				  max: app.me?.isAdmin == true ? 300 : Frames.max) { m in reel = ReelStart(id: m.id) }
+	}
+
+	@ViewBuilder private var selectionBar: some View {
+		if selecting && !selected.isEmpty {
+			let picked = selected.compactMap { id in library.items.first { $0.id == id } }
+			HStack(spacing: 8) {
+				Text("\(selected.count) \(selected.count == 1 ? "escolhida" : "escolhidas")").font(.text(16, .extraBold)).foregroundStyle(Color.ink)
+				Spacer()
+				if app.me?.isAdmin == true {
+					Button { Task { await addToRetro() } } label: { Label { Text("Retrô") } icon: { Icon(.sparkle, size: 16) } }
+						.buttonStyle(.chunky(.secondary, small: true))
+				}
+				Button { framing = FrameSelection(items: picked) } label: { Label { Text("Moldura") } icon: { Icon(.frame, size: 16) } }
+					.buttonStyle(.chunky(.sun, small: true))
+					.disabled(picked.count > Frames.max || picked.contains { $0.isVideo })
+			}
+			.padding(12)
+			.card(padding: 0)
+			.padding(.horizontal, 12)
+			.padding(.bottom, 108)
+			.transition(.move(edge: .bottom).combined(with: .opacity))
+		}
+	}
+
+	private func addToRetro() async {
+		do {
+			let r: Retro = try await API.shared.get("/api/retro")
+			let ids = r.items.map(\.id) + selected.filter { id in !r.items.contains { $0.id == id } }
+			let _: OK = try await API.shared.put("/api/admin/retro", RetroBody(mediaIds: ids))
+			withAnimation { toast = "\(selected.count) na retrospectiva (\(ids.count) no total)." }
+			selecting = false
+			selected = []
+			try? await Task.sleep(for: .seconds(3))
+			withAnimation { toast = nil }
+		} catch {
+			app.handle(error)
+			withAnimation { toast = error.localizedDescription }
+		}
+	}
+
+	@ViewBuilder private var posts: some View {
 				if let error = model.error, model.posts.isEmpty {
 					EmptyState(text: error, retry: { Task { await model.refresh(app: app) } })
 				} else if model.posts.isEmpty && !model.loading {
@@ -31,18 +147,35 @@ struct FeedView: View {
 					}
 					.task { await model.loadMoreIfNeeded(after: post, app: app) }
 				}
-				if model.loading { ProgressView().tint(.sea).padding() }
-			}
-			.padding(.top, 12)
-			.padding(.bottom, 24)
-			.frame(maxWidth: 600)
-			.frame(maxWidth: .infinity)
+	}
+}
+
+struct ReelStart: Identifiable { let id: String }
+
+/// Diário (posts) or Todas as fotos (the grid).
+private struct ModeSwitch: View {
+	@Binding var grid: Bool
+
+	var body: some View {
+		HStack(spacing: 6) {
+			item(false, .journal, "Diário")
+			item(true, .grid, "Todas as fotos")
 		}
-		.refreshable { await model.refresh(app: app) }
-		.task { if model.posts.isEmpty { await model.refresh(app: app) } }
-		.onChange(of: app.feedVersion) { Task { await model.refresh(app: app) } }
-		.onChange(of: model.day) { Task { await model.refresh(app: app) } }
-		.onChange(of: model.person) { Task { await model.refresh(app: app) } }
+		.padding(4)
+		.background(Capsule().fill(Color.surface))
+		.overlay(Capsule().strokeBorder(Color.line, lineWidth: 2.5))
+		.animation(.bounce, value: grid)
+	}
+
+	private func item(_ value: Bool, _ icon: IconName, _ label: String) -> some View {
+		Button { grid = value } label: {
+			HStack(spacing: 6) { Icon(icon, size: 18); Text(label).font(.display(16)) }
+				.foregroundStyle(grid == value ? Color.onSea : Color.muted)
+				.frame(maxWidth: .infinity, minHeight: 40)
+				.background(Capsule().fill(grid == value ? Color.sea : .clear))
+		}
+		.buttonStyle(.plain)
+		.accessibilityAddTraits(grid == value ? .isSelected : [])
 	}
 }
 

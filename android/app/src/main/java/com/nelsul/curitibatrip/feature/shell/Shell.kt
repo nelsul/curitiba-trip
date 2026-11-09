@@ -14,7 +14,17 @@ import androidx.compose.runtime.remember
 import com.nelsul.curitibatrip.data.Route
 import com.nelsul.curitibatrip.LocalApp
 import com.nelsul.curitibatrip.feature.enviar.EnviarScreen
-import com.nelsul.curitibatrip.feature.galeria.GaleriaScreen
+import com.nelsul.curitibatrip.feature.cotinha.CotinhaBadge
+import com.nelsul.curitibatrip.feature.cotinha.CotinhaScreen
+import com.nelsul.curitibatrip.feature.feed.CoupleLoveDialog
+import com.nelsul.curitibatrip.feature.retro.RetroScreen
+import com.nelsul.curitibatrip.feature.roteiro.PlaceDetailScreen
+import com.nelsul.curitibatrip.data.CoupleLike
+import com.nelsul.curitibatrip.data.CoupleLikes
+import com.nelsul.curitibatrip.data.Ok
+import com.nelsul.curitibatrip.data.SeenBody
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.nelsul.curitibatrip.feature.mapa.MapaScreen
 import com.nelsul.curitibatrip.background.BackgroundLocation
 import com.nelsul.curitibatrip.background.Notifier
@@ -92,10 +102,19 @@ fun Shell() {
 	BackHandler(enabled = stack.isNotEmpty(), onBack = back)
 	BackHandler(enabled = stack.isEmpty() && tab != Tab.Diario) { tab = Tab.Diario }
 	// live sharing runs only while the app is open; leaving the app marks what's there as seen
+	val app = LocalApp.current
+	val scope = rememberCoroutineScope()
+	// the bride or groom liked one of my posts: the special effect, once
+	var coupleLikes by remember { mutableStateOf<List<CoupleLike>>(emptyList()) }
 	LifecycleResumeEffect(Unit) {
 		LocationSharing.resume()
+		scope.launch {
+			if (coupleLikes.isEmpty()) runCatching { Api.get<CoupleLikes>("/api/couple-likes") }.getOrNull()?.let { coupleLikes = it.likes }
+			CotinhaBadge.refresh(app.me?.id)
+		}
 		onPauseOrDispose { LocationSharing.pause(); Notifier.markSeen(context) }
 	}
+	LaunchedEffect(Notifier.openCotinha) { if (Notifier.openCotinha > 0) { tab = Tab.Cotinha; stacks.getValue(Tab.Cotinha).clear() } }
 	// background check, reminders and (if on) background location; ask once for notifications
 	val notifyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
 	LaunchedEffect(Unit) {
@@ -111,7 +130,6 @@ fun Shell() {
 	}
 	LaunchedEffect(Notifier.openCheckin) { if (Notifier.openCheckin > 0) { tab = Tab.Mapa; stacks.getValue(Tab.Mapa).clear() } }
 	// refresh the feed as uploads reach the server
-	val app = LocalApp.current
 	val arrivals by Uploads.arrivals.collectAsState()
 	LaunchedEffect(arrivals) { if (arrivals > 0) app.feedChanged() }
 	// the dock steps aside while the keyboard is up, so text fields stay visible
@@ -124,9 +142,9 @@ fun Shell() {
 				// the tab's main screen stays alive under its pages, so it keeps its scroll position
 				when (tab) {
 					Tab.Diario -> FeedScreen(DockSpace, open)
-					Tab.Roteiro -> RoteiroScreen(DockSpace)
-					Tab.Mais -> MoreScreen(DockSpace)
-					Tab.Galeria -> GaleriaScreen(DockSpace, open, covered = stack.isNotEmpty())
+					Tab.Roteiro -> RoteiroScreen(DockSpace, open)
+					Tab.Mais -> MoreScreen(DockSpace, open)
+					Tab.Cotinha -> CotinhaScreen(DockSpace)
 					Tab.Enviar -> EnviarScreen(DockSpace, open)
 					Tab.Mapa -> MapaScreen(DockSpace, open, Notifier.openCheckin)
 				}
@@ -140,6 +158,8 @@ fun Shell() {
 						when (route) {
 							is Route.Media -> MediaDetailScreen(route.id, DockSpace, back)
 							is Route.Checkin -> CheckinDetailScreen(route.id, DockSpace, back)
+							is Route.Retro -> RetroScreen(DockSpace, back)
+							is Route.Place -> PlaceDetailScreen(route.id, DockSpace, back)
 						}
 					}
 				}
@@ -150,7 +170,13 @@ fun Shell() {
 			Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
 			enter = slideInVertically { it } + fadeIn(),
 			exit = slideOutVertically { it } + fadeOut(),
-		) { Dock(tab, { if (it == tab) stack.clear() else tab = it }) }
+		) { Dock(tab, { if (it == tab) stack.clear() else tab = it }, badges = mapOf(Tab.Cotinha to CotinhaBadge.owing)) }
+	}
+	if (coupleLikes.isNotEmpty()) CoupleLoveDialog(coupleLikes) { route ->
+		val upTo = coupleLikes.maxOf { it.id }
+		coupleLikes = emptyList()
+		scope.launch { runCatching { Api.post<SeenBody, Ok>("/api/couple-likes/seen", SeenBody(upTo)) } }
+		if (route != null) { tab = Tab.Diario; stacks.getValue(Tab.Diario).add(route) }
 	}
 }
 

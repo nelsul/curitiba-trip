@@ -15,7 +15,7 @@ export const actions: Actions = {
 		await assertTarget({ mediaId: params.id });
 		return addComment(request, locals.user!.id, { mediaId: params.id });
 	},
-	apagarComentario: ({ request, locals }) => deleteComment(request, locals.user!.id),
+	apagarComentario: ({ request, locals }) => deleteComment(request, locals.user!),
 	legenda: async ({ params, request, locals }) => {
 		await updateMedia(params.id, locals.user!.id, { caption: (await request.formData()).get('caption') ?? '' });
 		return { saved: true };
@@ -29,7 +29,7 @@ export const actions: Actions = {
 		return { saved: true };
 	},
 	apagar: async ({ params, locals }) => {
-		await deleteMedia(params.id, locals.user!.id);
+		await deleteMedia(params.id, locals.user!);
 		redirect(303, '/');
 	}
 };

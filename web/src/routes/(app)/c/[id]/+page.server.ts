@@ -14,13 +14,13 @@ export const actions: Actions = {
 		await assertTarget({ checkinId: params.id });
 		return addComment(request, locals.user!.id, { checkinId: params.id });
 	},
-	apagarComentario: ({ request, locals }) => deleteComment(request, locals.user!.id),
+	apagarComentario: ({ request, locals }) => deleteComment(request, locals.user!),
 	nota: async ({ params, request, locals }) => {
 		await updateCheckinNote(params.id, locals.user!.id, (await request.formData()).get('note') ?? '');
 		return { saved: true };
 	},
 	apagar: async ({ params, locals }) => {
-		await deleteCheckin(params.id, locals.user!.id);
+		await deleteCheckin(params.id, locals.user!);
 		redirect(303, '/');
 	}
 };

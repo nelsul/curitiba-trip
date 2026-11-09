@@ -4,6 +4,11 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.VideoView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,46 +74,31 @@ import com.nelsul.curitibatrip.ui.theme.display
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 
-/** Every photo and video (no check-ins), newest first, paged through GET /api/feed. */
-class GaleriaModel {
+/**
+ * Every photo and video (no check-ins), newest first: the Diário's grid ("Todas as fotos") and the reels.
+ * Loads every page of GET /api/feed (a trip has a few hundred items at most).
+ */
+class MediaLibrary {
 	var items by mutableStateOf<List<FeedMedia>>(emptyList())
 		private set
 	var loading by mutableStateOf(false)
 		private set
 	var error by mutableStateOf<String?>(null)
 		private set
-	private var cursor: String? = null
-	private var reachedEnd = false
 
 	suspend fun refresh(app: AppState) {
-		cursor = null
-		reachedEnd = false
-		load(app, replace = true)
-	}
-
-	/** Loads the next page a few items before the end, so swiping never waits. */
-	suspend fun loadMoreIfNeeded(index: Int, app: AppState) {
-		if (reachedEnd || loading || index < items.size - 4) return
-		load(app, replace = false)
-	}
-
-	private suspend fun load(app: AppState, replace: Boolean) {
+		if (loading) return
 		loading = true
 		try {
 			val found = mutableListOf<FeedMedia>()
-			var first = true
-			// a page may be all check-ins: keep going until there's something to show
+			var cursor: String? = null
 			do {
-				val page: FeedPage = Api.get("/api/feed", mapOf("limit" to "30", "before" to if (replace && first) null else cursor))
-				first = false
-				for (post in page.posts) {
-					// carousels are oldest → newest inside; the Galeria is newest first
-					if (post.type == "media") found += post.items.reversed().filter { it.status == "ready" && (it.image != null || it.video != null) }
-				}
+				val page: FeedPage = Api.get("/api/feed", mapOf("limit" to "50", "before" to cursor))
+				// carousels are oldest → newest inside; the grid is newest first
+				for (post in page.posts) if (post.type == "media") found += post.items.reversed().filter { it.status == "ready" && (it.image != null || it.video != null) }
 				cursor = page.nextCursor
-				reachedEnd = page.nextCursor == null
-			} while (found.isEmpty() && !reachedEnd)
-			items = if (replace) found else items + found.filter { f -> items.none { it.id == f.id } }
+			} while (cursor != null)
+			items = found
 			error = null
 		} catch (e: Exception) {
 			app.handle(e)
@@ -117,46 +107,72 @@ class GaleriaModel {
 			loading = false
 		}
 	}
+
+	fun filtered(day: String?, person: String?) = items.filter { (day == null || it.day == day) && (person == null || it.userId == person) }
 }
 
 private val dateTime = DateTimeFormatter.ofPattern("dd/MM, HH:mm", TripTime.locale).withZone(TripTime.zone)
 
 /**
- * Galeria: full-screen photos and videos, swiping up like Reels. Only the page on screen plays, and nothing plays
- * while a detail page covers the Galeria, another tab is open or the app is in the background.
+ * Full-screen reels over the Diário (like Instagram), starting at the photo/video that was tapped. Only the page on
+ * screen plays, and nothing plays while the app is in the background.
  */
 @Composable
-fun GaleriaScreen(contentPadding: PaddingValues, open: Opener, covered: Boolean) {
+fun ReelsOverlay(items: List<FeedMedia>, start: String, onClose: () -> Unit, open: Opener, onShare: (FeedMedia) -> Unit) {
 	val app = LocalApp.current
-	val model = remember { GaleriaModel() }
-	val pager = rememberPagerState { model.items.size }
+	val scope = rememberCoroutineScope()
+	var gone by remember { mutableStateOf(setOf<String>()) }
+	val shown = items.filter { it.id !in gone }
+	val pager = rememberPagerState(initialPage = items.indexOfFirst { it.id == start }.coerceAtLeast(0)) { shown.size }
 	var resumed by remember { mutableStateOf(true) }
 	var muted by remember { mutableStateOf(false) }
+	var deleting by remember { mutableStateOf<FeedMedia?>(null) }
 	LifecycleResumeEffect(Unit) {
 		resumed = true
 		onPauseOrDispose { resumed = false }
 	}
-	LaunchedEffect(app.feedVersion) { model.refresh(app) }
-	LaunchedEffect(pager) { snapshotFlow { pager.currentPage }.collect { model.loadMoreIfNeeded(it, app) } }
-
-	// the floating dock covers the bottom: pages end above it
-	Box(Modifier.fillMaxSize().padding(bottom = 96.dp).background(Color.Black)) {
-		when {
-			model.items.isNotEmpty() -> VerticalPager(pager, Modifier.fillMaxSize(), key = { model.items[it].id }) { i ->
-				val m = model.items[i]
-				Reel(m, app.person(m.userId), playing = resumed && !covered && pager.settledPage == i, muted = muted, onMute = { muted = !muted }, open = open)
+	Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+		Box(Modifier.fillMaxSize().background(Color.Black)) {
+			VerticalPager(pager, Modifier.fillMaxSize().systemBarsPadding(), key = { shown[it].id }) { i ->
+				val m = shown[i]
+				Reel(m, app.person(m.userId), playing = resumed && pager.settledPage == i, muted = muted, onMute = { muted = !muted },
+					open = { onClose(); open(it) },
+					onShare = if (m.isVideo) null else ({ onShare(m) }),
+					onDelete = if (m.userId == app.me?.id || app.me?.isAdmin == true) ({ deleting = m }) else null)
 			}
-			model.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center), color = Palette.sea)
-			else -> Box(Modifier.fillMaxSize().background(Palette.bg).padding(16.dp), contentAlignment = Alignment.Center) {
-				EmptyState(model.error ?: "Nenhuma foto ou vídeo ainda.", if (model.error != null) ({ app.feedChanged() }) else null)
-			}
+			Box(
+				Modifier.systemBarsPadding().padding(12.dp).size(44.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape)
+					.pressable(onClose).semantics { contentDescription = "Voltar ao diário" },
+				contentAlignment = Alignment.Center,
+			) { Icon(IconName.Close, Color.White, size = 20.dp) }
+		}
+		deleting?.let { m ->
+			AlertDialog(
+				onDismissRequest = { deleting = null },
+				title = { Text("Apagar esta foto/vídeo para todo mundo?") },
+				text = { Text("Não dá para desfazer.") },
+				confirmButton = {
+					TextButton({
+						deleting = null
+						scope.launch {
+							try {
+								Api.delete("/api/media/${m.id}")
+								gone = gone + m.id
+								app.feedChanged()
+								if (items.all { it.id in gone }) onClose()
+							} catch (e: Exception) { app.handle(e) }
+						}
+					}) { Text("Apagar", color = Palette.danger) }
+				},
+				dismissButton = { TextButton({ deleting = null }) { Text("Cancelar") } },
+			)
 		}
 	}
 }
 
 /** One full-screen page: the photo or looping video, the like/comments rail and who posted it. */
 @Composable
-private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boolean, onMute: () -> Unit, open: Opener) {
+private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boolean, onMute: () -> Unit, open: Opener, onShare: (() -> Unit)?, onDelete: (() -> Unit)?) {
 	val app = LocalApp.current
 	val scope = rememberCoroutineScope()
 	val likers = remember { mutableStateMapOf<String, List<String>>() }
@@ -223,14 +239,16 @@ private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boo
 
 		// like, comments, details
 		Column(
-			Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 18.dp),
+			Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 28.dp),
 			horizontalAlignment = Alignment.CenterHorizontally,
 		) {
 			LikeButton(current.contains(app.me?.id)) { setLike(it) }
 			if (current.isNotEmpty()) Count(current.size)
 			Icon(IconName.Chat, Color.White, Modifier.padding(top = 6.dp).pressable({ open(Route.Media(media.id)) }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 28.dp)
 			if (media.comments > 0) Count(media.comments)
+			if (onShare != null) Icon(IconName.Share, Color.White, Modifier.padding(top = 6.dp).pressable(onShare).padding(9.dp).semantics { contentDescription = "Compartilhar com moldura" }, size = 26.dp)
 			Icon(IconName.Expand, Color.White, Modifier.padding(top = 6.dp).pressable({ open(Route.Media(media.id)) }).padding(10.dp).semantics { contentDescription = "Abrir detalhes" }, size = 26.dp)
+			if (onDelete != null) Icon(IconName.Trash, Color.White, Modifier.padding(top = 6.dp).pressable(onDelete).padding(10.dp).semantics { contentDescription = "Apagar" }, size = 24.dp)
 		}
 	}
 }

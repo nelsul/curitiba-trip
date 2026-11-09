@@ -34,11 +34,13 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Para tirar fotos direto para o diário da viagem.</string>
+	<string>Para tirar fotos e gravar vídeos direto para o diário da viagem.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Para o grupo ver no mapa por onde você passou, mesmo com o app fechado (só se você ligar o compartilhamento).</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Para fazer check-in e mostrar no mapa onde você está para o grupo da viagem.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Para gravar o som dos vídeos que você faz no app.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Para salvar nas suas Fotos o arquivo original de uma foto ou vídeo da viagem.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

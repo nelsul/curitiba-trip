@@ -77,7 +77,7 @@ import kotlinx.serialization.json.JsonObject
 
 /** Mais (web /mais): profile photo (circle framer), devices, admin link, sign out. */
 @Composable
-fun MoreScreen(contentPadding: PaddingValues) {
+fun MoreScreen(contentPadding: PaddingValues, open: (com.nelsul.curitibatrip.data.Route) -> Unit = {}) {
 	val app = LocalApp.current
 	val context = LocalContext.current
 	val scope = rememberCoroutineScope()
@@ -149,6 +149,7 @@ fun MoreScreen(contentPadding: PaddingValues) {
 
 			AlertsCard()
 
+			ChunkyButton("Retrospectiva", { open(com.nelsul.curitibatrip.data.Route.Retro) }, variant = ButtonVariant.Secondary, fullWidth = true, icon = IconName.Sparkle)
 			if (app.me?.isAdmin == true) {
 				ChunkyButton("Gerenciar pessoas (site)", { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(Api.base + "/admin"))) }, variant = ButtonVariant.Secondary, fullWidth = true)
 			}

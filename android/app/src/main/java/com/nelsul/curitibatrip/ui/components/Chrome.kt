@@ -1,5 +1,7 @@
 package com.nelsul.curitibatrip.ui.components
 
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -154,20 +156,20 @@ fun DaySign(text: String, modifier: Modifier = Modifier) {
 enum class Tab(val label: String, val icon: IconName, val color: Color) {
 	Diario("Diário", IconName.Journal, Palette.leaf),
 	Mapa("Mapa", IconName.Map, Palette.sea),
-	Galeria("Galeria", IconName.Gallery, Palette.sun),
+	Cotinha("Cotinha", IconName.Wallet, Palette.sun),
 	Roteiro("Roteiro", IconName.Ticket, Palette.coral),
 	Mais("Mais", IconName.User, Palette.plum),
 	/** Opened from the top bar's button, not the dock. */
 	Enviar("Enviar", IconName.Upload, Palette.sun);
 
 	companion object {
-		val dock = listOf(Diario, Mapa, Galeria, Roteiro, Mais)
+		val dock = listOf(Diario, Mapa, Cotinha, Roteiro, Mais)
 	}
 }
 
 /** The floating dock with colored icon tiles (same as the web and iOS). */
 @Composable
-fun Dock(selection: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
+fun Dock(selection: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier, badges: Map<Tab, Int> = emptyMap()) {
 	val haptics = LocalHapticFeedback.current
 	Row(
 		modifier
@@ -190,7 +192,7 @@ fun Dock(selection: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier)
 						if (!active) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
 						onSelect(tab)
 					}
-					.semantics { selected = active; contentDescription = tab.label },
+					.semantics { selected = active; contentDescription = tab.label + (badges[tab]?.takeIf { it > 0 }?.let { ", $it para pagar" } ?: "") },
 				horizontalAlignment = Alignment.CenterHorizontally,
 				verticalArrangement = Arrangement.spacedBy(2.dp),
 			) {
@@ -202,7 +204,13 @@ fun Dock(selection: Tab, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier)
 						.size(38.dp)
 						.tile(tab.color, Color.Black.copy(alpha = 0.18f), 14f, 3f),
 					contentAlignment = Alignment.Center,
-				) { Icon(tab.icon, Color.White, size = 22.dp) }
+				) {
+					Icon(tab.icon, Color.White, size = 22.dp)
+					badges[tab]?.takeIf { it > 0 }?.let { n ->
+						Box(Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).sizeIn(minWidth = 18.dp, minHeight = 18.dp).background(Palette.coral, CircleShape),
+							contentAlignment = Alignment.Center) { Text("$n", style = body(11, FontWeight.ExtraBold), color = Color.White) }
+					}
+				}
 				Text(tab.label, style = body(11, FontWeight.ExtraBold), color = if (active) Palette.ink else Palette.muted)
 			}
 		}

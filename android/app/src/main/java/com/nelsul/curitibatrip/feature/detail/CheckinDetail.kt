@@ -120,8 +120,8 @@ fun CheckinDetailScreen(id: String, contentPadding: PaddingValues, onBack: () ->
 					if (item.note.isNotEmpty()) {
 						Text(item.note, style = body(17), color = Palette.ink, modifier = Modifier.fillMaxWidth().card(padding = 0.dp, radius = 18.dp).padding(horizontal = 14.dp, vertical = 10.dp))
 					}
-					if (mine) Row(verticalAlignment = Alignment.CenterVertically) {
-						TextLink(if (item.note.isEmpty()) "Adicionar texto" else "Editar texto", { editing = true })
+					if (mine || app.me?.isAdmin == true) Row(verticalAlignment = Alignment.CenterVertically) {
+						if (mine) TextLink(if (item.note.isEmpty()) "Adicionar texto" else "Editar texto", { editing = true })
 						Spacer(Modifier.weight(1f))
 						ChunkyButton("Apagar check-in", { confirmDelete = true }, variant = ButtonVariant.Danger, small = true)
 					}

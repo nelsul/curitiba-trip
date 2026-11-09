@@ -35,6 +35,7 @@
 	</section>
 
 	<section class="stack">
+		<a class="btn secondary" href="/retro"><Icon name="sparkle" size={18} /> Retrospectiva</a>
 		{#if data.me.isAdmin}<a class="btn secondary" href="/admin">Gerenciar pessoas</a>{/if}
 		<form method="POST" action="?/sair"><button class="btn secondary block">Sair</button></form>
 	</section>

@@ -9,6 +9,8 @@
 	import DayEditor from '$lib/components/roteiro/DayEditor.svelte';
 	import RouteMap from '$lib/components/roteiro/RouteMap.svelte';
 	import StayEditor from '$lib/components/roteiro/StayEditor.svelte';
+	import WeatherCard from '$lib/components/WeatherCard.svelte';
+	import type { WeatherDay } from '$lib/weather';
 	import { dayKey, dayKeyLabel } from '$lib/format';
 	import {
 		CATEGORY,
@@ -37,6 +39,14 @@
 		update();
 		mq.addEventListener('change', update);
 		return () => mq.removeEventListener('change', update);
+	});
+	/** forecast per day (loaded after the page, it comes from an outside service) */
+	let weather = $state<Record<string, WeatherDay>>({});
+	onMount(() => {
+		fetch('/api/weather')
+			.then((r) => (r.ok ? r.json() : { days: [] }))
+			.then((w: { days: WeatherDay[] }) => (weather = Object.fromEntries(w.days.map((d) => [d.date, d]))))
+			.catch(() => {});
 	});
 	/** stop under the mouse, highlighted on the map */
 	let hovered = $state<number | null>(null);
@@ -224,6 +234,7 @@
 				{@const l = dayKeyLabel(d.date)}
 				<button role="tab" class="chip daybtn" class:wedding={d.wedding} class:today={d.date === today} aria-selected={selected === d.date && editingDay !== 'new'} onclick={() => { selected = d.date; editingDay = null; }}>
 					<strong>{l.day}</strong><span>{l.weekday}</span>
+					{#if weather[d.date]}<span class="wx" aria-label="{weather[d.date].max}°"><Icon name={weather[d.date].kind} size={14} /></span>{/if}
 				</button>
 			{/each}
 			{#if admin}<button role="tab" class="chip daybtn add" aria-label="Adicionar dia" aria-selected={editingDay === 'new'} onclick={() => (editingDay = 'new')}><strong>+</strong><span>dia</span></button>{/if}
@@ -253,6 +264,7 @@
 						{:else}
 							{#if day.who}<p class="who small"><Icon name="people" size={16} /> {day.who}</p>{/if}
 							{#if day.lead}<p class="lead">{day.lead}</p>{/if}
+							{#if weather[day.date]}<WeatherCard day={weather[day.date]} />{/if}
 
 							{#if !wide}{@render dayMap(day)}{/if}
 
@@ -267,7 +279,7 @@
 										<div class="stop card">
 											<div class="stop-top">
 												{#if p?.photos[0]}
-													<img class="thumb" src={p.photos[0].url} alt="Foto de {p.name}" loading="lazy" />
+													<a class="thumb-link" href="/roteiro/lugar/{p.id}" tabindex="-1" aria-hidden="true"><img class="thumb" src={p.photos[0].url} alt="" loading="lazy" /></a>
 												{:else if p && !admin}
 													<span class="thumb empty" style:--c={CATEGORY[p.category].color} aria-hidden="true"><Icon name="pin" size={22} /></span>
 												{:else if p}
@@ -280,7 +292,7 @@
 														{#if n}<span class="num" aria-label="Parada {n}">{n}</span>{/if}
 														{#if s.time}<span class="time">{s.time}</span>{/if}
 													</div>
-													<h3>{p?.name ?? s.label}</h3>
+													<h3>{#if p}<a class="place-link" href="/roteiro/lugar/{p.id}">{p.name}</a>{:else}{s.label}{/if}</h3>
 													<span class="badge" style:--c={TRANSPORT[s.transport].color}>{TRANSPORT[s.transport].label}</span>
 													{#if p}<span class="badge" style:--c={CATEGORY[p.category].color}>{CATEGORY[p.category].label}</span>{/if}
 												</div>
@@ -438,6 +450,11 @@
 	.daybtn.today::after { content: 'hoje'; position: absolute; top: -9px; right: -6px; font-size: 0.6rem; background: var(--coral); color: #fff; border-radius: 999px; padding: 0 5px; }
 	.daybtn.wedding:not([aria-selected='true']) { border-color: var(--berry); color: var(--berry); }
 	.daybtn.add { color: var(--sea); border-color: var(--sea); }
+	.daybtn .wx { display: grid; place-items: center; opacity: 0.85; margin-top: 1px; }
+	.place-link { color: inherit; text-decoration: none; }
+	.place-link:hover, .place-link:focus-visible { text-decoration: underline; }
+	.place-link::after { content: ' ›'; color: var(--sea); }
+	.thumb-link { flex: none; display: block; }
 
 	.ticket { background: var(--surface); border: 2.5px solid var(--line); border-radius: var(--radius); box-shadow: 0 5px 0 var(--shadow); overflow: hidden; }
 	.ticket.wedding { border-color: var(--berry); }

@@ -11,8 +11,9 @@
 		c,
 		persons,
 		meId,
+		isAdmin = false,
 		snapshot = null
-	}: { c: FeedCheckin; persons: Map<string, Person>; meId: string; snapshot?: string | null } = $props();
+	}: { c: FeedCheckin; persons: Map<string, Person>; meId: string; isAdmin?: boolean; snapshot?: string | null } = $props();
 
 	const p = $derived(persons.get(c.userId));
 	const mine = $derived(c.userId === meId);
@@ -54,12 +55,12 @@
 			<strong>{p?.name ?? 'Alguém'}</strong>
 			<span class="small muted">fez check-in · {fmtTime(c.at)}</span>
 		</div>
-		{#if mine}
+		{#if mine || isAdmin}
 			<div class="menu-wrap">
 				<button class="more-btn" aria-label="Opções do check-in" aria-expanded={menuOpen} onclick={(e) => { e.stopPropagation(); menuOpen = !menuOpen; }}>⋯</button>
 				{#if menuOpen}
 					<div class="menu card" role="menu">
-						<a role="menuitem" href="/c/{c.id}">Editar texto</a>
+						{#if mine}<a role="menuitem" href="/c/{c.id}">Editar texto</a>{/if}
 						<button role="menuitem" class="danger" onclick={remove} disabled={deleting}>Apagar check-in</button>
 					</div>
 				{/if}

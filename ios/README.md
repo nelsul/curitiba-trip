@@ -14,7 +14,11 @@ The plan's MVP is **done**:
   - zoom, video, likes, comments, caption/note editing, delete
   - "Salvar original nas Fotos"
   - "Corrigir" a photo's location: search a place by name or drag the map
-- **Galeria:** every photo and video full screen, swiping up like Reels; only the video on screen plays (looping, sound toggle), double tap likes.
+- **Diário + Reels:** tapping a post opens every photo and video full screen, swiping up like Reels (only the video on screen plays, double tap likes, share in a frame, owner/admin delete). "Todas as fotos" shows them in a grid; pick up to 9 photos to make one image with a frame (Polaroid, Passaporte, Noite, Casamento; post or story) and share it.
+- **Cotinha:** split what someone paid; their Pix key to copy, "Já paguei", the payer's "Cobrar quem falta" (a notification), a badge with what you owe.
+- **Retrospectiva:** wedding countdown on the Diário; afterwards the admin's picks as stories.
+- **Noivos:** a one-time special effect when the bride or groom liked your post.
+- **@menções** in comments, **previsão do tempo** hora a hora in the Roteiro, a **page per place**, and **Tirar foto / Gravar vídeo** in Enviar.
 - **Enviar** (the yellow button at the top right): originals from the photo library with their own location and time, sent in the background (keeps going with the app closed), with the flight animation.
 - **Mapa:**
   - MapLibre with the island style: polaroids, pins, people, filters
@@ -39,7 +43,7 @@ Not built yet (PLAN.md §7): auto-import of the day's photos, widgets, Live Acti
 CuritibaTrip/
   App/            entry point, AppState (who's signed in), AppDelegate (background upload wake-ups)
   DesignSystem/   Theme.swift (generated tokens), fonts, icons, buttons, cards, chips, dock, flight animation
-  Features/       Login, Feed, Galeria (Reels), Detail (pages + comments), Enviar, Mapa (map, markers, check-in, picker with place search), Roteiro, More, Shell (tabs + top bar)
+  Features/       Login, Feed (+ grid, frames, couple effect), Reels, Cotinha, Retro, Detail (pages + comments), Enviar, Mapa (map, markers, check-in, picker with place search), Roteiro, More, Shell (tabs + top bar)
   Services/       API client, Keychain token, dates (Curitiba time), Uploader, LocationSharing, Notifier
   Models/         Codable types matching web/API.md
 ```

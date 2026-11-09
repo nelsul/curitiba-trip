@@ -5,6 +5,7 @@ struct MediaPostView: View {
 	let items: [FeedMedia]
 	let person: Person?
 	@Environment(AppState.self) private var app
+	@Environment(\.openReel) private var openReel
 	@State private var index = 0
 	@State private var likers: [String: [String]] = [:]
 	@State private var bigHeart = 0
@@ -37,6 +38,8 @@ struct MediaPostView: View {
 				bigHeart += 1
 				Task { await setLike(current, true) }
 			}
+			// a single tap opens the reels at this photo/video (like Instagram)
+			.onTapGesture { if current.status == "ready", let openReel { openReel(current.id) } }
 			.overlay(alignment: .top) { Rectangle().fill(Color.line).frame(height: 2.5) }
 			.overlay(alignment: .bottom) { Rectangle().fill(Color.line).frame(height: 2.5) }
 
@@ -44,8 +47,13 @@ struct MediaPostView: View {
 				LikeButton(liked: likersOf(current).contains(app.me?.id ?? "")) { liked in Task { await setLike(current, liked) } }
 				NavigationLink(value: Route.media(current.id)) { Icon(.chat, size: 26).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
 					.accessibilityLabel("Comentários")
-				NavigationLink(value: Route.media(current.id)) { Icon(.expand, size: 24).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
-					.accessibilityLabel("Abrir em tela cheia")
+				if let openReel, current.status == "ready" {
+					Button { openReel(current.id) } label: { Icon(.expand, size: 24).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
+						.accessibilityLabel("Abrir em tela cheia")
+				} else {
+					NavigationLink(value: Route.media(current.id)) { Icon(.expand, size: 24).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
+						.accessibilityLabel("Abrir em tela cheia")
+				}
 				Spacer()
 				if items.count > 1 { Dots(count: items.count, index: index) }
 				Spacer().frame(width: 92)
@@ -312,4 +320,9 @@ struct LikedByView: View {
 			}
 		}
 	}
+}
+
+extension EnvironmentValues {
+	/// Opens the full-screen reels at a photo/video (set by the Diário).
+	@Entry var openReel: ((String) -> Void)? = nil
 }
