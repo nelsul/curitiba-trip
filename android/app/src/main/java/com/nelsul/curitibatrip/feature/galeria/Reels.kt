@@ -1,7 +1,6 @@
 package com.nelsul.curitibatrip.feature.galeria
 
 import android.media.MediaPlayer
-import android.net.Uri
 import android.widget.VideoView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -53,7 +52,6 @@ import com.nelsul.curitibatrip.AppState
 import com.nelsul.curitibatrip.LocalApp
 import com.nelsul.curitibatrip.data.Api
 import com.nelsul.curitibatrip.data.FeedMedia
-import com.nelsul.curitibatrip.data.FeedPage
 import com.nelsul.curitibatrip.data.LikeBody
 import com.nelsul.curitibatrip.data.LikeResponse
 import com.nelsul.curitibatrip.data.Person
@@ -90,15 +88,8 @@ class MediaLibrary {
 		if (loading) return
 		loading = true
 		try {
-			val found = mutableListOf<FeedMedia>()
-			var cursor: String? = null
-			do {
-				val page: FeedPage = Api.get("/api/feed", mapOf("limit" to "50", "before" to cursor))
-				// carousels are oldest → newest inside; the grid is newest first
-				for (post in page.posts) if (post.type == "media") found += post.items.reversed().filter { it.status == "ready" && (it.image != null || it.video != null) }
-				cursor = page.nextCursor
-			} while (cursor != null)
-			items = found
+			// one request: only ready ones, newest first
+			items = Api.get<GridPage>("/api/feed/media").media
 			error = null
 		} catch (e: Exception) {
 			app.handle(e)
@@ -110,6 +101,9 @@ class MediaLibrary {
 
 	fun filtered(day: String?, person: String?) = items.filter { (day == null || it.day == day) && (person == null || it.userId == person) }
 }
+
+@kotlinx.serialization.Serializable
+private data class GridPage(val media: List<FeedMedia>)
 
 private val dateTime = DateTimeFormatter.ofPattern("dd/MM, HH:mm", TripTime.locale).withZone(TripTime.zone)
 
@@ -273,7 +267,7 @@ private fun ReelVideo(url: String, poster: String?, playing: Boolean, muted: Boo
 						if (what == MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START) rendering = true
 						false
 					}
-					setVideoURI(Uri.parse(url))
+					setVideoURI(com.nelsul.curitibatrip.data.VideoCache.playable(url))
 				}
 			},
 			update = { v -> if (playing) v.start() else if (v.isPlaying) v.pause() },

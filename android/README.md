@@ -102,7 +102,7 @@ The debug app is `com.nelsul.curitibatrip.debug`, so it can sit next to the real
 
 ```bash
 cd android
-./gradlew :app:assembleRelease    # → app/build/outputs/apk/release/app-release.apk (arm64 + armv7, ~25 MB)
+./gradlew :app:assembleRelease    # → app/build/outputs/apk/release/app-release.apk (arm64 only, native libraries compressed: ~7.5 MB)
 ```
 
 - **Signing:** it's signed with `keystore/release.jks` and `keystore.properties`, which exist only on Nelson's Mac and are git-ignored. **Keep a backup of both.** Every update must be signed with the same key, or phones refuse to install it over the old version.

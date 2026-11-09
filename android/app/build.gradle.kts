@@ -22,8 +22,8 @@ android {
 		applicationId = "com.nelsul.curitibatrip"
 		minSdk = 26
 		targetSdk = 37
-		versionCode = 11
-		versionName = "0.7.0"
+		versionCode = 12
+		versionName = "0.8.0"
 		buildConfigField("String", "API_BASE_URL", "\"https://viagem.nelsul.com\"")
 	}
 
@@ -45,14 +45,17 @@ android {
 			applicationIdSuffix = ".debug"
 		}
 		release {
-			// real phones only (the emulator uses debug builds): a much smaller APK
-			ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+			// real phones only (the emulator uses debug builds): every phone from the last ~8 years is 64-bit ARM
+			ndk { abiFilters += listOf("arm64-v8a") }
 			isMinifyEnabled = true
 			isShrinkResources = true
 			proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
 			signingConfig = signingConfigs.findByName("release")
 		}
 	}
+
+	// native libraries compressed inside the APK: a much smaller download (Android unpacks them once, at install)
+	packaging { jniLibs { useLegacyPackaging = true } }
 
 	buildFeatures {
 		compose = true

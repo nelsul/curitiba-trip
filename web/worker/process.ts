@@ -110,7 +110,9 @@ async function transcode(input: string, output: string, hdr: boolean) {
 	await sh('nice', [
 		'-n', '10', 'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', '-i', input,
 		'-map', '0:v:0', '-map', '0:a:0?', '-vf', vf,
-		'-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-profile:v', 'high',
+		// at most 30 fps and ~5 Mbps: a 4K/60 fps phone video becomes a light 1080p file for the feed and the reels
+		'-fpsmax', '30',
+		'-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-maxrate', '5M', '-bufsize', '10M', '-profile:v', 'high',
 		'-c:a', 'aac', '-b:a', '128k', '-ac', '2',
 		'-movflags', '+faststart', '-threads', '2', output
 	]);

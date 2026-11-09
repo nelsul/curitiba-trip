@@ -1,12 +1,10 @@
 import { redirect } from '@sveltejs/kit';
 import { addComment, deleteComment } from '$lib/server/comments';
 import { assertTarget, checkinDetail, deleteCheckin, updateCheckinNote } from '$lib/server/details';
-import { people } from '$lib/server/feed';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
-	const [detail, persons] = await Promise.all([checkinDetail(params.id), people()]);
-	return { ...detail, persons };
+	return checkinDetail(params.id);
 };
 
 export const actions: Actions = {

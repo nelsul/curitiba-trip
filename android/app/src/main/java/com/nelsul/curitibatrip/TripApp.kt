@@ -27,6 +27,7 @@ class TripApp : Application(), SingletonImageLoader.Factory {
 		LocationSharing.init(this)
 		com.nelsul.curitibatrip.background.Notifier.createChannels(this)
 		MapLibre.getInstance(this)
+		com.nelsul.curitibatrip.data.VideoCache.init(this)
 		val nm = getSystemService(NotificationManager::class.java)
 		nm.createNotificationChannel(NotificationChannel(CHANNEL_UPLOADS, "Envios", NotificationManager.IMPORTANCE_LOW).apply { description = "Progresso dos envios de fotos e vídeos" })
 	}
@@ -35,11 +36,12 @@ class TripApp : Application(), SingletonImageLoader.Factory {
 		const val CHANNEL_UPLOADS = "envios"
 	}
 
-	/** Photos come from presigned R2 links; Coil caches them (memory + disk) like NukeUI on iOS. */
+	/** Photos come from presigned R2 links; Coil caches them (memory + disk) by path, like NukeUI on iOS (see MediaCache). */
 	override fun newImageLoader(context: PlatformContext) = ImageLoader.Builder(context)
 		.components {
 			add(OkHttpNetworkFetcherFactory(callFactory = { Api.client }))
 			add(VideoFrameDecoder.Factory()) // thumbnails of picked videos
+			add(com.nelsul.curitibatrip.data.MediaCache.StableKeys()) // cache keys survive the daily new signature
 		}
 		.crossfade(true)
 		.build()

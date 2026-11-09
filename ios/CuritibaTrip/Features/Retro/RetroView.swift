@@ -209,7 +209,7 @@ struct StoryView: View {
 	private func setUpPlayer() {
 		player?.pause()
 		if let m = current, m.isVideo, let url = m.video {
-			let p = AVPlayer(url: url)
+			let p = AVPlayer(url: VideoCache.shared.playable(url))
 			p.play()
 			player = p
 		} else { player = nil }

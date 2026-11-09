@@ -1,7 +1,9 @@
+import { error } from '@sveltejs/kit';
 import { asc, isNotNull, ne, or, sql } from 'drizzle-orm';
 import { checkins, comments, db, likes, media, users } from './db';
 import { mediaUrl } from './r2';
 import { dayKey } from '$lib/format';
+import { groupPosts, isOlderThan, postCursor, type Post } from '$lib/feed-group';
 import type { FeedCheckin, FeedItem, FeedMedia, Person } from '$lib/types';
 
 export async function people(): Promise<Person[]> {
@@ -110,6 +112,50 @@ export async function signItems<T extends FeedItem>(items: T[], keys: Unsigned['
 			return it;
 		})
 	);
+}
+
+export type FeedQuery = { limit: number; before?: string | null; day?: string | null; person?: string | null };
+/** Query string of GET /api/feed and /api/feed/media (throws 400 on bad input). */
+export function feedQuery(url: URL) {
+	const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 20));
+	const before = url.searchParams.get('before');
+	const day = url.searchParams.get('day');
+	const person = url.searchParams.get('person');
+	if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) error(400, 'Dia inválido');
+	if (before && !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\|[mc][0-9a-f-]{36}$/.test(before)) error(400, 'Cursor inválido');
+	if (person && !/^[0-9a-f-]{36}$/.test(person)) error(400, 'Pessoa inválida');
+	return { limit, before, day, person };
+}
+
+export type FeedPage = { posts: Post[]; nextCursor: string | null; days: string[] };
+
+/** One page of newest-first posts (carousels grouped), only that page signed. GET /api/feed and the web Diário. */
+export async function feedPage({ limit, before, day, person }: FeedQuery): Promise<FeedPage> {
+	const { items, keys } = await feedUnsigned();
+	const filtered = items.filter((i) => (!day || i.day === day) && (!person || i.userId === person));
+	const all = groupPosts(filtered);
+	const start = before ? all.filter((p) => isOlderThan(p, before)) : all;
+	const page = start.slice(0, limit);
+	const posts: Post[] = await Promise.all(
+		page.map(async (p) =>
+			p.type === 'media' ? { ...p, items: await signItems(p.items, keys) } : { ...p, item: (await signItems([p.item], keys))[0] }
+		)
+	);
+	const days = [...new Set(items.map((i) => i.day))].sort();
+	return { posts, nextCursor: start.length > limit ? postCursor(page.at(-1)!) : null, days };
+}
+
+/** Every ready photo and video, newest first, in one response: the "Todas as fotos" grid and its reels. */
+export async function gridMedia({ day, person }: { day?: string | null; person?: string | null }): Promise<FeedMedia[]> {
+	const { items, keys } = await feedUnsigned();
+	const media = items
+		.filter((i): i is FeedMedia => i.type === 'media' && i.status === 'ready' && (!day || i.day === day) && (!person || i.userId === person))
+		.filter((m) => {
+			const k = keys.get(m.id);
+			return !!k && 'thumb' in k && !!(k.image || k.video);
+		})
+		.sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+	return signItems(media, keys);
 }
 
 /** Everything, signed (web feed and map). */

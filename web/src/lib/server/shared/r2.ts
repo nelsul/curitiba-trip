@@ -27,9 +27,13 @@ export function createR2(cfg: R2Config) {
 
 const DAY = 86_400_000;
 
+/** Signed URLs of the current UTC day, so each file is signed once a day instead of on every request. */
+const signed = new Map<string, Promise<string>>();
+let signedDay = 0;
+
 /**
  * Presigned GET that stays identical for a whole UTC day (signed at midnight, valid 2 days),
- * so browsers can cache images across page loads.
+ * so browsers and the apps can cache images across page loads. Memoized for the day.
  */
 export function stableGetUrl(
 	s3: S3Client,
@@ -37,7 +41,22 @@ export function stableGetUrl(
 	key: string,
 	opts: { downloadName?: string } = {}
 ) {
-	const signingDate = new Date(Math.floor(Date.now() / DAY) * DAY);
+	const day = Math.floor(Date.now() / DAY);
+	if (day !== signedDay) {
+		signed.clear();
+		signedDay = day;
+	}
+	const id = `${bucket}\n${key}\n${opts.downloadName ?? ''}`;
+	let url = signed.get(id);
+	if (!url) {
+		url = sign(s3, bucket, key, opts, new Date(day * DAY));
+		url.catch(() => signed.delete(id));
+		signed.set(id, url);
+	}
+	return url;
+}
+
+function sign(s3: S3Client, bucket: string, key: string, opts: { downloadName?: string }, signingDate: Date) {
 	const cmd = new GetObjectCommand({
 		Bucket: bucket,
 		Key: key,

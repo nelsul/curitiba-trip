@@ -420,7 +420,7 @@ private struct DetailVideo: View {
 
 	var body: some View {
 		VideoPlayer(player: player)
-			.onAppear { if player == nil { player = AVPlayer(url: url) } }
+			.onAppear { if player == nil { player = AVPlayer(url: VideoCache.shared.playable(url)) } }
 			.onDisappear { player?.pause() }
 			.onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in player?.pause() }
 	}
