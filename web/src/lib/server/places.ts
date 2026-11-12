@@ -101,7 +101,7 @@ export async function placeHere(lat: number, lng: number): Promise<string> {
 	const f = features[0]?.properties ?? {};
 	// a named place (a park, a restaurant) reads better than a street; otherwise the neighborhood, then the city
 	const named = f.name && f.type !== 'street' && f.type !== 'house' ? f.name : undefined;
-	const name = [named ?? f.district ?? f.locality, f.city].filter((x, i, a) => x && a.indexOf(x) === i).join(', ') || f.city || 'Curitiba';
+	const name = [named ?? f.district ?? f.locality, f.city].filter((x, i, a) => x && a.indexOf(x) === i).join(', ') || f.city || f.state || f.country || '';
 	if (hereCache.size > 500) hereCache.clear();
 	hereCache.set(key, { at: Date.now(), name });
 	return name;

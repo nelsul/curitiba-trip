@@ -90,6 +90,8 @@ class FeedModel {
 	/** Filters (null = all), the same as the web and iOS Diário. */
 	var day by mutableStateOf<String?>(null)
 	var person by mutableStateOf<String?>(null)
+	/** Por post (carousels, newest first) or Cronológico (every item on its own, oldest first), like the web. */
+	var chrono by mutableStateOf(false)
 	/** Every day that has posts (from the server) plus the trip days, for the day chips. */
 	var days by mutableStateOf(TripTime.tripDays)
 		private set
@@ -110,7 +112,7 @@ class FeedModel {
 	private suspend fun load(app: AppState, replace: Boolean) {
 		loading = true
 		try {
-			val page: FeedPage = Api.get("/api/feed", mapOf("limit" to "20", "before" to if (replace) null else cursor, "day" to day, "person" to person))
+			val page: FeedPage = Api.get("/api/feed", mapOf("limit" to "20", "before" to if (replace) null else cursor, "day" to day, "person" to person, "ordem" to if (chrono) "cronologica" else null))
 			page.days?.let { days = (TripTime.tripDays + it).distinct().sorted() }
 			posts = if (replace) page.posts else posts + page.posts.filter { p -> posts.none { it.key == p.key } }
 			cursor = page.nextCursor
@@ -150,7 +152,7 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 	val isAdmin = app.me?.isAdmin == true
 	val media = library.filtered(model.day, model.person)
 
-	LaunchedEffect(app.feedVersion, model.day, model.person) { model.refresh(app) }
+	LaunchedEffect(app.feedVersion, model.day, model.person, model.chrono) { model.refresh(app) }
 	LaunchedEffect(app.feedVersion, grid) { if (grid || library.items.isNotEmpty()) library.refresh(app) }
 	LaunchedEffect(grid) { selecting = false; selected.clear() }
 	LaunchedEffect(toast) { if (toast != null) { kotlinx.coroutines.delay(3000); toast = null } }
@@ -227,6 +229,9 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 				if (library.loading && library.items.isEmpty()) item(key = "grid-loading") { CircularProgressIndicator(color = Palette.sea, modifier = Modifier.padding(16.dp)) }
 				if (selecting) item(key = "grid-space") { Spacer(Modifier.height(90.dp)) }
 			} else {
+			item(key = "order") {
+				Box(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp)) { OrderSwitch(model.chrono) { model.chrono = it } }
+			}
 			if (model.posts.isEmpty()) {
 				item(key = "empty") {
 					val error = model.error
@@ -267,6 +272,27 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 			modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 190.dp).background(Palette.leaf, CircleShape).padding(horizontal = 16.dp, vertical = 8.dp))
 	}
 	} }
+}
+
+/** Diário order: Por post (carousels, newest first) or Cronológico (every item on its own, oldest first). */
+@Composable
+private fun OrderSwitch(chrono: Boolean, onChange: (Boolean) -> Unit) {
+	Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+		Row(Modifier.background(Palette.surface, CircleShape).border(2.dp, Palette.line, CircleShape).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+			listOf(false to (IconName.Journal to "Por post"), true to (IconName.Clock to "Cronológico")).forEach { (value, v) ->
+				val on = chrono == value
+				Row(
+					Modifier.heightIn(min = 34.dp).background(if (on) Palette.sun else Color.Transparent, CircleShape).pressable({ onChange(value) })
+						.padding(horizontal = 12.dp).semantics { selected = on; role = Role.RadioButton },
+					verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+				) {
+					Icon(v.first, if (on) Palette.onSun else Palette.muted, size = 15.dp)
+					Text(v.second, style = body(14, FontWeight.ExtraBold), color = if (on) Palette.onSun else Palette.muted)
+				}
+			}
+		}
+		if (chrono) Text("Cada foto, vídeo e check-in na ordem em que aconteceu, do mais antigo para o mais novo.", style = body(13), color = Palette.muted)
+	}
 }
 
 /** Diário (posts) or Todas as fotos (the grid). */

@@ -1,5 +1,11 @@
 package com.nelsul.curitibatrip.feature.enviar
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.withStyle
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.provider.MediaStore
 import android.Manifest
@@ -91,13 +97,35 @@ import java.time.Duration
 import java.time.Instant
 
 /** A picked item before it's sent. */
-data class Draft(val media: PickedMedia, val caption: String = "", val useHere: Boolean = false)
+data class Draft(val media: PickedMedia, val caption: String = "", val loc: Loc = Loc.None) {
+	/** where the post goes on the map: the photo's own GPS, where the phone is now, or nowhere */
+	enum class Loc { Photo, Here, None }
+}
 
 /** Kept outside the screen so picked items survive switching tabs. */
 object EnviarModel {
 	val drafts = mutableStateListOf<Draft>()
 	var here by mutableStateOf<Pair<Double, Double>?>(null)
+	/** a row asked for "Onde estou agora" before the position was known */
+	var wantsHere by mutableStateOf<String?>(null)
 }
+
+/** Names for coordinates (GET /api/places/here), cached for the session. */
+object PlaceNames {
+	private val cache = androidx.compose.runtime.mutableStateMapOf<String, String>()
+	private val asked = mutableSetOf<String>()
+	private fun key(c: Pair<Double, Double>) = "%.4f,%.4f".format(java.util.Locale.US, c.first, c.second)
+	fun name(c: Pair<Double, Double>?) = c?.let { cache[key(it)] }
+	suspend fun load(c: Pair<Double, Double>) {
+		val k = key(c)
+		if (!asked.add(k)) return
+		runCatching { com.nelsul.curitibatrip.data.Api.get<PlaceHere>("/api/places/here", mapOf("lat" to c.first.toString(), "lng" to c.second.toString())).name }
+			.getOrNull()?.takeIf { it.isNotEmpty() }?.let { cache[k] = it }
+	}
+}
+
+@kotlinx.serialization.Serializable
+private data class PlaceHere(val name: String)
 
 /** Use the phone's position only for things captured recently (same rule as the web and iOS). */
 private val FRESH = Duration.ofHours(2)
@@ -125,7 +153,11 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 			try {
 				val l = LocationOnce.current(context)
 				EnviarModel.here = l.latitude to l.longitude
-				drafts.indices.forEach { i -> val d = drafts[i]; if (!d.media.hasLocation && d.media.fresh()) drafts[i] = d.copy(useHere = true) }
+				drafts.indices.forEach { i ->
+					val d = drafts[i]
+					if ((!d.media.hasLocation && d.media.fresh() && d.loc == Draft.Loc.None) || d.media.assetId == EnviarModel.wantsHere) drafts[i] = d.copy(loc = Draft.Loc.Here)
+				}
+				EnviarModel.wantsHere = null
 			} catch (e: Exception) { message = e.message }
 		}
 	}
@@ -133,7 +165,11 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 	fun added(items: List<PickedMedia>) {
 		message = null
 		noOriginals = items.any { it.sourceUri == it.pickerUri }
-		for (m in items) if (drafts.none { it.media.assetId == m.assetId }) drafts += Draft(m, useHere = EnviarModel.here != null && !m.hasLocation && m.fresh())
+		for (m in items) if (drafts.none { it.media.assetId == m.assetId }) drafts += Draft(m, loc = when {
+			m.hasLocation -> Draft.Loc.Photo
+			EnviarModel.here != null && m.fresh() -> Draft.Loc.Here
+			else -> Draft.Loc.None
+		})
 		if (EnviarModel.here == null && items.any { !it.hasLocation && it.fresh() }) {
 			locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
 		}
@@ -201,18 +237,23 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 			message?.let { Text(it, style = body(14, FontWeight.Bold), color = Palette.danger) }
 
 			drafts.forEachIndexed { i, d ->
-				DraftRow(d, EnviarModel.here != null, onChange = { drafts[i] = it }, onRemove = { drafts.removeAt(i) })
+				DraftRow(d, EnviarModel.here, onChange = { drafts[i] = it }, onRemove = { drafts.removeAt(i) }, askHere = {
+					EnviarModel.wantsHere = d.media.assetId
+					locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+				})
 			}
 			if (drafts.isNotEmpty()) ChunkyButton("Enviar ${drafts.size} ${if (drafts.size == 1) "arquivo" else "arquivos"}", {
 				val here = EnviarModel.here
 				for (d in drafts) {
 					val m = d.media
-					val useHere = !m.hasLocation && d.useHere && here != null
+					val useHere = d.loc == Draft.Loc.Here && here != null
+					val usePhoto = d.loc == Draft.Loc.Photo && m.hasLocation
 					Uploads.add(UploadJob(
 						id = Uploads.newId(), sourceUri = m.sourceUri.toString(), assetId = m.assetId, caption = d.caption.trim(),
 						name = m.name, mime = m.mime, size = m.size, isVideo = m.isVideo, takenAt = m.takenAt?.toString(),
-						lat = if (useHere) here.first else m.lat, lng = if (useHere) here.second else m.lng,
-						locationSource = if (m.hasLocation) "device-library" else if (useHere) "device" else null,
+						lat = if (useHere) here!!.first else if (usePhoto) m.lat else null, lng = if (useHere) here!!.second else if (usePhoto) m.lng else null,
+						// over the photo's own GPS: "manual", so the server keeps this choice
+						locationSource = if (useHere) (if (m.hasLocation) "manual" else "device") else if (usePhoto) "device-library" else null,
 						wifiOnly = Uploads.wifiOnly.value,
 					))
 				}
@@ -277,7 +318,7 @@ private fun Thumb(uri: Any?, isVideo: Boolean) {
 }
 
 @Composable
-private fun DraftRow(d: Draft, hereAvailable: Boolean, onChange: (Draft) -> Unit, onRemove: () -> Unit) {
+private fun DraftRow(d: Draft, here: Pair<Double, Double>?, onChange: (Draft) -> Unit, onRemove: () -> Unit, askHere: () -> Unit) {
 	val m = d.media
 	Row(Modifier.popIn().fillMaxWidth().card(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
 		Thumb(m.pickerUri, m.isVideo)
@@ -288,17 +329,7 @@ private fun DraftRow(d: Draft, hereAvailable: Boolean, onChange: (Draft) -> Unit
 				Spacer(Modifier.weight(1f))
 				Text("×", style = body(26), color = Palette.muted, modifier = Modifier.pressable(onRemove).padding(horizontal = 6.dp).semantics { contentDescription = "Remover" })
 			}
-			when {
-				m.hasLocation -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-					Icon(IconName.Pin, Palette.leaf, size = 15.dp)
-					Text("Local da foto", style = body(14, FontWeight.ExtraBold), color = Palette.leaf)
-				}
-				hereAvailable -> Row(verticalAlignment = Alignment.CenterVertically) {
-					Text("Usar minha localização atual", style = body(14), color = Palette.ink, modifier = Modifier.weight(1f))
-					Switch(d.useHere, { onChange(d.copy(useHere = it)) }, colors = SwitchDefaults.colors(checkedTrackColor = Palette.leaf, checkedThumbColor = Color.White))
-				}
-				else -> Text("Sem local — dá para marcar depois", style = body(14), color = Palette.muted)
-			}
+			LocationChoice(d, here, onChange, askHere)
 			AppTextField(d.caption, { onChange(d.copy(caption = it)) }, "Comentário (opcional)", Modifier.fillMaxWidth())
 		}
 	}
@@ -357,4 +388,60 @@ private fun newCaptureUri(context: android.content.Context, video: Boolean): Uri
 	}
 	val base = if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
 	return context.contentResolver.insert(base, values)
+}
+
+/**
+ * Where a post goes on the map, chosen before sending: "Onde a foto foi tirada" (its own GPS), "Onde estou agora"
+ * (the phone's position) or "Sem local", with the place's name, so a photo taken earlier isn't pinned by mistake.
+ */
+@Composable
+private fun LocationChoice(d: Draft, here: Pair<Double, Double>?, onChange: (Draft) -> Unit, askHere: () -> Unit) {
+	val m = d.media
+	val photo = if (m.hasLocation && m.lat != null && m.lng != null) m.lat to m.lng else null
+	val shown = if (d.loc == Draft.Loc.Photo) photo else if (d.loc == Draft.Loc.Here) here else null
+	androidx.compose.runtime.LaunchedEffect(shown) { shown?.let { PlaceNames.load(it) } }
+	Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+		Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			@Composable
+			fun option(value: Draft.Loc, icon: IconName?, label: String) {
+				val on = d.loc == value
+				Row(
+					Modifier.heightIn(min = 32.dp).background(if (on) Palette.leaf else Palette.surface2, CircleShape)
+						.border(2.dp, if (on) Palette.leaf else Palette.line, CircleShape)
+						.pressable({ if (value == Draft.Loc.Here && here == null) askHere() else onChange(d.copy(loc = value)) })
+						.padding(horizontal = 10.dp).semantics { selected = on },
+					verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+				) {
+					if (icon != null) Icon(icon, if (on) Palette.onLeaf else Palette.ink, size = 14.dp)
+					Text(label, style = body(13, FontWeight.ExtraBold), color = if (on) Palette.onLeaf else Palette.ink)
+				}
+			}
+			if (photo != null) option(Draft.Loc.Photo, IconName.Camera, "Onde a foto foi tirada")
+			option(Draft.Loc.Here, IconName.Locate, "Onde estou agora")
+			if (photo == null) option(Draft.Loc.None, null, "Sem local")
+		}
+		val old = m.takenAt?.let { Duration.between(it, Instant.now()) > FRESH } ?: false
+		when {
+			d.loc == Draft.Loc.Photo && photo != null -> PlaceLine(PlaceNames.name(photo) ?: "Local da foto", "gravado na própria foto")
+			d.loc == Draft.Loc.Here && here != null -> {
+				PlaceLine(PlaceNames.name(here) ?: "Sua localização", "onde você está agora")
+				if (old) m.takenAt?.let {
+					Text("A foto é de ${TripTime.dayKey(it.toString()).takeLast(5).split("-").reversed().joinToString("/")} ${TripTime.time(it.toString())}: confira se foi tirada aqui.",
+						style = body(13, FontWeight.Bold), color = Palette.sun)
+				}
+			}
+			else -> Text(if (m.isVideo) "Sem local (se o vídeo tiver, ele é usado)" else "Sem local — dá para marcar depois, no mapa", style = body(13), color = Palette.muted)
+		}
+	}
+}
+
+@Composable
+private fun PlaceLine(place: String, how: String) {
+	Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+		Icon(IconName.Pin, Palette.leaf, size = 14.dp)
+		Text(androidx.compose.ui.text.buildAnnotatedString {
+			withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.ExtraBold, color = Palette.leaf)) { append(place) }
+			withStyle(androidx.compose.ui.text.SpanStyle(color = Palette.muted)) { append(" · $how") }
+		}, style = body(13))
+	}
 }

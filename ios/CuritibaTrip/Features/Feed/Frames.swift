@@ -295,7 +295,7 @@ struct FrameMakerView: View {
 			guard let at else { place = "Curitiba"; return }
 			struct Here: Decodable { let name: String }
 			let here: Here? = try? await API.shared.get("/api/places/here", query: ["lat": String(at.0), "lng": String(at.1)])
-			if place.isEmpty { place = here?.name ?? "Curitiba" }
+			if place.isEmpty { place = here?.name.isEmpty == false ? here!.name : "Curitiba" }
 		}
 	}
 

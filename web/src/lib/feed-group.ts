@@ -44,3 +44,20 @@ export function isOlderThan(p: Post, cursor: string) {
 	const [at, key] = cursor.split('|');
 	return p.at < at || (p.at === at && p.key < key);
 }
+
+/** "Cronológico": every photo, video and check-in on its own, oldest first. */
+export function singlePosts(items: FeedItem[]): Post[] {
+	return [...items]
+		.sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))
+		.map((it) =>
+			it.type === 'checkin'
+				? { type: 'checkin' as const, key: `c${it.id}`, userId: it.userId, day: it.day, at: it.at, item: it }
+				: { type: 'media' as const, key: `m${it.id}`, userId: it.userId, day: it.day, at: it.at, items: [it] }
+		);
+}
+
+/** True when `p` comes after (is newer than) the cursor in oldest-first order. */
+export function isNewerThan(p: Post, cursor: string) {
+	const [at, key] = cursor.split('|');
+	return p.at > at || (p.at === at && p.key > key);
+}

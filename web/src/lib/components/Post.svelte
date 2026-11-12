@@ -6,6 +6,7 @@
 	import LikedBy from './LikedBy.svelte';
 	import { fmtDuration, fmtTime } from '$lib/format';
 	import { visiblePlayback } from '$lib/video';
+	import { justZoomed, pinchZoom } from '$lib/zoom';
 	import type { FeedMedia, Person } from '$lib/types';
 
 	let {
@@ -33,6 +34,24 @@
 	});
 
 	let track: HTMLDivElement;
+	/** The first time a carousel shows up, it slides a little to the next photo and back: "there's more". */
+	function nudge(node: HTMLElement) {
+		if (items.length < 2) return;
+		const io = new IntersectionObserver(
+			(e) => {
+				if (!e[0].isIntersecting) return;
+				io.disconnect();
+				setTimeout(() => {
+					if (node.scrollLeft !== 0) return;
+					node.scrollTo({ left: Math.min(70, node.clientWidth * 0.18), behavior: 'smooth' });
+					setTimeout(() => node.scrollTo({ left: 0, behavior: 'smooth' }), 450);
+				}, 500);
+			},
+			{ threshold: 0.7 }
+		);
+		io.observe(node);
+		return { destroy: () => io.disconnect() };
+	}
 	function onScroll() {
 		index = Math.round(track.scrollLeft / track.clientWidth);
 	}
@@ -46,7 +65,7 @@
 	let single: ReturnType<typeof setTimeout> | undefined;
 	/** Double tap / double click on a photo likes it, with the big heart; a single tap opens the reels. */
 	function tap(e: PointerEvent, m: FeedMedia) {
-		if (m.kind === 'video' || m.status !== 'ready') return;
+		if (m.kind === 'video' || m.status !== 'ready' || justZoomed()) return;
 		const now = e.timeStamp;
 		if (now - lastTap < 320) {
 			clearTimeout(single);
@@ -71,13 +90,12 @@
 				{#if cur.lat != null}· <a href="/mapa?foco={cur.lat},{cur.lng}" class="place"><Icon name="pin" size={13} /> no mapa</a>{/if}
 			</span>
 		</div>
-		{#if items.length > 1}<span class="count small">{index + 1}/{items.length}</span>{/if}
 	</header>
 
 	<div class="media" style:aspect-ratio={ratio}>
-		<div class="track" bind:this={track} onscroll={onScroll}>
+		<div class="track" bind:this={track} onscroll={onScroll} use:nudge>
 			{#each items as m (m.id)}
-				<div class="slide" onpointerup={(e) => tap(e, m)} role="presentation">
+				<div class="slide" onpointerup={(e) => tap(e, m)} role="presentation" use:pinchZoom>
 					{#if (m.status === 'preview' || m.status === 'processing') && m.image}
 						<img src={m.image} alt={m.caption || `Foto de ${p?.name ?? ''}`} loading="lazy" draggable="false" />
 						<span class="pending"><Icon name="clock" size={14} />
@@ -97,6 +115,10 @@
 		{#key bigHeart}
 			{#if bigHeart}<span class="big-heart" aria-hidden="true"><Icon name="heart" size={96} stroke={1.5} /></span>{/if}
 		{/key}
+		{#if items.length > 1}
+			<!-- more photos: a counter on the picture (and the arrows), like Instagram -->
+			<span class="count" aria-label="Foto {index + 1} de {items.length}"><Icon name="stack" size={14} /> {index + 1}/{items.length}</span>
+		{/if}
 		{#if items.length > 1 && index > 0}
 			<button class="nav prev" onclick={() => go(index - 1)} aria-label="Anterior">‹</button>
 		{/if}
@@ -112,6 +134,9 @@
 			<button class="act" onclick={() => onopen(cur.id)} aria-label="Abrir em tela cheia"><Icon name="expand" size={24} /></button>
 		{:else}
 			<a class="act" href="/m/{cur.id}" aria-label="Abrir em tela cheia"><Icon name="expand" size={24} /></a>
+		{/if}
+		{#if cur.status !== 'preview'}
+			<a class="act" href="/api/media/{cur.id}/original" download aria-label="Salvar original" title="Salvar original"><Icon name="download" size={24} /></a>
 		{/if}
 		{#if items.length > 1}
 			<span class="dots" aria-hidden="true">
@@ -133,7 +158,10 @@
 	.who { display: grid; line-height: 1.25; min-width: 0; }
 	.who strong { font: 600 1.05rem var(--font-display); }
 	.place { display: inline-flex; align-items: center; gap: 2px; font-weight: 800; text-decoration: none; }
-	.count { margin-left: auto; background: var(--surface-2); border: 2px solid var(--line); border-radius: 999px; padding: 0 8px; font-weight: 800; }
+	.count {
+		position: absolute; right: 10px; top: 10px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px;
+		background: rgb(0 0 0 / 0.6); color: #fff; font-size: 0.78rem; font-weight: 800; pointer-events: none;
+	}
 	.media { position: relative; background: #111; border-top: 2.5px solid var(--line); border-bottom: 2.5px solid var(--line); }
 	.track { display: flex; width: 100%; height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
 	.track::-webkit-scrollbar { display: none; }
@@ -145,7 +173,7 @@
 		position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 6px; padding: 6px 10px;
 		border-radius: 12px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 0.8rem; font-weight: 800; pointer-events: none;
 	}
-	.dur { position: absolute; right: 10px; top: 10px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; pointer-events: none; }
+	.dur { position: absolute; left: 10px; top: 10px; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; pointer-events: none; }
 	.big-heart { position: absolute; left: 50%; top: 50%; translate: -50% -50%; color: #fff; pointer-events: none; filter: drop-shadow(0 4px 12px rgb(0 0 0 / 0.4)); animation: big-heart 0.9s ease-out forwards; }
 	.big-heart :global(svg) { fill: #fff; }
 	@keyframes big-heart {
@@ -155,10 +183,10 @@
 		45%, 75% { transform: scale(1); opacity: 1; }
 		100% { transform: scale(1.1) translateY(-30px); opacity: 0; }
 	}
-	.nav { position: absolute; top: 50%; translate: 0 -50%; width: 32px; height: 32px; border-radius: 50%; border: 0; background: rgb(255 252 240 / 0.85); color: #333; font-size: 1.4rem; line-height: 1; cursor: pointer; display: none; }
+	.nav { position: absolute; top: 50%; translate: 0 -50%; width: 28px; height: 28px; border-radius: 50%; border: 0; background: rgb(255 252 240 / 0.75); color: #333; font-size: 1.3rem; line-height: 1; cursor: pointer; display: grid; place-items: center; box-shadow: 0 2px 6px rgb(0 0 0 / 0.3); }
 	.prev { left: 8px; }
 	.next { right: 8px; }
-	@media (hover: hover) { .nav { display: grid; place-items: center; } }
+	@media (hover: hover) { .nav { width: 34px; height: 34px; background: rgb(255 252 240 / 0.88); } }
 	.actions { display: flex; align-items: center; gap: 2px; padding: 4px 6px 0; position: relative; }
 	button.act { border: 0; background: none; cursor: pointer; padding: 0; }
 	.act { display: grid; place-items: center; min-width: 44px; min-height: 44px; color: var(--ink); }

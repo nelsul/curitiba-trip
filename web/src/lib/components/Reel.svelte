@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { justZoomed, pinchZoom } from '$lib/zoom';
 	import Avatar from './Avatar.svelte';
 	import Icon from './Icon.svelte';
 	import LikeButton from './LikeButton.svelte';
@@ -38,7 +39,7 @@
 
 	/** Double tap likes (with the big heart); a single tap on a video pauses/plays it. */
 	function tap(e: PointerEvent) {
-		if ((e.target as HTMLElement).closest('a, button')) return;
+		if ((e.target as HTMLElement).closest('a, button') || justZoomed()) return;
 		if (e.timeStamp - lastTap < 300) {
 			clearTimeout(single);
 			likeBtn.set(true);
@@ -73,7 +74,7 @@
 			<Icon name={muted ? 'mute' : 'sound'} size={20} />
 		</button>
 	{:else if m.image}
-		<img src={m.image} alt={m.caption || `Foto de ${person?.name ?? ''}`} loading="lazy" draggable="false" />
+		<div class="zoom" use:pinchZoom><img src={m.image} alt={m.caption || `Foto de ${person?.name ?? ''}`} loading="lazy" draggable="false" /></div>
 	{/if}
 
 	{#key bigHeart}
@@ -87,6 +88,7 @@
 		{#if m.comments}<span class="n">{m.comments}</span>{/if}
 		{#if onshare}<button class="rb" onclick={onshare} aria-label="Compartilhar com moldura"><Icon name="share" size={26} /></button>{/if}
 		<a href="/m/{m.id}" aria-label="Abrir detalhes"><Icon name="expand" size={26} /></a>
+		<a href="/api/media/{m.id}/original" download aria-label="Salvar original" title="Salvar original"><Icon name="download" size={26} /></a>
 		{#if ondelete}<button class="rb" onclick={ondelete} aria-label="Apagar"><Icon name="trash" size={24} /></button>{/if}
 	</div>
 
@@ -107,6 +109,7 @@
 		background: #000; display: grid; place-items: center; user-select: none; -webkit-user-select: none;
 	}
 	.reel img, .reel video { width: 100%; height: 100%; object-fit: contain; display: block; }
+	.zoom { width: 100%; height: 100%; }
 	.play { position: absolute; color: #fff; opacity: 0.85; pointer-events: none; filter: drop-shadow(0 2px 8px rgb(0 0 0 / 0.5)); }
 	.play :global(svg) { fill: #fff; }
 	.sound {

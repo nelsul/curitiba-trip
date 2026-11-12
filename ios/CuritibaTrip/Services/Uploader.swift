@@ -16,6 +16,8 @@ struct UploadJob: Codable, Identifiable, Sendable {
 	/// Only used when the photo itself has no location (the person chose "use my current location").
 	var deviceLat: Double?
 	var deviceLng: Double?
+	/// the person chose "Onde estou agora" over the photo's own GPS (sent as "manual", so the server keeps it)
+	var deviceOverPhoto: Bool?
 
 	var state: State = .waiting
 	var name = ""
@@ -124,12 +126,13 @@ final class Uploader {
 		Task { await reconcile() }
 	}
 
-	func add(assetId: String, caption: String, deviceLocation: (Double, Double)?, wifiOnly: Bool = false) {
+	func add(assetId: String, caption: String, deviceLocation: (Double, Double)?, overPhoto: Bool = false, wifiOnly: Bool = false) {
 		// the same photo already queued or sent from this phone: the server would also refuse a copy
 		if jobs.contains(where: { $0.assetId == assetId && $0.state != .failed }) { return }
 		jobs.removeAll { $0.assetId == assetId }
 		var job = UploadJob(id: UUID(), assetId: assetId, caption: caption, deviceLat: deviceLocation?.0, deviceLng: deviceLocation?.1)
 		job.wifiOnly = wifiOnly ? true : nil
+		job.deviceOverPhoto = overPhoto && deviceLocation != nil ? true : nil
 		jobs.append(job)
 		save()
 		pump()
@@ -256,7 +259,7 @@ final class Uploader {
 		guard size > 0 else { return fail(id, "Arquivo vazio.") }
 
 		let type = UTType(resource.uniformTypeIdentifier)?.preferredMIMEType ?? (isVideo ? "video/quicktime" : "image/heic")
-		let loc = asset.location?.coordinate
+		let loc = job.deviceOverPhoto == true ? nil : asset.location?.coordinate
 		let body = CreateUpload(
 			name: resource.originalFilename,
 			size: size,
@@ -265,7 +268,7 @@ final class Uploader {
 			takenAtSource: asset.creationDate == nil ? nil : "exif",
 			lat: loc?.latitude ?? job.deviceLat,
 			lng: loc?.longitude ?? job.deviceLng,
-			locationSource: loc != nil ? "device-library" : (job.deviceLat != nil ? "device" : nil),
+			locationSource: loc != nil ? "device-library" : job.deviceLat == nil ? nil : job.deviceOverPhoto == true ? "manual" : "device",
 			caption: job.caption,
 			clientAssetId: job.assetId
 		)

@@ -13,7 +13,7 @@
 	import { FRAME_MAX } from '$lib/frames';
 	import { TRIP_DAYS } from '$lib/trip';
 	import type { FeedCheckin, FeedItem, FeedMedia } from '$lib/types';
-	import { isOlderThan, postCursor, type Post as FeedPost } from '$lib/feed-group';
+	import { isNewerThan, isOlderThan, postCursor, type Post as FeedPost } from '$lib/feed-group';
 
 	let { data } = $props();
 
@@ -22,6 +22,8 @@
 	// svelte-ignore state_referenced_locally
 	let day = $state(data.day);
 	let person = $state('all');
+	/** Diário: by post (carousels, newest first) or chronological (every item, oldest first) */
+	let order = $state<'posts' | 'cronologica'>('posts');
 	/** Diário (posts) or Fotos (the grid of every photo and video) */
 	let mode = $state<'diario' | 'grade'>(page.url.searchParams.get('modo') === 'grade' ? 'grade' : 'diario');
 
@@ -58,6 +60,7 @@
 		const q = new URLSearchParams();
 		if (day !== 'all') q.set('day', day);
 		if (person !== 'all') q.set('person', person);
+		if (order === 'cronologica') q.set('ordem', 'cronologica');
 		for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v);
 		return q;
 	};
@@ -77,7 +80,7 @@
 			return;
 		}
 		const edge = postCursor(fresh.posts.at(-1)!);
-		const older = posts.filter((p) => isOlderThan(p, edge));
+		const older = posts.filter((p) => (order === 'cronologica' ? isNewerThan(p, edge) : isOlderThan(p, edge)));
 		posts = [...fresh.posts, ...older];
 		if (!older.length) cursor = fresh.nextCursor;
 	}
@@ -108,9 +111,9 @@
 
 	/** filters changed: start over */
 	// svelte-ignore state_referenced_locally
-	let lastFilters = `${data.day}|all`;
+	let lastFilters = `${data.day}|all|posts`;
 	$effect(() => {
-		const f = `${day}|${person}`;
+		const f = `${day}|${person}|${order}`;
 		if (f === lastFilters) return;
 		lastFilters = f;
 		generation++;
@@ -222,6 +225,14 @@
 	</div>
 	<Filters {days} persons={data.persons} bind:day bind:person />
 
+	{#if mode === 'diario'}
+		<div class="order" role="radiogroup" aria-label="Ordem do diário">
+			<button role="radio" aria-checked={order === 'posts'} onclick={() => (order = 'posts')}><Icon name="journal" size={15} /> Por post</button>
+			<button role="radio" aria-checked={order === 'cronologica'} onclick={() => (order = 'cronologica')}><Icon name="clock" size={15} /> Cronológico</button>
+		</div>
+		{#if order === 'cronologica'}<p class="small muted order-hint">Cada foto, vídeo e check-in na ordem em que aconteceu, do mais antigo para o mais novo.</p>{/if}
+	{/if}
+
 	{#if mode === 'grade'}
 		{#if grid === null}<p class="small muted center">{gridError ? 'Não foi possível carregar as fotos.' : 'Carregando fotos…'}</p>{/if}
 		<div class="grid-bar">
@@ -286,6 +297,10 @@
 	.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; padding: 4px; background: var(--surface); border: 2.5px solid var(--line); border-radius: 999px; }
 	.modes button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 600 1rem var(--font-display); cursor: pointer; }
 	.modes button[aria-selected='true'] { background: var(--sea); color: var(--on-sea); }
+	.order { display: inline-flex; gap: 4px; padding: 3px; margin: 2px 0 10px; background: var(--surface); border: 2px solid var(--line); border-radius: 999px; }
+	.order button { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 800 0.85rem var(--font-body, inherit); cursor: pointer; }
+	.order button[aria-checked='true'] { background: var(--sun); color: #4a3410; }
+	.order-hint { margin: -4px 0 12px; }
 	.grid-bar { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px; }
 	.hint { margin: 0 0 8px; }
 	.select-bar {

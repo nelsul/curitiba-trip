@@ -22,8 +22,8 @@ android {
 		applicationId = "com.nelsul.curitibatrip"
 		minSdk = 26
 		targetSdk = 37
-		versionCode = 13
-		versionName = "0.8.1"
+		versionCode = 14
+		versionName = "0.9.0"
 		buildConfigField("String", "API_BASE_URL", "\"https://viagem.nelsul.com\"")
 	}
 

@@ -10,6 +10,8 @@ final class FeedModel {
 	/// Filters (nil = all), the same as the web Diário.
 	var day: String?
 	var person: String?
+	/// Por post (carousels, newest first) or Cronológico (every item on its own, oldest first), like the web.
+	var chrono = false
 	/// Every day that has posts, from the server.
 	var postDays: [String] = []
 	/// The trip days plus any other day with posts, for the day chips.
@@ -32,7 +34,7 @@ final class FeedModel {
 		loading = true
 		defer { loading = false }
 		do {
-			let page: FeedPage = try await API.shared.get("/api/feed", query: ["limit": "20", "before": replace ? nil : cursor, "day": day, "person": person])
+			let page: FeedPage = try await API.shared.get("/api/feed", query: ["limit": "20", "before": replace ? nil : cursor, "day": day, "person": person, "ordem": chrono ? "cronologica" : nil])
 			if let d = page.days { postDays = d }
 			posts = replace ? page.posts : posts + page.posts.filter { p in !posts.contains { $0.id == p.id } }
 			cursor = page.nextCursor

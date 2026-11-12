@@ -66,6 +66,7 @@ struct FeedView: View {
 		} }
 		.onChange(of: model.day) { Task { await model.refresh(app: app) } }
 		.onChange(of: model.person) { Task { await model.refresh(app: app) } }
+		.onChange(of: model.chrono) { Task { await model.refresh(app: app) } }
 	}
 
 	@ViewBuilder private var gridContent: some View {
@@ -147,6 +148,7 @@ struct FeedView: View {
 	}
 
 	@ViewBuilder private var posts: some View {
+				OrderSwitch(chrono: Binding(get: { model.chrono }, set: { model.chrono = $0 })).padding(.horizontal, 16)
 				if let error = model.error, model.posts.isEmpty {
 					EmptyState(text: error, retry: { Task { await model.refresh(app: app) } })
 				} else if model.posts.isEmpty && !model.loading {
@@ -170,6 +172,40 @@ struct FeedView: View {
 }
 
 struct ReelStart: Identifiable { let id: String }
+
+/// Diário order: Por post (carousels, newest first) or Cronológico (every item on its own, oldest first).
+private struct OrderSwitch: View {
+	@Binding var chrono: Bool
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			HStack(spacing: 4) {
+				item(false, .journal, "Por post")
+				item(true, .clock, "Cronológico")
+			}
+			.padding(3)
+			.background(Capsule().fill(Color.surface))
+			.overlay(Capsule().strokeBorder(Color.line, lineWidth: 2))
+			if chrono {
+				Text("Cada foto, vídeo e check-in na ordem em que aconteceu, do mais antigo para o mais novo.")
+					.font(.text(13)).foregroundStyle(Color.muted).fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+	private func item(_ value: Bool, _ icon: IconName, _ label: String) -> some View {
+		Button { withAnimation(.snappy) { chrono = value } } label: {
+			Label { Text(label) } icon: { Icon(icon, size: 15) }
+				.font(.text(14, .extraBold))
+				.foregroundStyle(chrono == value ? Color.onSun : Color.muted)
+				.padding(.horizontal, 12).frame(minHeight: 34)
+				.background(Capsule().fill(chrono == value ? Color.sun : .clear))
+		}
+		.buttonStyle(.plain)
+		.accessibilityAddTraits(chrono == value ? .isSelected : [])
+	}
+}
 
 /// Diário (posts) or Todas as fotos (the grid).
 private struct ModeSwitch: View {

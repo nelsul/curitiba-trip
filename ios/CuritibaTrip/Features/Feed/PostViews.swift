@@ -22,7 +22,7 @@ struct MediaPostView: View {
 			PostHeader(
 				person: person,
 				subtitle: subtitle,
-				trailing: items.count > 1 ? AnyView(Text("\(index + 1)/\(items.count)").font(.text(13, .extraBold)).foregroundStyle(Color.ink).padding(.horizontal, 8).background(Capsule().fill(Color.surface2)).overlay(Capsule().strokeBorder(Color.line, lineWidth: 2))) : nil
+				trailing: nil
 			)
 			TabView(selection: $index) {
 				ForEach(Array(items.enumerated()), id: \.element.id) { i, m in
@@ -33,6 +33,28 @@ struct MediaPostView: View {
 			.aspectRatio(ratio, contentMode: .fit)
 			.background(Color.black)
 			.overlay { BigHeart(trigger: bigHeart) }
+			// more photos: a counter on the picture and a "next" arrow, like Instagram
+			.overlay(alignment: .topTrailing) {
+				if items.count > 1 {
+					Label { Text("\(index + 1)/\(items.count)") } icon: { Icon(.stack, size: 13) }
+						.font(.text(12, .extraBold)).foregroundStyle(.white)
+						.padding(.horizontal, 9).padding(.vertical, 4)
+						.background(Capsule().fill(.black.opacity(0.6)))
+						.padding(10)
+						.accessibilityLabel("Foto \(index + 1) de \(items.count)")
+				}
+			}
+			.overlay(alignment: .trailing) {
+				if items.count > 1 && index < items.count - 1 {
+					Button { withAnimation { index += 1 } } label: {
+						Text("›").font(.system(size: 22, weight: .bold)).foregroundStyle(Color(white: 0.2))
+							.frame(width: 28, height: 28).background(Circle().fill(.white.opacity(0.75)))
+							.shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+					}
+					.buttonStyle(.plain).padding(8)
+					.accessibilityLabel("Próxima foto")
+				}
+			}
 			.onTapGesture(count: 2) {
 				guard !current.isVideo else { return }
 				bigHeart += 1
@@ -54,6 +76,7 @@ struct MediaPostView: View {
 					NavigationLink(value: Route.media(current.id)) { Icon(.expand, size: 24).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
 						.accessibilityLabel("Abrir em tela cheia")
 				}
+				if current.status != "preview" { SaveOriginalButton(media: current) }
 				Spacer()
 				if items.count > 1 { Dots(count: items.count, index: index) }
 				Spacer().frame(width: 92)
@@ -116,8 +139,10 @@ private struct MediaSlide: View {
 			} else if media.status != "ready" {
 				Text(media.status == "failed" ? "Não foi possível processar" : media.isVideo ? "Preparando o vídeo…" : "Processando…")
 					.font(.text(15, .extraBold)).foregroundStyle(.white.opacity(0.85))
-			} else {
+			} else if media.isVideo {
 				RemoteImage(url: media.image)
+			} else {
+				RemoteImage(url: media.image).pinchToZoom()
 			}
 			if media.isVideo && media.status == "ready" {
 				Icon(.play, size: 34).foregroundStyle(.white).shadow(radius: 6)

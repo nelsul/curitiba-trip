@@ -143,7 +143,7 @@ struct ReelView: View {
 					Icon(.play, size: 56).foregroundStyle(.white.opacity(0.85)).shadow(radius: 8).allowsHitTesting(false)
 				}
 			} else {
-				RemoteImage(url: media.image, contentMode: .fit)
+				RemoteImage(url: media.image, contentMode: .fit).pinchToZoom()
 			}
 			BigHeartView(trigger: bigHeart)
 		}
@@ -190,6 +190,7 @@ struct ReelView: View {
 			NavigationLink(value: Route.media(media.id)) { Icon(.expand, size: 26).frame(width: 44, height: 44) }
 				.accessibilityLabel("Abrir detalhes")
 				.padding(.top, 6)
+			SaveOriginalButton(media: media, color: .white, size: 26).padding(.top, 6)
 			if let onDelete {
 				Button(action: onDelete) { Icon(.trash, size: 24).frame(width: 44, height: 44) }
 					.accessibilityLabel("Apagar")

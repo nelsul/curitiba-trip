@@ -132,10 +132,7 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 	val last = TripTime.time(items.last().at)
 
 	Column(Modifier.popIn().postFrame()) {
-		PostHeader(person, if (items.size > 1 && first != last) "$first–$last" else first) {
-			if (items.size > 1) Text("${pager.currentPage + 1}/${items.size}", style = body(13, FontWeight.ExtraBold), color = Palette.ink,
-				modifier = Modifier.background(Palette.surface2, CircleShape).border(2.dp, Palette.line, CircleShape).padding(horizontal = 8.dp))
-		}
+		PostHeader(person, if (items.size > 1 && first != last) "$first–$last" else first) {}
 		Box(Modifier.fillMaxWidth().aspectRatio(ratio).background(Color.Black)) {
 			HorizontalPager(pager, Modifier.fillMaxSize()) { i ->
 				MediaSlide(items[i], Modifier.pointerInput(items[i].id) {
@@ -146,11 +143,28 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 				})
 			}
 			BigHeart(bigHeart)
+			// more photos: a counter on the picture and a "next" arrow, like Instagram
+			if (items.size > 1) {
+				Row(
+					Modifier.align(Alignment.TopEnd).padding(10.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape).padding(horizontal = 9.dp, vertical = 4.dp)
+						.semantics(mergeDescendants = true) { contentDescription = "Foto ${pager.currentPage + 1} de ${items.size}" },
+					verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+				) {
+					Icon(IconName.Stack, Color.White, size = 13.dp)
+					Text("${pager.currentPage + 1}/${items.size}", style = body(12, FontWeight.ExtraBold), color = Color.White)
+				}
+				if (pager.currentPage < items.size - 1) Box(
+					Modifier.align(Alignment.CenterEnd).padding(8.dp).size(28.dp).background(Color.White.copy(alpha = 0.75f), CircleShape)
+						.pressable({ scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }).semantics { contentDescription = "Próxima foto" },
+					contentAlignment = Alignment.Center,
+				) { Text("›", style = body(20, FontWeight.Bold), color = Color(0xFF333333)) }
+			}
 		}
 		Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
 			LikeButton(likersOf(current).contains(app.me?.id)) { setLike(current, it) }
 			Icon(IconName.Chat, Palette.ink, Modifier.pressable({ open(Route.Media(current.id)) }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 26.dp)
 			Icon(IconName.Expand, Palette.ink, Modifier.pressable({ if (current.status == "ready" && openReel != null) openReel(current.id) else open(Route.Media(current.id)) }).padding(10.dp).semantics { contentDescription = "Abrir em tela cheia" }, size = 24.dp)
+			if (current.status != "preview") SaveOriginalButton(current)
 			Spacer(Modifier.weight(1f))
 			if (items.size > 1) Dots(items.size, pager.currentPage)
 			Spacer(Modifier.width(92.dp))
@@ -192,7 +206,8 @@ private fun MediaSlide(media: FeedMedia, modifier: Modifier) {
 				style = body(15, FontWeight.ExtraBold), color = Color.White.copy(alpha = 0.85f),
 			)
 		} else {
-			AsyncImage(media.image, contentDescription = if (media.isVideo) "Vídeo" else media.caption.ifEmpty { "Foto" }, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+			AsyncImage(media.image, contentDescription = if (media.isVideo) "Vídeo" else media.caption.ifEmpty { "Foto" }, contentScale = ContentScale.Crop,
+				modifier = if (media.isVideo) Modifier.fillMaxSize() else Modifier.fillMaxSize().pinchToZoom())
 		}
 		if (media.isVideo && media.status == "ready") {
 			Icon(IconName.Play, Color.White, size = 34.dp)

@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import coil3.compose.AsyncImage
+import com.nelsul.curitibatrip.feature.feed.pinchToZoom
 import com.nelsul.curitibatrip.AppState
 import com.nelsul.curitibatrip.LocalApp
 import com.nelsul.curitibatrip.data.Api
@@ -210,7 +211,7 @@ private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boo
 				contentAlignment = Alignment.Center,
 			) { Icon(if (muted) IconName.Mute else IconName.Sound, Color.White, size = 20.dp) }
 		} else {
-			AsyncImage(media.image, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+			AsyncImage(media.image, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().pinchToZoom())
 		}
 		BigHeart(bigHeart)
 
@@ -242,6 +243,7 @@ private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boo
 			if (media.comments > 0) Count(media.comments)
 			if (onShare != null) Icon(IconName.Share, Color.White, Modifier.padding(top = 6.dp).pressable(onShare).padding(9.dp).semantics { contentDescription = "Compartilhar com moldura" }, size = 26.dp)
 			Icon(IconName.Expand, Color.White, Modifier.padding(top = 6.dp).pressable({ open(Route.Media(media.id)) }).padding(10.dp).semantics { contentDescription = "Abrir detalhes" }, size = 26.dp)
+			Box(Modifier.padding(top = 6.dp)) { com.nelsul.curitibatrip.feature.feed.SaveOriginalButton(media, Color.White, 26.dp) }
 			if (onDelete != null) Icon(IconName.Trash, Color.White, Modifier.padding(top = 6.dp).pressable(onDelete).padding(10.dp).semantics { contentDescription = "Apagar" }, size = 24.dp)
 		}
 	}
