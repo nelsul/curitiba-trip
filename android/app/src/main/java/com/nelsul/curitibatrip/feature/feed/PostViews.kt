@@ -329,9 +329,13 @@ internal fun BigHeart(trigger: Int) {
 
 @Composable
 fun Dots(count: Int, index: Int) {
+	// at most 5 dots, sliding with the photo (Instagram-style); the ones at the window's edges are smaller
+	val shown = minOf(5, count)
+	val start = (index - 2).coerceIn(0, count - shown)
 	Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-		repeat(count) { i ->
-			val s by animateFloatAsState(if (i == index) 1.25f else 1f, bounce(), label = "dot")
+		for (i in start until start + shown) {
+			val edge = count > shown && ((i == start && start > 0) || (i == start + shown - 1 && start + shown < count))
+			val s by animateFloatAsState(if (i == index) 1.25f else if (edge) 0.6f else 1f, bounce(), label = "dot")
 			Box(Modifier.scale(s).size(7.dp).background(if (i == index) Palette.sea else Palette.line, CircleShape))
 		}
 	}

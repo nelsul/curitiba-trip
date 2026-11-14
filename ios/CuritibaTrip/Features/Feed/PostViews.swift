@@ -308,11 +308,15 @@ struct Dots: View {
 	let index: Int
 
 	var body: some View {
+		// at most 5 dots, sliding with the photo (Instagram-style); the ones at the window's edges are smaller
+		let shown = min(5, count)
+		let start = max(0, min(index - 2, count - shown))
 		HStack(spacing: 5) {
-			ForEach(0..<count, id: \.self) { i in
+			ForEach(start..<(start + shown), id: \.self) { i in
+				let edge = count > shown && ((i == start && start > 0) || (i == start + shown - 1 && start + shown < count))
 				Circle().fill(i == index ? Color.sea : Color.line)
 					.frame(width: 7, height: 7)
-					.scaleEffect(i == index ? 1.25 : 1)
+					.scaleEffect(i == index ? 1.25 : edge ? 0.6 : 1)
 			}
 		}
 		.animation(.bounce, value: index)

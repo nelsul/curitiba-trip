@@ -1,7 +1,9 @@
 import type { FeedCheckin, FeedItem, FeedMedia } from './types';
 
-/** Photos/videos by the same person on the same day, at most 30 min apart, become one carousel post. */
+/** Photos/videos by the same person on the same day, at most 30 min apart, become one carousel post (up to 10). */
 export const GROUP_GAP_MS = 30 * 60_000;
+/** At most this many photos per carousel (like Instagram); a bigger batch becomes several posts in a row. */
+export const GROUP_MAX = 10;
 
 export type MediaPost = { type: 'media'; key: string; userId: string; day: string; at: string; items: FeedMedia[] };
 export type CheckinPost = { type: 'checkin'; key: string; userId: string; day: string; at: string; item: FeedCheckin };
@@ -25,6 +27,7 @@ export function groupPosts(items: FeedItem[]): Post[] {
 			last?.type === 'media' &&
 			last.userId === it.userId &&
 			last.day === it.day &&
+			last.items.length < GROUP_MAX &&
 			Date.parse(it.at) - Date.parse(last.at) <= GROUP_GAP_MS
 		) {
 			last.items.push(it);

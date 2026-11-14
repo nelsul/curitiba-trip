@@ -33,6 +33,13 @@
 		return Math.min(1.91, Math.max(0.8, r));
 	});
 
+	// at most 5 dots, sliding with the photo (Instagram-style); the ones at the window's edges are smaller
+	const DOTS = 5;
+	const dotStart = $derived(Math.max(0, Math.min(index - 2, items.length - DOTS)));
+	const dotWindow = $derived(Array.from({ length: Math.min(DOTS, items.length) }, (_, k) => dotStart + k));
+	const dotSmall = (i: number) =>
+		items.length > DOTS && ((i === dotStart && dotStart > 0) || (i === dotStart + DOTS - 1 && dotStart + DOTS < items.length));
+
 	let track: HTMLDivElement;
 	/** The first time a carousel shows up, it slides a little to the next photo and back: "there's more". */
 	function nudge(node: HTMLElement) {
@@ -140,7 +147,7 @@
 		{/if}
 		{#if items.length > 1}
 			<span class="dots" aria-hidden="true">
-				{#each items as m, i (m.id)}<i class:on={i === index}></i>{/each}
+				{#each dotWindow as i (i)}<i class:on={i === index} class:small={dotSmall(i)}></i>{/each}
 			</span>
 		{/if}
 	</div>
@@ -190,9 +197,11 @@
 	.actions { display: flex; align-items: center; gap: 2px; padding: 4px 6px 0; position: relative; }
 	button.act { border: 0; background: none; cursor: pointer; padding: 0; }
 	.act { display: grid; place-items: center; min-width: 44px; min-height: 44px; color: var(--ink); }
-	.dots { position: absolute; left: 50%; translate: -50% 0; display: flex; gap: 5px; }
+	/* in the row, after the buttons (centered it ran into the 4th button on phones) */
+	.dots { margin-left: auto; margin-right: 12px; display: flex; align-items: center; gap: 5px; }
 	.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: background 0.2s, transform 0.2s; }
 	.dots i.on { background: var(--sea); transform: scale(1.25); }
+	.dots i.small { transform: scale(0.6); }
 	.text { display: grid; gap: 4px; padding: 0 14px 14px; }
 	.caption { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 	.caption strong { font-weight: 800; margin-right: 4px; }
