@@ -1,5 +1,8 @@
 package com.nelsul.curitibatrip.feature.enviar
 
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import android.content.Context
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.CircleShape
@@ -108,6 +111,25 @@ object EnviarModel {
 	var here by mutableStateOf<Pair<Double, Double>?>(null)
 	/** a row asked for "Onde estou agora" before the position was known */
 	var wantsHere by mutableStateOf<String?>(null)
+
+	/** Queues every picked item (the button under the list, or the top bar's "Enviar" while on this screen). */
+	fun send() {
+		val here = this.here
+		for (d in drafts) {
+			val m = d.media
+			val useHere = d.loc == Draft.Loc.Here && here != null
+			val usePhoto = d.loc == Draft.Loc.Photo && m.hasLocation
+			Uploads.add(UploadJob(
+				id = Uploads.newId(), sourceUri = m.sourceUri.toString(), assetId = m.assetId, caption = d.caption.trim(),
+				name = m.name, mime = m.mime, size = m.size, isVideo = m.isVideo, takenAt = m.takenAt?.toString(),
+				lat = if (useHere) here!!.first else if (usePhoto) m.lat else null, lng = if (useHere) here!!.second else if (usePhoto) m.lng else null,
+				// over the photo's own GPS: "manual", so the server keeps this choice
+				locationSource = if (useHere) (if (m.hasLocation) "manual" else "device") else if (usePhoto) "device-library" else null,
+				wifiOnly = Uploads.wifiOnly.value,
+			))
+		}
+		drafts.clear()
+	}
 }
 
 /** Names for coordinates (GET /api/places/here), cached for the session. */
@@ -136,6 +158,19 @@ private fun galleryPermissions(): Array<String> = when {
 	Build.VERSION.SDK_INT >= 29 -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.ACCESS_MEDIA_LOCATION)
 	else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 }
+
+/** Full gallery access (not "Permitir acesso limitado"): picked items can be read as originals, with their GPS. */
+private fun hasFullGallery(context: Context): Boolean {
+	fun ok(p: String) = ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+	return when {
+		Build.VERSION.SDK_INT >= 33 -> ok(Manifest.permission.READ_MEDIA_IMAGES) && ok(Manifest.permission.READ_MEDIA_VIDEO)
+		else -> ok(Manifest.permission.READ_EXTERNAL_STORAGE)
+	}
+}
+
+/** Asked for gallery access once already: don't ask again on every pick (Android 14 would reopen its own photo chooser each time). */
+private fun askedGallery(context: Context) = context.getSharedPreferences("enviar", Context.MODE_PRIVATE).getBoolean("asked-gallery", false)
+private fun markAskedGallery(context: Context) = context.getSharedPreferences("enviar", Context.MODE_PRIVATE).edit().putBoolean("asked-gallery", true).apply()
 
 /** Enviar (web /enviar): pick photos and videos, add captions, send the originals. Sending continues with the app closed. */
 @Composable
@@ -201,9 +236,15 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 		captureUri = uri
 		try { if (video) takeVideo.launch(uri) else takePhoto.launch(uri) } catch (e: Exception) { captureUri = null; message = "Nenhum app de câmera encontrado." }
 	}
-	// gallery access first (so we can send the original with its location), then the picker either way
+	fun openPicker() = picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+	// gallery access is asked once (so we can send the original with its location), then the picker either way;
+	// with limited or no access the picker still works: those items go as the picker's copy
 	val galleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-		picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+		markAskedGallery(context)
+		openPicker()
+	}
+	fun pick() {
+		if (hasFullGallery(context) || askedGallery(context)) openPicker() else galleryPermission.launch(galleryPermissions())
 	}
 
 	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -211,7 +252,7 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 			TitleRow(IconName.Upload, "Enviar")
 			Text("Fotos e vídeos vão no arquivo original, em qualidade total, com o local e a hora da própria foto. Pode fechar o app: o envio continua.",
 				style = body(16), color = Palette.muted)
-			PickerTile { galleryPermission.launch(galleryPermissions()) }
+			PickerTile { pick() }
 			Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 				ChunkyButton("Tirar foto", { capture(false) }, Modifier.weight(1f), variant = ButtonVariant.Secondary, fullWidth = true, icon = IconName.Camera)
 				ChunkyButton("Gravar vídeo", { capture(true) }, Modifier.weight(1f), variant = ButtonVariant.Secondary, fullWidth = true, icon = IconName.Video)
@@ -228,8 +269,9 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 					colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Palette.leaf, checkedThumbColor = Color.White))
 			}
 			if (noOriginals) Column(Modifier.fillMaxWidth().card(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-				Text("Sem acesso às fotos: o local da foto não vem junto. Para enviar o original com o local, permita o acesso a fotos e vídeos.",
+				Text("O app não vê algumas dessas fotos na galeria (acesso limitado ou negado). Elas vão mesmo assim, mas sem o local da foto: escolha “Onde estou agora” ou marque depois no mapa.",
 					style = body(15, FontWeight.Bold), color = Palette.ink)
+				Text("Para mandar sempre o original com o local, permita acesso a todas as fotos e vídeos.", style = body(14), color = Palette.muted)
 				ChunkyButton("Abrir configurações", {
 					context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
 				}, variant = ButtonVariant.Sea, small = true)
@@ -243,21 +285,7 @@ fun EnviarScreen(contentPadding: PaddingValues, open: (Route) -> Unit) {
 				})
 			}
 			if (drafts.isNotEmpty()) ChunkyButton("Enviar ${drafts.size} ${if (drafts.size == 1) "arquivo" else "arquivos"}", {
-				val here = EnviarModel.here
-				for (d in drafts) {
-					val m = d.media
-					val useHere = d.loc == Draft.Loc.Here && here != null
-					val usePhoto = d.loc == Draft.Loc.Photo && m.hasLocation
-					Uploads.add(UploadJob(
-						id = Uploads.newId(), sourceUri = m.sourceUri.toString(), assetId = m.assetId, caption = d.caption.trim(),
-						name = m.name, mime = m.mime, size = m.size, isVideo = m.isVideo, takenAt = m.takenAt?.toString(),
-						lat = if (useHere) here!!.first else if (usePhoto) m.lat else null, lng = if (useHere) here!!.second else if (usePhoto) m.lng else null,
-						// over the photo's own GPS: "manual", so the server keeps this choice
-						locationSource = if (useHere) (if (m.hasLocation) "manual" else "device") else if (usePhoto) "device-library" else null,
-						wifiOnly = Uploads.wifiOnly.value,
-					))
-				}
-				drafts.clear()
+				EnviarModel.send()
 			}, variant = ButtonVariant.Sun, fullWidth = true)
 
 			if (jobs.isNotEmpty()) {

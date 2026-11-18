@@ -143,7 +143,12 @@ fun Shell() {
 	Box(Modifier.fillMaxSize()) {
 		Column(Modifier.fillMaxSize()) {
 			Box(Modifier.statusBarsPadding()) {
-				TopBar(tab == Tab.Enviar, { stacks.getValue(Tab.Enviar).clear(); tab = Tab.Enviar },
+				val ready = if (tab == Tab.Enviar) com.nelsul.curitibatrip.feature.enviar.EnviarModel.drafts.size else 0
+				TopBar(tab == Tab.Enviar, {
+					// on Enviar with photos picked: send them; otherwise open Enviar
+					if (ready > 0) com.nelsul.curitibatrip.feature.enviar.EnviarModel.send()
+					else { stacks.getValue(Tab.Enviar).clear(); tab = Tab.Enviar }
+				}, ready = ready,
 					bellActive = tab == Tab.Notificacoes, unread = NotificationsBadge.unread,
 					onBell = { stacks.getValue(Tab.Notificacoes).clear(); tab = Tab.Notificacoes })
 			}

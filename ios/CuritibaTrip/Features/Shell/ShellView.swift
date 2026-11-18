@@ -16,7 +16,8 @@ struct ShellView: View {
 
 	var body: some View {
 		VStack(spacing: 0) {
-			TopBar(sending: tab == .enviar, onSend: { tab = .enviar }, bellActive: tab == .notificacoes, onBell: { tab = .notificacoes })
+			TopBar(sending: tab == .enviar, ready: tab == .enviar ? EnviarModel.shared.drafts.count : 0,
+				   onSend: { if tab == .enviar && !EnviarModel.shared.drafts.isEmpty { EnviarModel.shared.send() } else { tab = .enviar } }, bellActive: tab == .notificacoes, onBell: { tab = .notificacoes })
 			ZStack {
 				// each tab keeps its own navigation stack (detail pages push inside it)
 				switch tab {

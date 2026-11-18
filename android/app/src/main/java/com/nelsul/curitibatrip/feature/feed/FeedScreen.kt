@@ -144,6 +144,25 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 	var selecting by remember { mutableStateOf(false) }
 	val selected = remember { mutableStateListOf<String>() }
 	var framing by remember { mutableStateOf<List<FeedMedia>?>(null) }
+	val context = androidx.compose.ui.platform.LocalContext.current
+	/** "Baixar": originals of the picked photos/videos going into the gallery, one after another */
+	var saving by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+	var savedMessage by remember { mutableStateOf<String?>(null) }
+	fun saveOriginals(items: List<FeedMedia>) = scope.launch {
+		saving = 0 to items.size
+		var failed = 0
+		for ((i, m) in items.withIndex()) {
+			try { saveOriginal(context, m) } catch (e: Exception) { failed++ }
+			saving = (i + 1) to items.size
+		}
+		val ok = items.size - failed
+		savedMessage = if (failed == 0) "$ok ${if (ok == 1) "original salvo" else "originais salvos"} na galeria (Curitiba)." else "$ok salvos, $failed não deu."
+		saving = null
+		selecting = false
+		selected.clear()
+		kotlinx.coroutines.delay(3500)
+		savedMessage = null
+	}
 	val media = library.filtered(model.day, model.person)
 
 	LaunchedEffect(app.feedVersion, model.day, model.person) { model.refresh(app) }
@@ -189,10 +208,10 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 							ChunkyButton(if (selecting) "Cancelar" else "Selecionar", { selecting = !selecting; selected.clear() },
 								variant = if (selecting) ButtonVariant.Secondary else ButtonVariant.Leaf, small = true)
 						}
-						if (selecting) Text("Escolha até ${Frames.MAX} fotos para juntar numa imagem com moldura.", style = body(14), color = Palette.muted)
+						if (selecting) Text("Escolha fotos e vídeos para baixar os originais, ou até ${Frames.MAX} fotos para juntar numa imagem com moldura.", style = body(14), color = Palette.muted)
 					}
 				}
-				val shown = if (selecting) media.filter { !it.isVideo } else media
+				val shown = media
 				if (shown.isEmpty()) item(key = "grid-empty") {
 					val e = library.error
 					when {
@@ -205,7 +224,7 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 						MediaGridRow(row, selecting, selected) { m ->
 							if (!selecting) reel = m.id
 							else if (m.id in selected) selected.remove(m.id)
-							else if (selected.size < Frames.MAX) selected.add(m.id)
+							else if (selected.size < 100) selected.add(m.id)
 						}
 					}
 				}
@@ -241,10 +260,15 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 			Modifier.align(Alignment.BottomCenter).padding(contentPadding).padding(horizontal = 12.dp).widthIn(max = 560.dp).fillMaxWidth().card(12.dp),
 			verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
 		) {
-			Text("${selected.size} ${if (selected.size == 1) "escolhida" else "escolhidas"}", style = body(16, FontWeight.ExtraBold), color = Palette.ink, modifier = Modifier.weight(1f))
+			Text("${selected.size}", style = body(16, FontWeight.ExtraBold), color = Palette.ink, modifier = Modifier.weight(1f))
+			ChunkyButton("Baixar", { saveOriginals(picked) }, variant = ButtonVariant.Secondary, small = true, icon = IconName.Download, enabled = saving == null)
 			ChunkyButton("Moldura", { framing = picked }, variant = ButtonVariant.Sun, small = true, icon = IconName.Frame,
 				enabled = picked.size <= Frames.MAX && picked.none { it.isVideo })
 		}
+	}
+	(saving?.let { (done, total) -> "Salvando ${minOf(done + 1, total)} de $total…" } ?: savedMessage)?.let {
+		Text(it, style = body(14, FontWeight.ExtraBold), color = Palette.onLeaf,
+			modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 190.dp).background(Palette.leaf, CircleShape).padding(horizontal = 16.dp, vertical = 8.dp))
 	}
 	} }
 }

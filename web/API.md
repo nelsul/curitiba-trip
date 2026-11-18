@@ -46,6 +46,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 | GET | `/api/feed/media?day=&person=` | → `{ media: [FeedMedia] }`: every ready photo/video, newest first, in one response (the "Todas as fotos" grid and its reels). |
 | GET | `/api/map?day=` | → `{ items, pings, latest }`: located posts and check-ins, and everyone's latest position. `day` (YYYY-MM-DD, Curitiba time) limits the items. `pings` is always `[]`: trails were removed (background positions weren't reliable enough); the field stays for older apps. |
 | GET | `/api/media/:id/original` | 302 to a download of the original file, as uploaded ("Salvar original"). `404` while the original is still on its way (Wi‑Fi). With `?link` → `{ url, name }` instead (the apps download it without sending their token to R2). |
+| GET | `/api/media/originais?ids=a,b,c` | One ZIP with the originals of up to 100 photos/videos (full quality, their own names; same name twice gets " (2)"), streamed from storage. For "Baixar" with several picked (browsers block many separate downloads). |
 | GET | `/api/media/:id` | → `{ item, comments, likers }`. `item` has `display` (2048 px), `medium` (1080 px), `video`, `poster` and `original` (download) URLs. |
 | PATCH | `/api/media/:id` | Owner: `{ caption?, lat?, lng? }` (lat+lng = manual location) → the updated item |
 | DELETE | `/api/media/:id` | Owner or admin: removes the post and all its files |

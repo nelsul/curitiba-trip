@@ -1,21 +1,104 @@
 import Photos
 import SwiftUI
 
-/// Instagram-style zoom: pinch a photo with two fingers and it grows under the fingers, springing back when they lift.
+/// Instagram-style zoom: pinch a photo with two fingers and it grows under the fingers and follows them as they
+/// move, springing back when they lift. iOS 18+ uses UIKit's pinch (it knows where the fingers are); iOS 17 only scales.
 struct PinchToZoom: ViewModifier {
-	/// resets by itself (with a spring) when the pinch ends or is cancelled, e.g. by the scroll view
-	@GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.3))) private var scale: CGFloat = 1
+	@State private var scale: CGFloat = 1
+	@State private var offset: CGSize = .zero
 	@State private var anchor: UnitPoint = .center
+	@State private var size: CGSize = .zero
+	/// iOS 17 fallback: resets by itself when the pinch ends or is cancelled, e.g. by the scroll view
+	@GestureState(resetTransaction: Transaction(animation: .spring(duration: 0.3))) private var legacyScale: CGFloat = 1
 
 	func body(content: Content) -> some View {
-		content
-			.scaleEffect(scale, anchor: anchor)
-			.zIndex(scale > 1 ? 1 : 0)
-			.simultaneousGesture(
-				MagnifyGesture()
-					.updating($scale) { v, s, _ in s = min(5, max(1, v.magnification)) }
-					.onChanged { v in anchor = v.startAnchor }
-			)
+		if #available(iOS 18.0, *) {
+			content
+				.scaleEffect(scale, anchor: anchor)
+				.offset(offset)
+				.zIndex(scale > 1 ? 1 : 0)
+				.onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+				.gesture(PinchRecognizer(
+					onBegan: { p in
+						// where the fingers started: the zoom grows from there
+						if size.width > 0, size.height > 0 { anchor = UnitPoint(x: p.x / size.width, y: p.y / size.height) }
+					},
+					onChanged: { s, move in scale = min(5, max(1, s)); offset = move },
+					onEnded: { withAnimation(.spring(duration: 0.3)) { scale = 1; offset = .zero } }
+				))
+		} else {
+			content
+				.scaleEffect(legacyScale, anchor: anchor)
+				.zIndex(legacyScale > 1 ? 1 : 0)
+				.simultaneousGesture(
+					MagnifyGesture()
+						.updating($legacyScale) { v, s, _ in s = min(5, max(1, v.magnification)) }
+						.onChanged { v in anchor = v.startAnchor }
+				)
+		}
+	}
+}
+
+/// UIKit's two-finger pinch: how much it grew and how far the point between the fingers moved. Works alongside
+/// scroll views and paging (the reels, the Diário), which keep their one-finger swipes.
+@available(iOS 18.0, *)
+private struct PinchRecognizer: UIGestureRecognizerRepresentable {
+	let onBegan: (CGPoint) -> Void
+	let onChanged: (CGFloat, CGSize) -> Void
+	let onEnded: () -> Void
+
+	final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+		var start: CGPoint = .zero
+		/// the scroll views around the photo (the Diário, the reels pages), frozen while pinching so they don't scroll too
+		var frozen: [UIScrollView] = []
+
+		/// every scroll view under the fingers (the recognizer isn't always attached inside them)
+		func freeze(_ g: UIGestureRecognizer) {
+			guard let window = g.view?.window else { return }
+			let p = g.location(in: window)
+			func walk(_ v: UIView) {
+				guard !v.isHidden, v.convert(v.bounds, to: window).contains(p) else { return }
+				if let sv = v as? UIScrollView, sv.isScrollEnabled {
+					sv.isScrollEnabled = false // also cancels a scroll that already started
+					frozen.append(sv)
+				}
+				v.subviews.forEach(walk)
+			}
+			walk(window)
+		}
+
+		func unfreeze() {
+			for sv in frozen { sv.isScrollEnabled = true }
+			frozen = []
+		}
+		func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+	}
+
+	func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+	func makeUIGestureRecognizer(context: Context) -> UIPinchGestureRecognizer {
+		let g = UIPinchGestureRecognizer()
+		g.delegate = context.coordinator
+		return g
+	}
+
+	func handleUIGestureRecognizerAction(_ g: UIPinchGestureRecognizer, context: Context) {
+		let p = context.converter.localLocation
+		switch g.state {
+		case .began:
+			context.coordinator.start = p
+			context.coordinator.freeze(g)
+			onBegan(p)
+			onChanged(g.scale, .zero)
+		case .changed:
+			// a finger lifted: UIKit reports the remaining one, which would jump; keep the last position
+			guard g.numberOfTouches >= 2 else { return }
+			let s = context.coordinator.start
+			onChanged(g.scale, CGSize(width: p.x - s.x, height: p.y - s.y))
+		default:
+			context.coordinator.unfreeze()
+			onEnded()
+		}
 	}
 }
 

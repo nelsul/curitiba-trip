@@ -53,8 +53,8 @@ import kotlinx.serialization.Serializable
 import okhttp3.Request
 
 /**
- * Instagram-style zoom: pinch a photo with two fingers and it grows under the fingers, springing back when
- * they lift. One finger is left alone (the carousel swipe, taps and double taps keep working).
+ * Instagram-style zoom: pinch a photo with two fingers and it grows under the fingers and follows them as they
+ * move, springing back when they lift. One finger is left alone (the carousel swipe, taps and double taps keep working).
  */
 fun Modifier.pinchToZoom(): Modifier = composed {
 	val scope = rememberCoroutineScope()
@@ -62,11 +62,12 @@ fun Modifier.pinchToZoom(): Modifier = composed {
 	var offset by remember { mutableStateOf(Offset.Zero) }
 	this
 		.zIndex(if (scale.value > 1f) 1f else 0f)
-		.graphicsLayer { scaleX = scale.value; scaleY = scale.value; translationX = offset.x; translationY = offset.y }
+		// the gesture is read outside the zoom layer: finger positions stay in screen space, so the photo follows them
 		.pointerInput(Unit) {
 			awaitEachGesture {
 				awaitFirstDown(requireUnconsumed = false)
 				var zoomed = false
+				var cur = scale.value // the scale right now (the Animatable updates a frame later)
 				do {
 					val event = awaitPointerEvent()
 					if (event.changes.count { it.pressed } >= 2) {
@@ -74,8 +75,9 @@ fun Modifier.pinchToZoom(): Modifier = composed {
 						val zoom = event.calculateZoom()
 						val centroid = event.calculateCentroid(useCurrent = true)
 						val center = Offset(size.width / 2f, size.height / 2f)
-						val s = (scale.value * zoom).coerceIn(1f, 5f)
-						val k = s / scale.value
+						val s = (cur * zoom).coerceIn(1f, 5f)
+						val k = s / cur
+						cur = s
 						// keep the point between the fingers under the fingers
 						offset = offset * k + (centroid - center) * (1 - k) + event.calculatePan()
 						scope.launch { scale.snapTo(s) }
@@ -91,6 +93,7 @@ fun Modifier.pinchToZoom(): Modifier = composed {
 				}
 			}
 		}
+		.graphicsLayer { scaleX = scale.value; scaleY = scale.value; translationX = offset.x; translationY = offset.y }
 }
 
 @Serializable

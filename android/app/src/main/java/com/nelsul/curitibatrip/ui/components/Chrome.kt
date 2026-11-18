@@ -2,6 +2,7 @@ package com.nelsul.curitibatrip.ui.components
 
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.requiredSizeIn
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
@@ -69,7 +70,7 @@ private fun Modifier.tile(fill: Color, edge: Color, radius: Float, depth: Float)
 
 /** Top bar: plane tile + "Curitiba" + the dates stamp, with the dashed bottom edge, and the yellow "Enviar" button on the right. */
 @Composable
-fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}, bellActive: Boolean = false, unread: Int = 0, onBell: () -> Unit = {}) {
+fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}, bellActive: Boolean = false, unread: Int = 0, onBell: () -> Unit = {}, ready: Int = 0) {
 	Row(
 		Modifier
 			.fillMaxWidth()
@@ -93,11 +94,12 @@ fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}, bellActive: Boolea
 			}
 			Text("Curitiba", style = display(24), color = Palette.ink, maxLines = 1)
 			// the dates stamp gives way on narrow phones (the bell and "Enviar" always fit)
-			if (LocalConfiguration.current.screenWidthDp >= 400) Stamp("11–18/11", size = 12)
+			// (and while "Enviar" shows a count, which makes it wider)
+			if (ready == 0 && LocalConfiguration.current.screenWidthDp >= 400) Stamp("11–18/11", size = 12)
 		}
 		Spacer(Modifier.weight(1f))
 		BellButton(bellActive, unread, onBell)
-		SendButton(sending, onSend)
+		SendButton(sending, onSend, ready)
 	}
 }
 
@@ -127,7 +129,7 @@ private fun BellButton(active: Boolean, unread: Int, onClick: () -> Unit) {
 
 /** "Enviar": the raised yellow pill at the top right (web header). */
 @Composable
-private fun SendButton(active: Boolean, onClick: () -> Unit) {
+private fun SendButton(active: Boolean, onClick: () -> Unit, ready: Int = 0) {
 	val tilt by animateFloatAsState(if (active) -3f else 0f, snappy(), label = "send")
 	Row(
 		Modifier
@@ -141,12 +143,20 @@ private fun SendButton(active: Boolean, onClick: () -> Unit) {
 				drawRoundRect(Palette.sun, size = Size(size.width, size.height - 3.dp.toPx()), cornerRadius = r)
 			}
 			.padding(start = 12.dp, end = 16.dp)
-			.semantics(mergeDescendants = true) { contentDescription = "Enviar fotos e vídeos"; selected = active },
+			.semantics(mergeDescendants = true) {
+				contentDescription = if (ready > 0) "Enviar $ready ${if (ready == 1) "arquivo" else "arquivos"}" else "Enviar fotos e vídeos"
+				selected = active
+			},
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(6.dp),
 	) {
 		Icon(IconName.Upload, Palette.onSun, size = 22.dp)
 		Text("Enviar", style = display(17), color = Palette.onSun)
+		// photos picked on Enviar: the button sends them
+		if (ready > 0) Box(
+			Modifier.requiredSizeIn(minWidth = 24.dp, minHeight = 22.dp).background(Palette.onSun, CircleShape).padding(horizontal = 7.dp),
+			contentAlignment = Alignment.Center,
+		) { Text("$ready", style = body(13, FontWeight.ExtraBold), color = Palette.sun, maxLines = 1, softWrap = false) }
 	}
 }
 

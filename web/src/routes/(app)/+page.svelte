@@ -150,6 +150,24 @@
 	let selecting = $state(false);
 	let selected = $state<string[]>([]);
 	let framing = $state<string[] | null>(null);
+	/** "Baixar": the originals of the picked photos/videos (one file, or one ZIP with all of them) */
+	let downloading = $state<number | null>(null);
+	const SELECT_MAX = 100;
+
+	function downloadSelected() {
+		const ids = [...selected];
+		// one at a time would be blocked by the browser after the first; several go together in a ZIP
+		const a = document.createElement('a');
+		a.href = ids.length === 1 ? `/api/media/${ids[0]}/original` : `/api/media/originais?ids=${ids.join(',')}`;
+		a.download = '';
+		document.body.append(a);
+		a.click();
+		a.remove();
+		downloading = ids.length;
+		setTimeout(() => (downloading = null), 4000);
+		selecting = false;
+		selected = [];
+	}
 	async function remove(id: string) {
 		if (!confirm('Apagar esta foto/vídeo para todo mundo? Não dá para desfazer.')) return;
 		const r = await fetch(`/api/media/${id}`, { method: 'DELETE' });
@@ -217,11 +235,13 @@
 				{selecting ? 'Cancelar' : 'Selecionar'}
 			</button>
 		</div>
-		{#if selecting}<p class="small muted hint">Escolha até {FRAME_MAX} fotos para juntar numa imagem com moldura.</p>{/if}
-		<MediaGrid media={selecting ? media.filter((m) => m.kind === 'photo') : media} {selecting} bind:selected max={FRAME_MAX} onopen={openReel} />
+		{#if selecting}<p class="small muted hint">Escolha fotos e vídeos para baixar os originais, ou até {FRAME_MAX} fotos para juntar numa imagem com moldura.</p>{/if}
+		<MediaGrid {media} {selecting} bind:selected max={SELECT_MAX} onopen={openReel} />
+		{#if downloading}<p class="toast" role="status">{downloading === 1 ? 'Baixando o original…' : `Baixando ${downloading} originais num .zip…`}</p>{/if}
 		{#if selecting && selected.length}
 			<div class="select-bar card">
 				<strong>{selected.length} {selected.length === 1 ? 'escolhida' : 'escolhidas'}</strong>
+				<button class="btn small secondary" onclick={downloadSelected}><Icon name="download" size={16} /> Baixar</button>
 				<button class="btn small sun" onclick={() => (framing = [...selected])}
 					disabled={selected.length > FRAME_MAX || selected.some((id) => media.find((m) => m.id === id)?.kind !== 'photo')}>
 					<Icon name="frame" size={16} /> Moldura
@@ -271,6 +291,7 @@
 	.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; padding: 4px; background: var(--surface); border: 2.5px solid var(--line); border-radius: 999px; }
 	.modes button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 600 1rem var(--font-display); cursor: pointer; }
 	.modes button[aria-selected='true'] { background: var(--sea); color: var(--on-sea); }
+	.toast { position: fixed; z-index: 26; left: 50%; translate: -50% 0; bottom: calc(var(--nav-h) + 84px); background: var(--leaf); color: var(--on-leaf); font-weight: 800; padding: 8px 16px; border-radius: 999px; white-space: nowrap; }
 	.grid-bar { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px; }
 	.hint { margin: 0 0 8px; }
 	.select-bar {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { headerSend } from '$lib/header-send.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { readMeta, uploadFile, type FileMeta } from '$lib/uploader';
 	import { currentPosition } from '$lib/location.svelte';
@@ -155,7 +156,16 @@
 		controller?.abort();
 	}
 
+	// the header's "Enviar" sends what's picked here
+	$effect(() => {
+		const n = running || allDone ? 0 : pending.length;
+		headerSend.count = n;
+		headerSend.run = n ? () => void start() : null;
+	});
+
 	onDestroy(() => {
+		headerSend.count = 0;
+		headerSend.run = null;
 		controller?.abort();
 		for (const i of items) if (i.preview) URL.revokeObjectURL(i.preview);
 	});

@@ -5,6 +5,7 @@
 	import { ICONS } from '$lib/components/Icon.svelte';
 	import CoupleLove from '$lib/components/CoupleLove.svelte';
 	import { refreshUnread, unread } from '$lib/notifications.svelte';
+	import { headerSend } from '$lib/header-send.svelte';
 	let { children, data } = $props();
 
 	const items = [
@@ -43,9 +44,16 @@
 		<svg viewBox="0 0 24 24" aria-hidden="true"><path d={ICONS.bell} /></svg>
 		{#if unread.count}<span class="badge" aria-hidden="true">{unread.count > 99 ? '99+' : unread.count}</span>{/if}
 	</a>
-	<a href="/enviar" class="send" aria-current={active('/enviar') ? 'page' : undefined} aria-label="Enviar fotos e vídeos">
-		<svg viewBox="0 0 24 24" aria-hidden="true"><path d={ICONS.upload} /></svg><span>Enviar</span>
-	</a>
+	{#if headerSend.run && active('/enviar')}
+		<!-- photos picked on /enviar: this sends them -->
+		<button class="send ready" onclick={() => headerSend.run?.()} aria-label="Enviar {headerSend.count} {headerSend.count === 1 ? 'arquivo' : 'arquivos'}">
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d={ICONS.upload} /></svg><span>Enviar</span><span class="n">{headerSend.count}</span>
+		</button>
+	{:else}
+		<a href="/enviar" class="send" aria-current={active('/enviar') ? 'page' : undefined} aria-label="Enviar fotos e vídeos">
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d={ICONS.upload} /></svg><span>Enviar</span>
+		</a>
+	{/if}
 </header>
 
 {@render children()}
@@ -103,6 +111,12 @@
 	.send svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 	.send:active { transform: scale(0.94); }
 	.send[aria-current='page'] { transform: rotate(-3deg); }
+	button.send { border: 0; cursor: pointer; }
+	/* photos picked on /enviar: the button sends them, and bounces to say so */
+	.send.ready { animation: send-ready 1.6s var(--bounce) infinite; }
+	.send .n { display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #4a3410; color: var(--sun); font: 800 0.8rem var(--font-body, inherit); }
+	@keyframes send-ready { 0%, 70%, 100% { transform: rotate(-3deg) scale(1); } 80% { transform: rotate(-3deg) scale(1.08); } }
+	@media (prefers-reduced-motion: reduce) { .send.ready { animation: none; } }
 
 	.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--leaf); animation: pulse 1.6s infinite; }
 	@keyframes pulse { 50% { opacity: 0.25; transform: scale(0.7); } }
