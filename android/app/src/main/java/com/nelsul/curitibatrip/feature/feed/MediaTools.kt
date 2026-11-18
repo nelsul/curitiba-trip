@@ -96,6 +96,13 @@ fun Modifier.pinchToZoom(): Modifier = composed {
 		.graphicsLayer { scaleX = scale.value; scaleY = scale.value; translationX = offset.x; translationY = offset.y }
 }
 
+/** Mais › "Salvar originais como fotos novas" (on by default). */
+object SaveOptions {
+	private fun prefs(context: Context) = context.getSharedPreferences("salvar", Context.MODE_PRIVATE)
+	fun asNew(context: Context) = prefs(context).getBoolean("como-nova", true)
+	fun setAsNew(context: Context, on: Boolean) = prefs(context).edit().putBoolean("como-nova", on).apply()
+}
+
 @Serializable
 private data class OriginalLink(val url: String, val name: String)
 
@@ -115,13 +122,32 @@ suspend fun saveOriginal(context: Context, media: FeedMedia) = withContext(Dispa
 		put(MediaStore.MediaColumns.RELATIVE_PATH, (if (media.isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES) + "/Curitiba")
 		put(MediaStore.MediaColumns.IS_PENDING, 1)
 	}
+	val asNew = SaveOptions.asNew(context)
 	val uri = resolver.insert(collection, values) ?: error("Não foi possível salvar na galeria.")
 	try {
 		Api.client.newCall(Request.Builder().url(link.url).build()).execute().use { r ->
 			if (!r.isSuccessful) error("Não foi possível baixar o original.")
 			resolver.openOutputStream(uri)!!.use { out -> r.body.byteStream().copyTo(out) }
 		}
+		// galleries order by the date inside the photo: for "como foto nova", the copy says "taken now" (pixels untouched)
+		if (asNew && mime in setOf("image/jpeg", "image/png", "image/webp")) runCatching {
+			resolver.openFileDescriptor(uri, "rw")!!.use { fd ->
+				val now = java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+				androidx.exifinterface.media.ExifInterface(fd.fileDescriptor).apply {
+					setAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL, now)
+					setAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_DIGITIZED, now)
+					setAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME, now)
+					setAttribute(androidx.exifinterface.media.ExifInterface.TAG_OFFSET_TIME_ORIGINAL, null)
+					saveAttributes()
+				}
+			}
+		}
 		resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+		// "Salvar como foto nova": today's date, so it shows at the top of the gallery (set after the scan that
+		// runs when the file stops pending, which reads the date from the file)
+		if (asNew) runCatching {
+			resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.DATE_TAKEN, System.currentTimeMillis()) }, null, null)
+		}
 	} catch (e: Exception) {
 		resolver.delete(uri, null, null)
 		throw e

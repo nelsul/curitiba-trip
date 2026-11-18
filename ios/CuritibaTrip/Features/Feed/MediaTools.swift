@@ -128,12 +128,20 @@ enum OriginalSaver {
 		defer { try? FileManager.default.removeItem(at: file) }
 		let isVideo = media.isVideo
 		let name = link.name
+		let asNew = saveAsNew
 		try await PHPhotoLibrary.shared().performChanges {
 			let options = PHAssetResourceCreationOptions()
 			options.originalFilename = name
-			PHAssetCreationRequest.forAsset().addResource(with: isVideo ? .video : .photo, fileURL: file, options: options)
+			let req = PHAssetCreationRequest.forAsset()
+			req.addResource(with: isVideo ? .video : .photo, fileURL: file, options: options)
+			// "Salvar como foto nova": today's date, so it shows at the top of Photos (not back on the day it was taken)
+			if asNew { req.creationDate = Date() }
 		}
 	}
+
+	/// Mais › "Salvar originais como fotos novas" (on by default).
+	static let saveAsNewKey = "salvar-como-nova"
+	static var saveAsNew: Bool { UserDefaults.standard.object(forKey: saveAsNewKey) as? Bool ?? true }
 }
 
 /// "Salvar original": a download icon that turns into a spinner, then a check when it's in Photos.
