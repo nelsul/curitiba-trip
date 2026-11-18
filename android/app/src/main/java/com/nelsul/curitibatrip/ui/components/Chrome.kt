@@ -2,6 +2,8 @@ package com.nelsul.curitibatrip.ui.components
 
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -99,19 +101,25 @@ fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}, bellActive: Boolea
 	}
 }
 
-/** The bell left of "Enviar": opens the notifications, with a red count of unread ones. */
+/**
+ * The bell left of "Enviar": opens the notifications, with a red count of unread ones. The count is a sibling
+ * drawn above the bell, and the whole thing sits above "Enviar" (zIndex), which used to cover the count.
+ */
 @Composable
 private fun BellButton(active: Boolean, unread: Int, onClick: () -> Unit) {
-	Box(
-		Modifier.size(44.dp).background(Palette.shadow, CircleShape).padding(bottom = 3.dp)
-			.background(Palette.surface, CircleShape).border(2.5.dp, if (active) Palette.sea else Palette.line, CircleShape)
-			.pressable(onClick).semantics { contentDescription = if (unread > 0) "Notificações, $unread novas" else "Notificações"; selected = active },
-		contentAlignment = Alignment.Center,
-	) {
-		Icon(IconName.Bell, if (active) Palette.sea else Palette.ink, size = 22.dp)
+	Box(Modifier.zIndex(1f)) {
+		Box(
+			Modifier.size(44.dp).background(Palette.shadow, CircleShape).padding(bottom = 3.dp)
+				.background(Palette.surface, CircleShape).border(2.5.dp, if (active) Palette.sea else Palette.line, CircleShape)
+				.pressable(onClick).semantics { contentDescription = if (unread > 0) "Notificações, $unread novas" else "Notificações"; selected = active },
+			contentAlignment = Alignment.Center,
+		) {
+			Icon(IconName.Bell, if (active) Palette.sea else Palette.ink, size = 22.dp)
+		}
 		if (unread > 0) Box(
-			Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).sizeIn(minWidth = 20.dp, minHeight = 20.dp)
-				.background(Palette.coral, CircleShape).border(2.dp, Palette.bg, CircleShape).padding(horizontal = 4.dp),
+			Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-5).dp).zIndex(2f).sizeIn(minWidth = 20.dp, minHeight = 20.dp)
+				.background(Palette.coral, CircleShape).border(2.dp, Palette.bg, CircleShape).padding(horizontal = 4.dp)
+				.clearAndSetSemantics {},
 			contentAlignment = Alignment.Center,
 		) { Text(if (unread > 99) "99+" else "$unread", style = body(11, FontWeight.ExtraBold), color = Color.White) }
 	}

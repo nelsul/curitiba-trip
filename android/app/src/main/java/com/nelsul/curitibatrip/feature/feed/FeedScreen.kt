@@ -16,8 +16,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import com.nelsul.curitibatrip.data.FeedMedia
 import com.nelsul.curitibatrip.data.Ok
-import com.nelsul.curitibatrip.data.Retro
-import com.nelsul.curitibatrip.data.RetroBody
 import com.nelsul.curitibatrip.data.Route
 import com.nelsul.curitibatrip.feature.galeria.MediaLibrary
 import com.nelsul.curitibatrip.feature.galeria.ReelsOverlay
@@ -90,8 +88,6 @@ class FeedModel {
 	/** Filters (null = all), the same as the web and iOS Diário. */
 	var day by mutableStateOf<String?>(null)
 	var person by mutableStateOf<String?>(null)
-	/** Por post (carousels, newest first) or Cronológico (every item on its own, oldest first), like the web. */
-	var chrono by mutableStateOf(false)
 	/** Every day that has posts (from the server) plus the trip days, for the day chips. */
 	var days by mutableStateOf(TripTime.tripDays)
 		private set
@@ -112,7 +108,7 @@ class FeedModel {
 	private suspend fun load(app: AppState, replace: Boolean) {
 		loading = true
 		try {
-			val page: FeedPage = Api.get("/api/feed", mapOf("limit" to "20", "before" to if (replace) null else cursor, "day" to day, "person" to person, "ordem" to if (chrono) "cronologica" else null))
+			val page: FeedPage = Api.get("/api/feed", mapOf("limit" to "20", "before" to if (replace) null else cursor, "day" to day, "person" to person))
 			page.days?.let { days = (TripTime.tripDays + it).distinct().sorted() }
 			posts = if (replace) page.posts else posts + page.posts.filter { p -> posts.none { it.key == p.key } }
 			cursor = page.nextCursor
@@ -148,25 +144,12 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 	var selecting by remember { mutableStateOf(false) }
 	val selected = remember { mutableStateListOf<String>() }
 	var framing by remember { mutableStateOf<List<FeedMedia>?>(null) }
-	var toast by remember { mutableStateOf<String?>(null) }
-	val isAdmin = app.me?.isAdmin == true
 	val media = library.filtered(model.day, model.person)
 
-	LaunchedEffect(app.feedVersion, model.day, model.person, model.chrono) { model.refresh(app) }
+	LaunchedEffect(app.feedVersion, model.day, model.person) { model.refresh(app) }
 	LaunchedEffect(app.feedVersion, grid) { if (grid || library.items.isNotEmpty()) library.refresh(app) }
 	LaunchedEffect(grid) { selecting = false; selected.clear() }
-	LaunchedEffect(toast) { if (toast != null) { kotlinx.coroutines.delay(3000); toast = null } }
 	val openReel: (String) -> Unit = { id -> scope.launch { if (library.items.none { it.id == id }) library.refresh(app); reel = id } }
-	fun addToRetro() = scope.launch {
-		try {
-			val r: Retro = Api.get("/api/retro")
-			val ids = r.items.map { it.id } + selected.filter { id -> r.items.none { it.id == id } }
-			Api.putJson<RetroBody, Ok>("/api/admin/retro", RetroBody(ids))
-			toast = "${selected.size} na retrospectiva (${ids.size} no total)."
-			selecting = false
-			selected.clear()
-		} catch (e: Exception) { app.handle(e); toast = e.message }
-	}
 	// load the next page when the last post comes into view
 	val nearEnd by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= list.layoutInfo.totalItemsCount - 2 } ?: false } }
 	LaunchedEffect(Unit) { snapshotFlow { nearEnd }.collect { if (it && model.posts.isNotEmpty()) model.loadMore(app) } }
@@ -209,7 +192,7 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 						if (selecting) Text("Escolha até ${Frames.MAX} fotos para juntar numa imagem com moldura.", style = body(14), color = Palette.muted)
 					}
 				}
-				val shown = if (selecting && !isAdmin) media.filter { !it.isVideo } else media
+				val shown = if (selecting) media.filter { !it.isVideo } else media
 				if (shown.isEmpty()) item(key = "grid-empty") {
 					val e = library.error
 					when {
@@ -222,16 +205,13 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 						MediaGridRow(row, selecting, selected) { m ->
 							if (!selecting) reel = m.id
 							else if (m.id in selected) selected.remove(m.id)
-							else if (selected.size < (if (isAdmin) 300 else Frames.MAX)) selected.add(m.id)
+							else if (selected.size < Frames.MAX) selected.add(m.id)
 						}
 					}
 				}
 				if (library.loading && library.items.isEmpty()) item(key = "grid-loading") { CircularProgressIndicator(color = Palette.sea, modifier = Modifier.padding(16.dp)) }
 				if (selecting) item(key = "grid-space") { Spacer(Modifier.height(90.dp)) }
 			} else {
-			item(key = "order") {
-				Box(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp)) { OrderSwitch(model.chrono) { model.chrono = it } }
-			}
 			if (model.posts.isEmpty()) {
 				item(key = "empty") {
 					val error = model.error
@@ -262,37 +242,11 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 			verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
 		) {
 			Text("${selected.size} ${if (selected.size == 1) "escolhida" else "escolhidas"}", style = body(16, FontWeight.ExtraBold), color = Palette.ink, modifier = Modifier.weight(1f))
-			if (isAdmin) ChunkyButton("Retrô", { addToRetro() }, variant = ButtonVariant.Secondary, small = true, icon = IconName.Sparkle)
 			ChunkyButton("Moldura", { framing = picked }, variant = ButtonVariant.Sun, small = true, icon = IconName.Frame,
 				enabled = picked.size <= Frames.MAX && picked.none { it.isVideo })
 		}
 	}
-	toast?.let {
-		Text(it, style = body(14, FontWeight.ExtraBold), color = Palette.onLeaf,
-			modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 190.dp).background(Palette.leaf, CircleShape).padding(horizontal = 16.dp, vertical = 8.dp))
-	}
 	} }
-}
-
-/** Diário order: Por post (carousels, newest first) or Cronológico (every item on its own, oldest first). */
-@Composable
-private fun OrderSwitch(chrono: Boolean, onChange: (Boolean) -> Unit) {
-	Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-		Row(Modifier.background(Palette.surface, CircleShape).border(2.dp, Palette.line, CircleShape).padding(3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-			listOf(false to (IconName.Journal to "Por post"), true to (IconName.Clock to "Cronológico")).forEach { (value, v) ->
-				val on = chrono == value
-				Row(
-					Modifier.heightIn(min = 34.dp).background(if (on) Palette.sun else Color.Transparent, CircleShape).pressable({ onChange(value) })
-						.padding(horizontal = 12.dp).semantics { selected = on; role = Role.RadioButton },
-					verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
-				) {
-					Icon(v.first, if (on) Palette.onSun else Palette.muted, size = 15.dp)
-					Text(v.second, style = body(14, FontWeight.ExtraBold), color = if (on) Palette.onSun else Palette.muted)
-				}
-			}
-		}
-		if (chrono) Text("Cada foto, vídeo e check-in na ordem em que aconteceu, do mais antigo para o mais novo.", style = body(13), color = Palette.muted)
-	}
 }
 
 /** Diário (posts) or Todas as fotos (the grid). */

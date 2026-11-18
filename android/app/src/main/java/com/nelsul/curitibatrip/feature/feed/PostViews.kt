@@ -1,5 +1,8 @@
 package com.nelsul.curitibatrip.feature.feed
 
+import com.nelsul.curitibatrip.ui.components.StarShape
+import com.nelsul.curitibatrip.data.FavResponse
+import com.nelsul.curitibatrip.data.FavBody
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -111,8 +114,19 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 	val scope = rememberCoroutineScope()
 	val pager = rememberPagerState { items.size }
 	val likers = remember { mutableStateMapOf<String, List<String>>() }
+	val favs = remember { mutableStateMapOf<String, List<String>>() }
 	var bigHeart by remember { mutableIntStateOf(0) }
 	val current = items[pager.currentPage.coerceIn(0, items.size - 1)]
+	fun favsOf(m: FeedMedia) = favs[m.id] ?: m.favs
+	fun setFav(m: FeedMedia, on: Boolean) = scope.launch {
+		val me = app.me?.id ?: return@launch
+		val before = favsOf(m)
+		favs[m.id] = if (on) before + me else before - me
+		try { favs[m.id] = Favorites.set(m.id, on) } catch (e: Exception) {
+			favs[m.id] = before
+			app.handle(e)
+		}
+	}
 	// same frame as the web: between 4:5 portrait and 1.91:1 landscape, from the first item
 	val ratio = items.first().let { m -> if (m.width != null && m.height != null && m.height > 0) (m.width.toFloat() / m.height).coerceIn(0.8f, 1.91f) else 1f }
 	fun likersOf(m: FeedMedia) = likers[m.id] ?: m.likers
@@ -167,7 +181,7 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 			if (current.status != "preview") SaveOriginalButton(current)
 			Spacer(Modifier.weight(1f))
 			if (items.size > 1) Dots(items.size, pager.currentPage)
-			Spacer(Modifier.width(92.dp))
+			if (current.status == "ready") FavButton(favsOf(current).contains(app.me?.id)) { setFav(current, it) }
 		}
 		Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 			LikedBy(likersOf(current))
@@ -264,6 +278,35 @@ fun CheckinPost(checkin: FeedCheckin, person: Person?, open: Opener) {
 }
 
 /** The heart: fills pink, pops and throws little sparks when liked (web LikeButton). */
+/** POST /api/favorites: star or unstar a photo/video for the Retrospectiva; returns who starred it now. */
+object Favorites {
+	suspend fun set(mediaId: String, on: Boolean): List<String> =
+		Api.post<FavBody, FavResponse>("/api/favorites", FavBody(mediaId = mediaId, fav = on)).favs
+}
+
+/** The star (web FavButton): starred photos/videos go to the Retrospectiva. */
+@Composable
+fun FavButton(on: Boolean, tint: Color = Palette.ink, size: androidx.compose.ui.unit.Dp = 26.dp, toggle: (Boolean) -> Unit) {
+	val haptics = LocalHapticFeedback.current
+	val pop = remember { Animatable(1f) }
+	val scope = rememberCoroutineScope()
+	Box(
+		Modifier
+			.size(44.dp)
+			.pressable({
+				if (!on) {
+					haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+					scope.launch { pop.snapTo(0.5f); pop.animateTo(1f, bounce()) }
+				}
+				toggle(!on)
+			})
+			.semantics { contentDescription = if (on) "Tirar dos favoritos" else "Favoritar para a retrospectiva" },
+		contentAlignment = Alignment.Center,
+	) {
+		StarShape(on, if (on) Palette.sun else tint, Modifier.scale(pop.value), size = size)
+	}
+}
+
 @Composable
 fun LikeButton(liked: Boolean, toggle: (Boolean) -> Unit) {
 	val haptics = LocalHapticFeedback.current

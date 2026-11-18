@@ -32,7 +32,18 @@ export function polaroidElement(o: { id: string; href: string; thumb: string | n
 	root.className = 'mk-pol-root';
 	root.href = o.href;
 	root.setAttribute('aria-label', o.label);
-	root.innerHTML = `<span class="mk-pol${o.video ? ' video' : ''}" style="--r:${tiltFor(o.id)}deg;--c:${o.color}">${o.thumb ? `<img src="${esc(o.thumb)}" alt="">` : '<span class="mk-pol-empty"></span>'}</span>`;
+	root.innerHTML = `<span class="mk-pol${o.video ? ' video' : ''}" style="--r:${tiltFor(o.id)}deg;--c:${o.color}">${o.thumb ? `<img src="${esc(o.thumb)}" alt="" loading="lazy">` : '<span class="mk-pol-empty"></span>'}</span>`;
+	return root;
+}
+
+/** Several photos/check-ins close together: the newest photo on a pile, with how many there are. */
+export function stackElement(o: { id: string; thumb: string | null; color: string; video: boolean; count: number; label: string }) {
+	const root = document.createElement('button');
+	root.type = 'button';
+	root.className = 'mk-stack-root';
+	root.setAttribute('aria-label', o.label);
+	const n = o.count > 999 ? '999+' : String(o.count);
+	root.innerHTML = `<span class="mk-stack"><span class="mk-behind b1"></span><span class="mk-behind b2"></span><span class="mk-pol${o.video ? ' video' : ''}" style="--r:${tiltFor(o.id)}deg;--c:${o.color}">${o.thumb ? `<img src="${esc(o.thumb)}" alt="" loading="lazy">` : '<span class="mk-pol-empty"></span>'}</span><span class="mk-count">${n}</span></span>`;
 	return root;
 }
 

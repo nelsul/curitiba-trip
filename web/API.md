@@ -31,6 +31,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 | POST | `/api/uploads/:id/complete` | `{ parts: [{ n, etag }] }` → `{ ok }`; the worker then processes it |
 | DELETE | `/api/uploads/:id` | Cancel an unfinished upload |
 | POST | `/api/likes` | `{ mediaId \| checkinId, liked }` → `{ likers: [userId] }` |
+| POST | `/api/favorites` | `{ mediaId, fav }` → `{ favs: [userId] }`: star or unstar a photo/video for the Retrospectiva (anyone can). Feed media items carry `favs` (who starred them, oldest first). |
 | POST | `/api/checkins` | `{ lat, lng, accuracy, note }` → `{ id }` |
 | DELETE | `/api/checkins/:id` | Your own, or anyone's if you're an admin |
 | PUT | `/api/checkins/:id/snapshot` | Body: the map picture (WebP/JPEG/PNG, ≤ 1.5 MB) |
@@ -41,7 +42,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/feed?limit=20&before=&day=&person=` | → `{ posts, nextCursor, days }`. Each item has `firstComments` (its first two comments: `{ id, userId, body }`). A media item can have `status: 'preview'` (only the low-res picture so far, the original waits for the sender's Wi‑Fi). Newest first. Each post is `{ type: 'media', key, userId, day, at, items: [FeedMedia] }` (a carousel: same person, same day, ≤30 min apart, at most 10 items, oldest→newest inside) or `{ type: 'checkin', key, userId, day, at, item }`. Pass `nextCursor` as `before` for the next page (`null` = end). `limit` is 1–100. `?ordem=cronologica` returns every photo, video and check-in as its own post, **oldest first** (the "Cronológico" view); `nextCursor`/`before` then page forward in time. `days` lists every day that has posts (whatever the filters), for the day chips. The web Diário pages through this endpoint too, and refreshes by asking for as many posts as it has loaded. |
+| GET | `/api/feed?limit=20&before=&day=&person=` | → `{ posts, nextCursor, days }`. Each item has `firstComments` (its first two comments: `{ id, userId, body }`). A media item can have `status: 'preview'` (only the low-res picture so far, the original waits for the sender's Wi‑Fi). Newest first. Each post is `{ type: 'media', key, userId, day, at, items: [FeedMedia] }` (always one item now: every photo/video is its own post; `items` stays a list so older apps keep working) or `{ type: 'checkin', key, userId, day, at, item }`. Pass `nextCursor` as `before` for the next page (`null` = end). `limit` is 1–100. `?ordem=cronologica` (only sent by app 0.9.0, whose "Cronológico" view was removed) returns the same posts **oldest first**; `nextCursor`/`before` then page forward in time. `days` lists every day that has posts (whatever the filters), for the day chips. The web Diário pages through this endpoint too, and refreshes by asking for as many posts as it has loaded. |
 | GET | `/api/feed/media?day=&person=` | → `{ media: [FeedMedia] }`: every ready photo/video, newest first, in one response (the "Todas as fotos" grid and its reels). |
 | GET | `/api/map?day=` | → `{ items, pings, latest }`: located posts and check-ins, and everyone's latest position. `day` (YYYY-MM-DD, Curitiba time) limits the items. `pings` is always `[]`: trails were removed (background positions weren't reliable enough); the field stays for older apps. |
 | GET | `/api/media/:id/original` | 302 to a download of the original file, as uploaded ("Salvar original"). `404` while the original is still on its way (Wi‑Fi). With `?link` → `{ url, name }` instead (the apps download it without sending their token to R2). |
@@ -68,8 +69,7 @@ Store the token securely: the **Keychain** on iOS, a Keystore-encrypted value on
 | POST | `/api/splits/:id/paid` | `{ userId?, paid }`: my own part, or anyone's when I'm the payer (or admin) |
 | POST | `/api/splits/pay-all` | `{ payerId }`: "Paguei tudo", every part I still owe that person is marked paid (they get the `splitPaid` notifications) → `{ parts, totalCents }` |
 | POST | `/api/splits/:id/remind` | The payer: everyone who hasn't paid gets a notification (`/api/activity` `splits`, kind `reminder`). At most every 10 min (429). |
-| GET | `/api/retro` | → `{ weddingAt, items: [FeedMedia] }`: the countdown target and the admin's picks, in order. Clients show the countdown until `weddingAt`, then the picks as stories (admins can preview before). |
-| PUT | `/api/admin/retro` | Admin: `{ mediaIds: [...] }` replaces the list, in this order (max 300) |
+| GET | `/api/retro` | → `{ weddingAt, items: [FeedMedia] }`: every photo/video someone starred (`favs`), oldest first. Shown as a list by day and as stories. (The admin-picked list and `PUT /api/admin/retro` are gone; old picks became the admin's favorites.) |
 | GET | `/api/couple-likes` | → `{ likes: [{ id, likerId, role: noivo\|noiva, mediaId, checkinId, at, image }] }`: likes from the bride/groom on my posts I haven't seen the special effect for (max 20, oldest first) |
 | POST | `/api/couple-likes/seen` | `{ upTo: likeId }` after showing the effect |
 | PUT | `/api/admin/users/:id/couple` | Admin: `{ couple: 'noivo' \| 'noiva' \| null }` (also on the website's /admin) |

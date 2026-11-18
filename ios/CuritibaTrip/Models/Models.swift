@@ -37,6 +37,8 @@ struct FeedMedia: Codable, Identifiable, Hashable, Sendable {
 	let width: Int?
 	let height: Int?
 	var likers: [String]
+	/// who starred it for the Retrospectiva (oldest first)
+	var favs: [String]? = nil
 	let lat: Double?
 	let lng: Double?
 	let caption: String
@@ -93,6 +95,8 @@ enum Post: Decodable, Identifiable, Hashable, Sendable {
 struct FeedPage: Decodable, Sendable { let posts: [Post]; let nextCursor: String?; var days: [String]? }
 struct LikeBody: Encodable, Sendable { var mediaId: String?; var checkinId: String?; let liked: Bool }
 struct LikeResponse: Decodable, Sendable { let likers: [String] }
+struct FavBody: Encodable, Sendable { let mediaId: String; let fav: Bool }
+struct FavResponse: Decodable, Sendable { let favs: [String] }
 
 // MARK: - Details and comments
 
@@ -262,7 +266,6 @@ enum Money {
 // MARK: - Retrospectiva, the couple's likes, weather
 
 struct Retro: Decodable, Sendable { let weddingAt: String; let items: [FeedMedia] }
-struct RetroBody: Encodable, Sendable { let mediaIds: [String] }
 
 struct CoupleLike: Decodable, Identifiable, Sendable {
 	let id: Int

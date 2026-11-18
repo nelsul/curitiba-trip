@@ -1,60 +1,58 @@
 import AVKit
 import SwiftUI
 
-/// Retrospectiva: the wedding countdown, then the admin's picks played like stories (a year-in-review).
-/// Admins choose the photos/videos (from the Diário's grid) and put them in order here.
+/// Retrospectiva: every photo/video someone starred, oldest first, with who starred it (web /retro).
+/// Plays like stories (a year-in-review) from the start or from any item.
 struct RetroView: View {
 	@Environment(AppState.self) private var app
 	@State private var retro: Retro?
 	@State private var error: String?
-	@State private var playing = false
-	@State private var editing = false
+	@State private var playFrom: PlayFrom?
 
-	private var started: Bool { Date() >= Wedding.at }
+	struct PlayFrom: Identifiable { let id: Int }
+
+	/// day → starred items with their index in the whole list
+	private var days: [(day: String, items: [(i: Int, m: FeedMedia)])] {
+		var out: [(day: String, items: [(i: Int, m: FeedMedia)])] = []
+		for (i, m) in (retro?.items ?? []).enumerated() {
+			if out.last?.day == m.day { out[out.count - 1].items.append((i, m)) } else { out.append((m.day, [(i, m)])) }
+		}
+		return out
+	}
 
 	var body: some View {
 		ScrollView {
 			VStack(alignment: .leading, spacing: 16) {
 				BackButton()
 				TitleRow(icon: .sparkle, title: "Retrospectiva")
-				if !started {
-					CountdownCard(big: true)
-					Text("Depois do casamento, aqui aparecem os melhores momentos da viagem, escolhidos a dedo, um atrás do outro.")
-						.font(.text(16)).foregroundStyle(Color.muted)
-				} else if let items = retro?.items, !items.isEmpty {
-					Button { playing = true } label: {
+				(Text("Os favoritos de todo mundo, na ordem em que aconteceram. Toque na ") + Text(Image(systemName: "star.fill")).foregroundColor(.sun) + Text(" de uma foto ou vídeo no diário para pôr aqui."))
+					.font(.text(15)).foregroundStyle(Color.muted)
+				if let items = retro?.items, !items.isEmpty {
+					Button { playFrom = PlayFrom(id: 0) } label: {
 						RemoteImage(url: items[0].image)
-							.aspectRatio(4 / 5, contentMode: .fit)
+							.aspectRatio(16 / 10, contentMode: .fit)
 							.brightness(-0.25)
 							.overlay {
 								VStack(spacing: 8) {
-									Icon(.play, size: 34).foregroundStyle(Color.onSun).frame(width: 76, height: 76).background(Circle().fill(Color.sun))
-									Text("Ver a retrospectiva").font(.display(26)).foregroundStyle(.white)
-									Text("\(items.count) momentos").font(.text(15)).foregroundStyle(.white)
+									Icon(.play, size: 30).foregroundStyle(Color.onSun).frame(width: 66, height: 66).background(Circle().fill(Color.sun))
+									Text("Ver a retrospectiva").font(.display(24)).foregroundStyle(.white)
+									Text("\(items.count) \(items.count == 1 ? "momento" : "momentos")").font(.text(15)).foregroundStyle(.white)
 								}
 							}
 							.clipShape(RoundedRectangle(cornerRadius: 22))
 							.overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Color.sun, lineWidth: 2.5))
 					}
 					.buttonStyle(.plain)
-				} else if retro != nil {
-					EmptyState(text: "A retrospectiva está sendo preparada. Volte daqui a pouco!")
-				}
-				if let error { Text(error).font(.text(14, .bold)).foregroundStyle(Color.danger) }
-				if app.me?.isAdmin == true, let r = retro {
-					VStack(alignment: .leading, spacing: 10) {
-						Text("Só para administradores").font(.display(19)).foregroundStyle(Color.ink)
-						Text("\(r.items.count) \(r.items.count == 1 ? "item escolhido" : "itens escolhidos"). Para pôr fotos, use “Todas as fotos” no Diário, Selecionar e “Retrô”.")
-							.font(.text(14)).foregroundStyle(Color.muted)
-						HStack {
-							if !r.items.isEmpty {
-								Button("Ordenar") { editing = true }.buttonStyle(.chunky(.sun, small: true))
-								Button("Pré-visualizar") { playing = true }.buttonStyle(.chunky(.secondary, small: true))
-							}
+					ForEach(days, id: \.day) { d in
+						VStack(alignment: .leading, spacing: 8) {
+							Text(TripTime.longDay(d.day)).font(.display(18)).foregroundStyle(Color.ink)
+							ForEach(d.items, id: \.m.id) { entry in row(entry.i, entry.m) }
 						}
 					}
-					.card()
+				} else if retro != nil {
+					EmptyState(text: "Nenhum favorito ainda. No diário ou na tela cheia, toque na estrela das fotos e vídeos que merecem entrar aqui.")
 				}
+				if let error { Text(error).font(.text(14, .bold)).foregroundStyle(Color.danger) }
 			}
 			.padding(16)
 			.frame(maxWidth: 640)
@@ -65,8 +63,48 @@ struct RetroView: View {
 		.toolbar(.hidden, for: .navigationBar)
 		.background(DottedBackground())
 		.task { await load() }
-		.fullScreenCover(isPresented: $playing) { StoryView(items: retro?.items ?? []) }
-		.sheet(isPresented: $editing, onDismiss: { Task { await load() } }) { RetroOrder(items: retro?.items ?? []) }
+		.refreshable { await load() }
+		.fullScreenCover(item: $playFrom) { p in StoryView(items: Array((retro?.items ?? []).dropFirst(p.id))) }
+	}
+
+	private func row(_ i: Int, _ m: FeedMedia) -> some View {
+		let favs = m.favs ?? []
+		return HStack(spacing: 10) {
+			NavigationLink(value: Route.media(m.id)) {
+				RemoteImage(url: m.thumb ?? m.image)
+					.frame(width: 72, height: 72)
+					.clipShape(RoundedRectangle(cornerRadius: 12))
+					.overlay(alignment: .bottomTrailing) {
+						if m.isVideo { Icon(.play, size: 12).foregroundStyle(.white).frame(width: 22, height: 22).background(Circle().fill(.black.opacity(0.6))).padding(4) }
+					}
+			}
+			VStack(alignment: .leading, spacing: 3) {
+				(Text(app.person(m.userId)?.name ?? "Alguém").font(.text(14, .extraBold)) + Text(" · \(TripTime.time(m.at))").font(.text(14)))
+					.foregroundStyle(Color.ink)
+				if !m.caption.isEmpty { Text(m.caption).font(.text(13)).foregroundStyle(Color.muted).lineLimit(1) }
+				HStack(spacing: 6) {
+					HStack(spacing: -7) {
+						ForEach(favs, id: \.self) { id in
+							let p = app.person(id)
+							AvatarView(name: p?.name ?? "?", color: p?.tint ?? .muted, photo: p?.photo, size: 22)
+						}
+					}
+					Label { Text(favs.compactMap { app.person($0)?.name }.joined(separator: ", ")).lineLimit(1) } icon: { Image(systemName: "star.fill").font(.system(size: 11)) }
+						.font(.text(13, .extraBold)).foregroundStyle(Color.sun)
+				}
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
+			Button { playFrom = PlayFrom(id: i) } label: {
+				Icon(.play, size: 16).foregroundStyle(Color.ink).frame(width: 40, height: 40)
+					.background(RoundedRectangle(cornerRadius: 12).fill(Color.surface2))
+					.overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.line, lineWidth: 2))
+			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Ver na retrospectiva")
+		}
+		.padding(8)
+		.background(RoundedRectangle(cornerRadius: 16).fill(Color.surface))
+		.overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.line, lineWidth: 2))
 	}
 
 	private func load() async {
@@ -79,52 +117,6 @@ struct BackButton: View {
 	@Environment(\.dismiss) private var dismiss
 	var body: some View {
 		Button { dismiss() } label: { Text("‹ Voltar") }.buttonStyle(.chunky(.secondary, small: true))
-	}
-}
-
-/// Admin: drag to reorder, swipe to take out.
-private struct RetroOrder: View {
-	@State var items: [FeedMedia]
-	@Environment(AppState.self) private var app
-	@Environment(\.dismiss) private var dismiss
-	@State private var busy = false
-
-	var body: some View {
-		NavigationStack {
-			List {
-				ForEach(items) { m in
-					HStack(spacing: 10) {
-						RemoteImage(url: m.thumb ?? m.image).frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 8))
-						VStack(alignment: .leading) {
-							Text(m.caption.isEmpty ? (m.isVideo ? "Vídeo" : "Foto") : m.caption).font(.text(15, .bold)).lineLimit(1)
-							Text(app.person(m.userId)?.name ?? "").font(.text(13)).foregroundStyle(Color.muted)
-						}
-					}
-					.listRowBackground(Color.surface)
-				}
-				.onMove { items.move(fromOffsets: $0, toOffset: $1) }
-				.onDelete { items.remove(atOffsets: $0) }
-			}
-			.environment(\.editMode, .constant(.active))
-			.scrollContentBackground(.hidden)
-			.background(Color.bg)
-			.navigationTitle("Ordem")
-			.navigationBarTitleDisplayMode(.inline)
-			.toolbar {
-				ToolbarItem(placement: .cancellationAction) { Button("Cancelar") { dismiss() } }
-				ToolbarItem(placement: .confirmationAction) { Button(busy ? "Salvando…" : "Salvar") { Task { await save() } }.disabled(busy) }
-			}
-		}
-		.tint(.sea)
-	}
-
-	private func save() async {
-		busy = true
-		defer { busy = false }
-		do {
-			let _: OK = try await API.shared.put("/api/admin/retro", RetroBody(mediaIds: items.map(\.id)))
-			dismiss()
-		} catch { app.handle(error) }
 	}
 }
 
@@ -251,6 +243,10 @@ struct StoryView: View {
 					Text(p?.name ?? "Alguém").font(.display(18))
 				}
 				Text(TripTime.longDay(m.day)).font(.text(14))
+				if let favs = m.favs, !favs.isEmpty {
+					Label("favorito de \(favs.compactMap { app.person($0)?.name }.joined(separator: ", "))", systemImage: "star.fill")
+						.font(.text(13, .extraBold)).foregroundStyle(Color.sun)
+				}
 				if !m.caption.isEmpty { Text(m.caption).font(.text(16)) }
 			}
 			.foregroundStyle(.white)

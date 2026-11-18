@@ -13,7 +13,7 @@
 	import { FRAME_MAX } from '$lib/frames';
 	import { TRIP_DAYS } from '$lib/trip';
 	import type { FeedCheckin, FeedItem, FeedMedia } from '$lib/types';
-	import { isNewerThan, isOlderThan, postCursor, type Post as FeedPost } from '$lib/feed-group';
+	import { isOlderThan, postCursor, type Post as FeedPost } from '$lib/feed-group';
 
 	let { data } = $props();
 
@@ -22,8 +22,6 @@
 	// svelte-ignore state_referenced_locally
 	let day = $state(data.day);
 	let person = $state('all');
-	/** Diário: by post (carousels, newest first) or chronological (every item, oldest first) */
-	let order = $state<'posts' | 'cronologica'>('posts');
 	/** Diário (posts) or Fotos (the grid of every photo and video) */
 	let mode = $state<'diario' | 'grade'>(page.url.searchParams.get('modo') === 'grade' ? 'grade' : 'diario');
 
@@ -60,7 +58,6 @@
 		const q = new URLSearchParams();
 		if (day !== 'all') q.set('day', day);
 		if (person !== 'all') q.set('person', person);
-		if (order === 'cronologica') q.set('ordem', 'cronologica');
 		for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v);
 		return q;
 	};
@@ -80,7 +77,7 @@
 			return;
 		}
 		const edge = postCursor(fresh.posts.at(-1)!);
-		const older = posts.filter((p) => (order === 'cronologica' ? isNewerThan(p, edge) : isOlderThan(p, edge)));
+		const older = posts.filter((p) => isOlderThan(p, edge));
 		posts = [...fresh.posts, ...older];
 		if (!older.length) cursor = fresh.nextCursor;
 	}
@@ -111,9 +108,9 @@
 
 	/** filters changed: start over */
 	// svelte-ignore state_referenced_locally
-	let lastFilters = `${data.day}|all|posts`;
+	let lastFilters = `${data.day}|all`;
 	$effect(() => {
-		const f = `${day}|${person}|${order}`;
+		const f = `${day}|${person}`;
 		if (f === lastFilters) return;
 		lastFilters = f;
 		generation++;
@@ -153,20 +150,6 @@
 	let selecting = $state(false);
 	let selected = $state<string[]>([]);
 	let framing = $state<string[] | null>(null);
-	let retroMsg = $state('');
-
-	async function addToRetro() {
-		const r = await fetch('/api/retro').then((r) => r.json());
-		const ids = [...r.items.map((i: FeedMedia) => i.id), ...selected.filter((id) => !r.items.some((i: FeedMedia) => i.id === id))];
-		const res = await fetch('/api/admin/retro', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mediaIds: ids }) });
-		retroMsg = res.ok ? `${selected.length} na retrospectiva (${ids.length} no total).` : 'Não foi possível salvar.';
-		setTimeout(() => (retroMsg = ''), 3000);
-		if (res.ok) {
-			selecting = false;
-			selected = [];
-		}
-	}
-
 	async function remove(id: string) {
 		if (!confirm('Apagar esta foto/vídeo para todo mundo? Não dá para desfazer.')) return;
 		const r = await fetch(`/api/media/${id}`, { method: 'DELETE' });
@@ -225,13 +208,6 @@
 	</div>
 	<Filters {days} persons={data.persons} bind:day bind:person />
 
-	{#if mode === 'diario'}
-		<div class="order" role="radiogroup" aria-label="Ordem do diário">
-			<button role="radio" aria-checked={order === 'posts'} onclick={() => (order = 'posts')}><Icon name="journal" size={15} /> Por post</button>
-			<button role="radio" aria-checked={order === 'cronologica'} onclick={() => (order = 'cronologica')}><Icon name="clock" size={15} /> Cronológico</button>
-		</div>
-		{#if order === 'cronologica'}<p class="small muted order-hint">Cada foto, vídeo e check-in na ordem em que aconteceu, do mais antigo para o mais novo.</p>{/if}
-	{/if}
 
 	{#if mode === 'grade'}
 		{#if grid === null}<p class="small muted center">{gridError ? 'Não foi possível carregar as fotos.' : 'Carregando fotos…'}</p>{/if}
@@ -242,12 +218,10 @@
 			</button>
 		</div>
 		{#if selecting}<p class="small muted hint">Escolha até {FRAME_MAX} fotos para juntar numa imagem com moldura.</p>{/if}
-		<MediaGrid media={selecting ? media.filter((m) => m.kind === 'photo' || data.me.isAdmin) : media} {selecting} bind:selected max={data.me.isAdmin ? 300 : FRAME_MAX} onopen={openReel} />
-		{#if retroMsg}<p class="toast" role="status">{retroMsg}</p>{/if}
+		<MediaGrid media={selecting ? media.filter((m) => m.kind === 'photo') : media} {selecting} bind:selected max={FRAME_MAX} onopen={openReel} />
 		{#if selecting && selected.length}
 			<div class="select-bar card">
 				<strong>{selected.length} {selected.length === 1 ? 'escolhida' : 'escolhidas'}</strong>
-				{#if data.me.isAdmin}<button class="btn small secondary" onclick={addToRetro}><Icon name="sparkle" size={16} /> Retrospectiva</button>{/if}
 				<button class="btn small sun" onclick={() => (framing = [...selected])}
 					disabled={selected.length > FRAME_MAX || selected.some((id) => media.find((m) => m.id === id)?.kind !== 'photo')}>
 					<Icon name="frame" size={16} /> Moldura
@@ -297,10 +271,6 @@
 	.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; padding: 4px; background: var(--surface); border: 2.5px solid var(--line); border-radius: 999px; }
 	.modes button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 600 1rem var(--font-display); cursor: pointer; }
 	.modes button[aria-selected='true'] { background: var(--sea); color: var(--on-sea); }
-	.order { display: inline-flex; gap: 4px; padding: 3px; margin: 2px 0 10px; background: var(--surface); border: 2px solid var(--line); border-radius: 999px; }
-	.order button { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 800 0.85rem var(--font-body, inherit); cursor: pointer; }
-	.order button[aria-checked='true'] { background: var(--sun); color: #4a3410; }
-	.order-hint { margin: -4px 0 12px; }
 	.grid-bar { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px; }
 	.hint { margin: 0 0 8px; }
 	.select-bar {
@@ -308,7 +278,6 @@
 		display: flex; align-items: center; gap: 8px; padding: 10px 12px; animation: pop-in 0.3s var(--bounce);
 	}
 	.select-bar strong { margin-right: auto; }
-	.toast { position: fixed; z-index: 26; left: 50%; translate: -50% 0; bottom: calc(var(--nav-h) + 84px); background: var(--leaf); color: var(--on-leaf); font-weight: 800; padding: 8px 16px; border-radius: 999px; }
 	.empty { display: grid; gap: 12px; justify-items: center; text-align: center; padding: 28px 16px; }
 	.empty p { margin: 0; max-width: 32ch; }
 	.empty-art { color: var(--sea); animation: bob 3s ease-in-out infinite; }

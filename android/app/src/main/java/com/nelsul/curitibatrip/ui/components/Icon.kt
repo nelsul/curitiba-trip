@@ -43,3 +43,16 @@ fun HeartShape(filled: Boolean, color: Color, modifier: Modifier = Modifier, siz
 		}
 	}
 }
+
+private val starPath = PathParser().parsePathString("M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z").toPath()
+
+/** The star (favorites), outlined or filled. */
+@Composable
+fun StarShape(filled: Boolean, color: Color, modifier: Modifier = Modifier, size: Dp = 26.dp) {
+	Canvas(modifier.size(size)) {
+		scale(this.size.width / 24f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+			if (filled) drawPath(starPath, color)
+			drawPath(starPath, color, style = Stroke(width = 2.2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+		}
+	}
+}

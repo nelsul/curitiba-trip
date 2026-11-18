@@ -102,7 +102,7 @@ fun CountdownCard(onClick: () -> Unit, modifier: Modifier = Modifier, big: Boole
 			}
 		} else androidx.compose.foundation.layout.Column {
 			Text("Retrospectiva da viagem", style = com.nelsul.curitibatrip.ui.theme.display(19), color = Palette.ink)
-			Text("Os melhores momentos, escolhidos a dedo. Toque para ver.", style = body(14), color = Palette.ink)
+			Text("Os favoritos de todo mundo. Toque para ver.", style = body(14), color = Palette.ink)
 		}
 	}
 }

@@ -1,9 +1,12 @@
 import type { FeedCheckin, FeedItem, FeedMedia } from './types';
 
-/** Photos/videos by the same person on the same day, at most 30 min apart, become one carousel post (up to 10). */
+/** Photos/videos by the same person on the same day, at most 30 min apart, used to become one carousel post. */
 export const GROUP_GAP_MS = 30 * 60_000;
-/** At most this many photos per carousel (like Instagram); a bigger batch becomes several posts in a row. */
-export const GROUP_MAX = 10;
+/**
+ * Photos per post. 1: every photo/video is its own post (carousels were dropped). Posts keep `items: [one]`
+ * so installed apps that still draw carousels keep decoding the feed.
+ */
+export const GROUP_MAX = 1;
 
 export type MediaPost = { type: 'media'; key: string; userId: string; day: string; at: string; items: FeedMedia[] };
 export type CheckinPost = { type: 'checkin'; key: string; userId: string; day: string; at: string; item: FeedCheckin };

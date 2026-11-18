@@ -11,7 +11,6 @@ struct FeedView: View {
 	@State private var selecting = false
 	@State private var selected: [String] = []
 	@State private var framing: FrameSelection?
-	@State private var toast: String?
 
 	private var media: [FeedMedia] { library.filtered(day: model.day, person: model.person) }
 
@@ -41,13 +40,6 @@ struct FeedView: View {
 			}
 		}
 		.overlay(alignment: .bottom) { selectionBar }
-		.overlay(alignment: .bottom) {
-			if let toast {
-				Text(toast).font(.text(14, .extraBold)).foregroundStyle(Color.onLeaf)
-					.padding(.horizontal, 16).padding(.vertical, 8).background(Capsule().fill(Color.leaf))
-					.padding(.bottom, 180).transition(.opacity)
-			}
-		}
 		.fullScreenCover(item: $reel) { r in ReelsScreen(items: media.contains { $0.id == r.id } ? media : library.items, start: r.id) }
 		.sheet(item: $framing) { f in FrameMakerView(items: f.items) }
 		.refreshable {
@@ -66,7 +58,6 @@ struct FeedView: View {
 		} }
 		.onChange(of: model.day) { Task { await model.refresh(app: app) } }
 		.onChange(of: model.person) { Task { await model.refresh(app: app) } }
-		.onChange(of: model.chrono) { Task { await model.refresh(app: app) } }
 	}
 
 	@ViewBuilder private var gridContent: some View {
@@ -86,8 +77,8 @@ struct FeedView: View {
 		} else if media.isEmpty && !library.loading {
 			EmptyState(text: "Nenhuma foto ou vídeo com esses filtros.")
 		}
-		MediaGrid(items: selecting && app.me?.isAdmin != true ? media.filter { !$0.isVideo } : media, selecting: selecting, selected: $selected,
-				  max: app.me?.isAdmin == true ? 300 : Frames.max) { m in reel = ReelStart(id: m.id) }
+		MediaGrid(items: selecting ? media.filter { !$0.isVideo } : media, selecting: selecting, selected: $selected,
+				  max: Frames.max) { m in reel = ReelStart(id: m.id) }
 	}
 
 	@ViewBuilder private var selectionBar: some View {
@@ -111,11 +102,6 @@ struct FeedView: View {
 		HStack(spacing: 8) {
 			Text(count).font(.text(16, .extraBold)).foregroundStyle(Color.ink).lineLimit(1).fixedSize()
 			Spacer(minLength: 4)
-			if app.me?.isAdmin == true {
-				Button { Task { await addToRetro() } } label: { selectionLabel("Retrô", icon: .sparkle, words: words) }
-					.buttonStyle(.chunky(.secondary, small: true))
-					.accessibilityLabel("Retrospectiva")
-			}
 			Button { framing = FrameSelection(items: picked) } label: { selectionLabel("Moldura", icon: .frame, words: words) }
 				.buttonStyle(.chunky(.sun, small: true))
 				.accessibilityLabel("Moldura")
@@ -131,24 +117,7 @@ struct FeedView: View {
 		}
 	}
 
-	private func addToRetro() async {
-		do {
-			let r: Retro = try await API.shared.get("/api/retro")
-			let ids = r.items.map(\.id) + selected.filter { id in !r.items.contains { $0.id == id } }
-			let _: OK = try await API.shared.put("/api/admin/retro", RetroBody(mediaIds: ids))
-			withAnimation { toast = "\(selected.count) na retrospectiva (\(ids.count) no total)." }
-			selecting = false
-			selected = []
-			try? await Task.sleep(for: .seconds(3))
-			withAnimation { toast = nil }
-		} catch {
-			app.handle(error)
-			withAnimation { toast = error.localizedDescription }
-		}
-	}
-
 	@ViewBuilder private var posts: some View {
-				OrderSwitch(chrono: Binding(get: { model.chrono }, set: { model.chrono = $0 })).padding(.horizontal, 16)
 				if let error = model.error, model.posts.isEmpty {
 					EmptyState(text: error, retry: { Task { await model.refresh(app: app) } })
 				} else if model.posts.isEmpty && !model.loading {
@@ -172,40 +141,6 @@ struct FeedView: View {
 }
 
 struct ReelStart: Identifiable { let id: String }
-
-/// Diário order: Por post (carousels, newest first) or Cronológico (every item on its own, oldest first).
-private struct OrderSwitch: View {
-	@Binding var chrono: Bool
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: 6) {
-			HStack(spacing: 4) {
-				item(false, .journal, "Por post")
-				item(true, .clock, "Cronológico")
-			}
-			.padding(3)
-			.background(Capsule().fill(Color.surface))
-			.overlay(Capsule().strokeBorder(Color.line, lineWidth: 2))
-			if chrono {
-				Text("Cada foto, vídeo e check-in na ordem em que aconteceu, do mais antigo para o mais novo.")
-					.font(.text(13)).foregroundStyle(Color.muted).fixedSize(horizontal: false, vertical: true)
-			}
-		}
-		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-
-	private func item(_ value: Bool, _ icon: IconName, _ label: String) -> some View {
-		Button { withAnimation(.snappy) { chrono = value } } label: {
-			Label { Text(label) } icon: { Icon(icon, size: 15) }
-				.font(.text(14, .extraBold))
-				.foregroundStyle(chrono == value ? Color.onSun : Color.muted)
-				.padding(.horizontal, 12).frame(minHeight: 34)
-				.background(Capsule().fill(chrono == value ? Color.sun : .clear))
-		}
-		.buttonStyle(.plain)
-		.accessibilityAddTraits(chrono == value ? .isSelected : [])
-	}
-}
 
 /// Diário (posts) or Todas as fotos (the grid).
 private struct ModeSwitch: View {

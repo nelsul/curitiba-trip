@@ -59,6 +59,7 @@
 	.slot { height: 100dvh; }
 	.close {
 		position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 12px; z-index: 2; width: 44px; height: 44px; border-radius: 50%;
-		border: 0; background: rgb(0 0 0 / 0.45); color: #fff; display: grid; place-items: center; cursor: pointer;
+		border: 1.5px solid rgb(255 255 255 / 0.22); background: rgb(20 24 36 / 0.42); color: #fff; display: grid; place-items: center; cursor: pointer;
+		-webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
 	}
 </style>

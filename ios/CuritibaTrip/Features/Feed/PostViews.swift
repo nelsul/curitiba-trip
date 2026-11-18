@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A photo/video post: swipeable carousel, double-tap to like, heart, liked-by, caption, comments.
+/// A photo/video post (one per post now; the carousel only shows for old grouped data): double-tap to like, heart, liked-by, caption, comments.
 struct MediaPostView: View {
 	let items: [FeedMedia]
 	let person: Person?
@@ -8,6 +8,7 @@ struct MediaPostView: View {
 	@Environment(\.openReel) private var openReel
 	@State private var index = 0
 	@State private var likers: [String: [String]] = [:]
+	@State private var favs: [String: [String]] = [:]
 	@State private var bigHeart = 0
 
 	private var current: FeedMedia { items[min(index, items.count - 1)] }
@@ -79,7 +80,9 @@ struct MediaPostView: View {
 				if current.status != "preview" { SaveOriginalButton(media: current) }
 				Spacer()
 				if items.count > 1 { Dots(count: items.count, index: index) }
-				Spacer().frame(width: 92)
+				if current.status == "ready" {
+					FavButton(on: favsOf(current).contains(app.me?.id ?? "")) { on in Task { await setFav(current, on) } }
+				}
 			}
 			.padding(.horizontal, 6)
 
@@ -106,6 +109,17 @@ struct MediaPostView: View {
 	}
 
 	private func likersOf(_ m: FeedMedia) -> [String] { likers[m.id] ?? m.likers }
+	private func favsOf(_ m: FeedMedia) -> [String] { favs[m.id] ?? m.favs ?? [] }
+
+	private func setFav(_ m: FeedMedia, _ on: Bool) async {
+		guard let me = app.me?.id else { return }
+		let before = favsOf(m)
+		favs[m.id] = on ? before + [me] : before.filter { $0 != me }
+		do { favs[m.id] = try await Favorites.set(m.id, on) } catch {
+			favs[m.id] = before
+			app.handle(error)
+		}
+	}
 
 	private func setLike(_ m: FeedMedia, _ liked: Bool) async {
 		guard let me = app.me?.id else { return }
@@ -229,6 +243,39 @@ struct CheckinPostView: View {
 			likers = before
 			app.handle(error)
 		}
+	}
+}
+
+/// POST /api/favorites: star or unstar a photo/video for the Retrospectiva; returns who starred it now.
+enum Favorites {
+	static func set(_ mediaId: String, _ on: Bool) async throws -> [String] {
+		let r: FavResponse = try await API.shared.post("/api/favorites", FavBody(mediaId: mediaId, fav: on))
+		return r.favs
+	}
+}
+
+/// The star (web FavButton): starred photos/videos go to the Retrospectiva.
+struct FavButton: View {
+	let on: Bool
+	var size: CGFloat = 24
+	var tint: Color = .ink
+	let toggle: (Bool) -> Void
+	@State private var pop = 0
+
+	var body: some View {
+		Button {
+			if !on { pop += 1 }
+			toggle(!on)
+		} label: {
+			Image(systemName: on ? "star.fill" : "star")
+				.font(.system(size: size, weight: .semibold))
+				.foregroundStyle(on ? Color.sun : tint)
+				.symbolEffect(.bounce, value: pop)
+				.frame(width: 44, height: 44)
+		}
+		.buttonStyle(.plain)
+		.sensoryFeedback(.impact(weight: .light), trigger: pop)
+		.accessibilityLabel(on ? "Tirar dos favoritos" : "Favoritar para a retrospectiva")
 	}
 }
 

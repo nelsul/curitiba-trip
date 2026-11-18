@@ -101,6 +101,7 @@
 					<div class="cap">
 						<div class="who"><Avatar name={p?.name ?? '?'} color={p?.color ?? '#888'} photo={p?.photo} size={32} /><strong>{p?.name ?? 'Alguém'}</strong></div>
 						<span class="small day">{fmtLongDay(cur.day)}</span>
+						{#if cur.favs?.length}<span class="small favby"><Icon name="star" size={13} /> favorito de {cur.favs.map((id) => persons.get(id)?.name ?? '?').join(', ')}</span>{/if}
 						{#if cur.caption}<p>{cur.caption}</p>{/if}
 					</div>
 				</div>
@@ -129,6 +130,8 @@
 	.cap p { margin: 0; }
 	.who { display: flex; align-items: center; gap: 8px; }
 	.who strong { font: 600 1.1rem var(--font-display); }
+	.favby { display: inline-flex; align-items: center; gap: 4px; color: #ffd166; font-weight: 800; }
+	.favby :global(svg) { fill: currentColor; }
 	.day::first-letter { text-transform: uppercase; }
 	.card-slide { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; padding: 24px; animation: pop-in 0.6s var(--bounce) both; }
 	.intro { background: radial-gradient(circle at 30% 20%, var(--berry), transparent 60%), radial-gradient(circle at 80% 80%, var(--sea-dark), transparent 55%), var(--bg); }

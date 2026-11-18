@@ -92,13 +92,19 @@ struct TripMap: UIViewRepresentable {
 			sync()
 		}
 
-		/// Adds, moves and removes markers to match `parent`.
+		/// Adds and removes markers to match `parent`. Photos close together on screen become one pile
+		/// (MapCluster), and only what's in view (plus a margin) gets a marker: re-run as the map moves.
 		func sync() {
 			guard let map, let parent else { return }
 			var wanted: [String: Marker] = [:]
-			for it in parent.items {
-				let color = parent.colors[it.userId] ?? .muted
-				let m = Marker(key: "i:\(it.id)", coordinate: CLLocationCoordinate2D(latitude: it.lat, longitude: it.lng), kind: .item(it, color))
+			let view = map.bounds.width > 0 ? map.visibleCoordinateBounds : nil
+			for g in MapCluster.groups(parent.items, zoom: map.zoomLevel, in: view) {
+				let first = g.items.first { if case .media = $0 { true } else { false } } ?? g.items[0]
+				let color = parent.colors[first.userId] ?? .muted
+				let coord = CLLocationCoordinate2D(latitude: g.lat, longitude: g.lng)
+				let m = g.items.count > 1
+					? Marker(key: "g:\(g.key)", coordinate: coord, kind: .cluster(g.items, color))
+					: Marker(key: "i:\(g.key)", coordinate: coord, kind: .item(first, color))
 				wanted[m.key] = m
 			}
 			for p in parent.people {
@@ -140,15 +146,34 @@ struct TripMap: UIViewRepresentable {
 
 		func mapView(_ map: MLNMapView, didSelect annotation: MLNAnnotation) {
 			map.deselectAnnotation(annotation, animated: false)
-			guard let m = annotation as? Marker, case .item(let it, _) = m.kind else { return }
-			switch it {
-			case .media(let x): parent?.onOpen(.media(x.id))
-			case .checkin(let x): parent?.onOpen(.checkin(x.id))
+			guard let m = annotation as? Marker else { return }
+			switch m.kind {
+			case .item(.media(let x), _): parent?.onOpen(.media(x.id))
+			case .item(.checkin(let x), _): parent?.onOpen(.checkin(x.id))
+			case .cluster(let items, _): zoomInto(items)
+			case .person: break
+			}
+		}
+
+		/// A pile was tapped: zoom until its photos separate.
+		private func zoomInto(_ items: [MapItem]) {
+			guard let map else { return }
+			let lats = items.map(\.lat), lngs = items.map(\.lng)
+			let sw = CLLocationCoordinate2D(latitude: lats.min()!, longitude: lngs.min()!)
+			let ne = CLLocationCoordinate2D(latitude: lats.max()!, longitude: lngs.max()!)
+			if max(ne.latitude - sw.latitude, ne.longitude - sw.longitude) < 0.0004 {
+				let center = CLLocationCoordinate2D(latitude: (sw.latitude + ne.latitude) / 2, longitude: (sw.longitude + ne.longitude) / 2)
+				return map.setCenter(center, zoomLevel: MapCluster.maxZoom, animated: true)
+			}
+			let camera = map.cameraThatFitsCoordinateBounds(MLNCoordinateBounds(sw: sw, ne: ne), edgePadding: UIEdgeInsets(top: 90, left: 70, bottom: 160, right: 70))
+			map.fly(to: camera, withDuration: 0.7) { [weak map] in
+				if let map, map.zoomLevel > MapCluster.maxZoom { map.setZoomLevel(MapCluster.maxZoom, animated: true) }
 			}
 		}
 
 		func mapView(_ map: MLNMapView, regionDidChangeAnimated animated: Bool) {
 			parent?.onCenter?(map.centerCoordinate)
+			sync() // new zoom or view: re-pile
 		}
 
 		func mapView(_ map: MLNMapView, annotationCanShowCallout annotation: MLNAnnotation) -> Bool { false }
@@ -157,7 +182,7 @@ struct TripMap: UIViewRepresentable {
 
 /// A map marker: a post/check-in or a person's latest position.
 final class Marker: NSObject, MLNAnnotation {
-	enum Kind { case item(MapItem, Color), person(LatestLocation) }
+	enum Kind { case item(MapItem, Color), cluster([MapItem], Color), person(LatestLocation) }
 	let key: String
 	let coordinate: CLLocationCoordinate2D
 	let kind: Kind
@@ -172,6 +197,7 @@ final class Marker: NSObject, MLNAnnotation {
 		switch kind {
 		case .item(.media(let m), _): m.isVideo ? "Vídeo" : "Foto"
 		case .item(.checkin, _): "Check-in"
+		case .cluster(let items, _): "\(items.count) fotos e check-ins aqui. Toque para aproximar."
 		case .person(let p): p.name
 		}
 	}
@@ -189,6 +215,8 @@ final class MarkerView: MLNAnnotationView {
 				(AnyView(PolaroidMarker(id: m.id, thumb: m.thumb, color: color, video: m.isVideo)), CGSize(width: 64, height: 72), false)
 			case .item(.checkin, let color):
 				(AnyView(PinMarker(color: color)), CGSize(width: 56, height: 64), true)
+			case .cluster(let items, let color):
+				(AnyView(ClusterMarker(items: items, color: color)), CGSize(width: 72, height: 80), false)
 			case .person(let p):
 				(AnyView(PersonMarker(person: p)), CGSize(width: 150, height: 74), true)
 			}
@@ -245,6 +273,111 @@ struct PolaroidMarker: View {
 		.opacity(shown ? 1 : 0)
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 		.onAppear { withAnimation(.spring(response: 0.5, dampingFraction: 0.55).delay(Double.random(in: 0...0.4))) { shown = true } }
+	}
+}
+
+/// Several photos/check-ins close together: the newest photo on a little pile, with how many (web .mk-stack).
+struct ClusterMarker: View {
+	let items: [MapItem]
+	let color: Color
+	@State private var shown = false
+
+	private var top: FeedMedia? {
+		for it in items { if case .media(let m) = it { return m } }
+		return nil
+	}
+
+	var body: some View {
+		ZStack {
+			card(Color(red: 0.957, green: 0.925, blue: 0.824)).rotationEffect(.degrees(-9)).offset(x: -3, y: 2)
+			card(Color(red: 0.922, green: 0.886, blue: 0.769)).rotationEffect(.degrees(8)).offset(x: 4, y: 1)
+			ZStack {
+				RemoteImage(url: top?.thumb)
+					.frame(width: 40, height: 38)
+					.background(Color(red: 0.914, green: 0.878, blue: 0.749))
+					.clipShape(RoundedRectangle(cornerRadius: 2))
+				if top?.isVideo == true { Image(systemName: "play.fill").font(.system(size: 14)).foregroundStyle(.white).shadow(radius: 2) }
+			}
+			.padding(.horizontal, 4).padding(.top, 4).padding(.bottom, 9)
+			.background(Color.polaroid)
+			.overlay(alignment: .bottom) { Rectangle().fill(color).frame(height: 5) }
+			.clipShape(RoundedRectangle(cornerRadius: 5))
+			.shadow(color: .black.opacity(0.3), radius: 4, y: 3)
+			.rotationEffect(.degrees(tilt(for: top?.id ?? items[0].id)))
+		}
+		.overlay(alignment: .topTrailing) {
+			Text(items.count > 999 ? "999+" : "\(items.count)")
+				.font(.text(13, .extraBold)).foregroundStyle(Color(red: 0.239, green: 0.165, blue: 0.031))
+				.padding(.horizontal, 6).frame(minWidth: 26, minHeight: 26)
+				.background(Capsule().fill(Color(red: 0.949, green: 0.722, blue: 0.294)))
+				.overlay(Capsule().strokeBorder(.white, lineWidth: 2.5))
+				.shadow(color: .black.opacity(0.35), radius: 3, y: 2)
+				.offset(x: 4, y: -6)
+		}
+		.scaleEffect(shown ? 1 : 0.3)
+		.opacity(shown ? 1 : 0)
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.onAppear { withAnimation(.spring(response: 0.45, dampingFraction: 0.6)) { shown = true } }
+	}
+
+	private func card(_ fill: Color) -> some View {
+		RoundedRectangle(cornerRadius: 5).fill(fill).frame(width: 48, height: 56).shadow(color: .black.opacity(0.3), radius: 3, y: 2)
+	}
+}
+
+/// Groups map points that would overlap on screen (web $lib/map-cluster.ts, same rules): newest first, each one
+/// joins the first pile whose seed is within `radius` points at this zoom, otherwise it starts a new pile.
+enum MapCluster {
+	static let radius = 64.0
+	/// From this zoom on, every point gets its own marker.
+	static let maxZoom = 18.0
+
+	struct Group { let key: String; let lat: Double; let lng: Double; var items: [MapItem] }
+
+	/// Web-Mercator world points at `zoom` (512-point tiles, like MapLibre).
+	static func project(_ lat: Double, _ lng: Double, zoom: Double) -> (x: Double, y: Double) {
+		let scale = 512 * pow(2, zoom)
+		let s = sin(min(85, max(-85, lat)) * .pi / 180)
+		return ((lng + 180) / 360 * scale, (0.5 - log((1 + s) / (1 - s)) / (4 * .pi)) * scale)
+	}
+
+	static func groups(_ items: [MapItem], zoom: Double, in view: MLNCoordinateBounds?) -> [Group] {
+		let z = floor(zoom)
+		var points = items
+		if let v = view {
+			// a quarter of the view as margin, so markers just off-screen are ready when the map pans
+			let h = (v.ne.latitude - v.sw.latitude) * 0.25, w = (v.ne.longitude - v.sw.longitude) * 0.25
+			points = items.filter {
+				$0.lat >= v.sw.latitude - h && $0.lat <= v.ne.latitude + h && $0.lng >= v.sw.longitude - w && $0.lng <= v.ne.longitude + w
+			}
+		}
+		points.sort { $0.at != $1.at ? $0.at > $1.at : $0.id > $1.id }
+		if z >= maxZoom { return points.map { Group(key: $0.id, lat: $0.lat, lng: $0.lng, items: [$0]) } }
+
+		var out: [(g: Group, x: Double, y: Double)] = []
+		var grid: [String: [Int]] = [:]
+		for p in points {
+			let (x, y) = project(p.lat, p.lng, zoom: z)
+			let cx = Int(floor(x / radius)), cy = Int(floor(y / radius))
+			var found: Int?
+			search: for dx in -1...1 {
+				for dy in -1...1 {
+					for i in grid["\(cx + dx):\(cy + dy)"] ?? [] where hypot(out[i].x - x, out[i].y - y) <= radius {
+						found = i
+						break search
+					}
+				}
+			}
+			if let i = found { out[i].g.items.append(p) } else {
+				grid["\(cx):\(cy)", default: []].append(out.count)
+				out.append((Group(key: p.id, lat: p.lat, lng: p.lng, items: [p]), x, y))
+			}
+		}
+		return out.map { e in
+			var g = e.g
+			if g.items.count > 1 { g = Group(key: "\(g.key)+\(g.items.count)", lat: g.lat, lng: g.lng, items: g.items) }
+			return g
+		}
 	}
 }
 

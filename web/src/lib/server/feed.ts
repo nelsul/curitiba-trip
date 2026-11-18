@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { asc, isNotNull, ne, or, sql } from 'drizzle-orm';
-import { checkins, comments, db, likes, media, users } from './db';
+import { checkins, comments, db, favorites, likes, media, users } from './db';
 import { mediaUrl } from './r2';
 import { dayKey } from '$lib/format';
 import { groupPosts, isNewerThan, isOlderThan, postCursor, singlePosts, type Post } from '$lib/feed-group';
@@ -32,7 +32,7 @@ export async function feedUnsigned(): Promise<Unsigned> {
 		.groupBy(comments.mediaId, comments.checkinId)
 		.as('counts');
 
-	const [mRows, cRows, likeRows, firstRows] = await Promise.all([
+	const [mRows, cRows, likeRows, firstRows, favRows] = await Promise.all([
 		db()
 			.select({ m: media, n: counts.n })
 			.from(media)
@@ -50,8 +50,11 @@ export async function feedUnsigned(): Promise<Unsigned> {
 				select id, user_id, body, coalesce(media_id, checkin_id) as target,
 					row_number() over (partition by coalesce(media_id, checkin_id) order by created_at, id) as n
 				from comments
-			) c where n <= 2 order by target, n`)
+			) c where n <= 2 order by target, n`),
+		db().select({ userId: favorites.userId, mediaId: favorites.mediaId }).from(favorites).orderBy(asc(favorites.createdAt))
 	]);
+	const favs = new Map<string, string[]>();
+	for (const f of favRows) (favs.get(f.mediaId) ?? favs.set(f.mediaId, []).get(f.mediaId)!).push(f.userId);
 	const first = new Map<string, PreviewComment[]>();
 	for (const c of firstRows) (first.get(c.target) ?? first.set(c.target, []).get(c.target)!).push({ id: c.id, userId: c.user_id, body: c.body });
 	const likers = new Map<string, string[]>();
@@ -82,6 +85,7 @@ export async function feedUnsigned(): Promise<Unsigned> {
 			width: m.width,
 			height: m.height,
 			likers: likers.get(m.id) ?? [],
+			favs: favs.get(m.id) ?? [],
 			lat: m.lat,
 			lng: m.lng,
 			caption: m.caption,
@@ -143,7 +147,7 @@ export function feedQuery(url: URL) {
 
 export type FeedPage = { posts: Post[]; nextCursor: string | null; days: string[] };
 
-/** One page of newest-first posts (carousels grouped), only that page signed. GET /api/feed and the web Diário. */
+/** One page of newest-first posts (one photo/video each), only that page signed. GET /api/feed and the web Diário. */
 export async function feedPage({ limit, before, day, person, order = 'posts' }: FeedQuery): Promise<FeedPage> {
 	const { items, keys } = await feedUnsigned();
 	const filtered = items.filter((i) => (!day || i.day === day) && (!person || i.userId === person));
