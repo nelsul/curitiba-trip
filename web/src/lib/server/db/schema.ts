@@ -50,6 +50,24 @@ export const loginCodes = pgTable(
 	(t) => [index('login_codes_email_idx').on(t.email, t.createdAt)]
 );
 
+/**
+ * Visitor codes: anyone signed in makes one in "Mais"; for 2 hours it lets a visitor read the Diário (nothing else).
+ * Only the code's hash is kept. Deleting the code (or its maker) ends the visits made with it.
+ */
+export const guestCodes = pgTable(
+	'guest_codes',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		codeHash: text('code_hash').notNull(),
+		createdBy: uuid('created_by')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+		createdAt: createdAt()
+	},
+	(t) => [uniqueIndex('guest_codes_hash_uq').on(t.codeHash), index('guest_codes_by_idx').on(t.createdBy, t.expiresAt)]
+);
+
 export type SessionKind = 'cookie' | 'device';
 
 export const sessions = pgTable(

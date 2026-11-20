@@ -7,7 +7,11 @@
 	import CoupleLove from '$lib/components/CoupleLove.svelte';
 	import { refreshUnread, unread } from '$lib/notifications.svelte';
 	import { headerSend } from '$lib/header-send.svelte';
+	import { provideGuest } from '$lib/guest';
+	import { fmtTime } from '$lib/format';
 	let { children, data } = $props();
+	// a visitor: only the Diário, no menu, no Enviar or notifications
+	provideGuest(() => !!data.guest);
 
 	const items = [
 		{ href: '/', label: 'Linha do tempo', short: 'Diário', color: 'var(--leaf)', icon: 'M6 4h9l3 3v13H6zM9 10h6M9 14h6M9 18h3' },
@@ -58,6 +62,7 @@
 	});
 
 	onMount(() => {
+		if (data.guest) return;
 		restoreSharing();
 		refreshUnread();
 		const t = setInterval(refreshUnread, 60_000);
@@ -71,6 +76,9 @@
 		<span class="name">Curitiba</span>
 		<span class="stamp small">11–18/11</span>
 	</a>
+	{#if data.guest}
+		<a href="/visitante" class="visitor" title="Convidado por {data.guest.by}"><span>Visitante</span><span class="small">até {fmtTime(data.guest.until)}</span></a>
+	{:else}
 	<nav class="desktop" aria-label="Principal">
 		{#each items as it}
 			<a href={it.href} aria-current={active(it.href) ? 'page' : undefined} style:--c={it.color}>
@@ -94,10 +102,12 @@
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d={ICONS.upload} /></svg><span>Enviar</span>
 		</a>
 	{/if}
+	{/if}
 </header>
 
 {@render children()}
 
+{#if !data.guest}
 <CoupleLove persons={data.persons} />
 
 <nav class="dock" aria-label="Principal">
@@ -108,6 +118,7 @@
 		</a>
 	{/each}
 </nav>
+{/if}
 
 <style>
 	.top {
@@ -159,6 +170,11 @@
 	@keyframes send-ready { 0%, 70%, 100% { transform: rotate(-3deg) scale(1); } 80% { transform: rotate(-3deg) scale(1.08); } }
 	@media (prefers-reduced-motion: reduce) { .send.ready { animation: none; } }
 
+	.visitor {
+		display: grid; justify-items: end; line-height: 1.1; padding: 6px 14px; border-radius: 999px; text-decoration: none;
+		background: var(--surface); border: 2.5px solid var(--line); color: var(--ink); font: 600 1rem var(--font-display);
+	}
+	.visitor .small { font-family: var(--font-body); color: var(--muted); font-weight: 700; }
 	.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--leaf); animation: pulse 1.6s infinite; }
 	@keyframes pulse { 50% { opacity: 0.25; transform: scale(0.7); } }
 

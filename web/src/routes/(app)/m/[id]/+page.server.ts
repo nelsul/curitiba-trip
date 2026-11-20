@@ -3,9 +3,11 @@ import { addComment, deleteComment } from '$lib/server/comments';
 import { assertTarget, deleteMedia, mediaDetail, updateMedia } from '$lib/server/details';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, depends }) => {
+export const load: PageServerLoad = async ({ params, depends, locals }) => {
 	depends('app:media');
-	return mediaDetail(params.id);
+	const d = await mediaDetail(params.id);
+	// visitors: no location (no map for them) and no original file
+	return locals.guest ? { ...d, item: { ...d.item, lat: null, lng: null, locationSource: null, original: null } } : d;
 };
 
 export const actions: Actions = {

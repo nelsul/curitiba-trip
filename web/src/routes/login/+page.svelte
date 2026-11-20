@@ -49,6 +49,7 @@
 				{/each}
 			</ul>
 			<p class="muted small center">Vamos mandar um código para o seu e-mail.</p>
+			<p class="small center"><a href="/visitante">Tenho um código de visitante</a></p>
 		</section>
 	{:else}
 		<div class="card form-card">

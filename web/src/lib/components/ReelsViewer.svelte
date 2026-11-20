@@ -3,6 +3,7 @@
 	import Icon from './Icon.svelte';
 	import Reel from './Reel.svelte';
 	import type { FeedMedia, Person } from '$lib/types';
+	import { isGuest } from '$lib/guest';
 
 	/** Full-screen vertical reels over the feed, starting at the post that was tapped. */
 	let {
@@ -25,6 +26,7 @@
 		ondelete: (id: string) => void;
 	} = $props();
 
+	const guest = isGuest();
 	let list: HTMLDivElement;
 	let muted = $state(false);
 	// Only the reels around the one on screen are built: "Todas as fotos" can open this with thousands of items,
@@ -54,7 +56,7 @@
 		{#each media as m, n (m.id)}
 			<div class="slot" id="reel-{m.id}">
 				{#if Math.abs(n - current) <= NEAR}<Reel {m} person={persons.get(m.userId)} {meId} bind:muted
-					onshare={m.kind === 'photo' ? () => onshare(m.id) : undefined}
+					onshare={m.kind === 'photo' && !guest ? () => onshare(m.id) : undefined}
 					ondelete={m.userId === meId || isAdmin ? () => ondelete(m.id) : undefined} />{/if}
 			</div>
 		{/each}

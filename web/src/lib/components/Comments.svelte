@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { isGuest } from '$lib/guest';
+	/** visitors read the comments but don't write */
+	const guest = isGuest();
 	import { enhance } from '$app/forms';
 	import Avatar from './Avatar.svelte';
 	import Icon from './Icon.svelte';
@@ -69,6 +72,7 @@
 			</li>
 		{/each}
 	</ul>
+	{#if !guest}
 	<form
 		method="POST"
 		action="?/comentar"
@@ -101,6 +105,7 @@
 		{#if error}<p class="error small">{error}</p>{/if}
 		<button class="btn sea" disabled={busy || !body.trim()}>Comentar</button>
 	</form>
+	{/if}
 </section>
 
 <style>

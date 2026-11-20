@@ -99,6 +99,13 @@
       "when": 1794960235512,
       "tag": "0013_favoritos",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795200155916,
+      "tag": "0014_visitantes",
+      "breakpoints": true
     }
   ]
 }
