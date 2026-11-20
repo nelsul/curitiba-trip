@@ -1,44 +1,39 @@
 <script lang="ts">
-	import { invalidate } from '$app/navigation';
+	import { invalidate, pushState } from '$app/navigation';
+	import { page } from '$app/state';
 	import Icon from '$lib/components/Icon.svelte';
-	import Countdown from '$lib/components/Countdown.svelte';
-	import MediaGrid from '$lib/components/MediaGrid.svelte';
 	import Story from '$lib/components/Story.svelte';
-	import { api } from '$lib/roteiro-client';
+	import MediaGrid from '$lib/components/MediaGrid.svelte';
+	import ReelsViewer from '$lib/components/ReelsViewer.svelte';
+	import FrameMaker from '$lib/components/FrameMaker.svelte';
+	import { fmtLongDay } from '$lib/format';
+	import type { FeedMedia } from '$lib/types';
 
 	let { data } = $props();
 	const byId = $derived(new Map(data.persons.map((p) => [p.id, p])));
-	const started = $derived(Date.now() >= new Date(data.weddingAt).getTime());
-	let playing = $state(false);
+	let playing = $state<number | null>(null);
+	let framing = $state<string[] | null>(null);
 
-	// ── admin: pick and order ──
-	let editing = $state(false);
-	let order = $state<string[]>([]);
-	let picking = $state(false);
-	let busy = $state(false);
-	const mediaById = $derived(new Map(data.all.map((m) => [m.id, m])));
-	function edit() {
-		order = data.items.map((m) => m.id);
-		editing = true;
-	}
-	const move = (i: number, d: number) => {
-		const j = i + d;
-		if (j < 0 || j >= order.length) return;
-		const o = [...order];
-		[o[i], o[j]] = [o[j], o[i]];
-		order = o;
+	/** Day → starred photos/videos, oldest first (the server already sends them in that order). */
+	const days = $derived.by(() => {
+		const out = new Map<string, FeedMedia[]>();
+		for (const m of data.items) (out.get(m.day) ?? out.set(m.day, []).get(m.day)!).push(m);
+		return [...out.entries()];
+	});
+	/** the cover: the most starred moment (the oldest of them on a tie) */
+	const cover = $derived(data.items.reduce<FeedMedia | null>((best, m) => (!best || m.favs.length > best.favs.length ? m : best), null));
+
+	// tapping a photo opens the reels (a shallow route, so the phone's back button closes them)
+	const reel = $derived((page.state as { reel?: string }).reel ?? null);
+	const openReel = (id: string) => {
+		if (!reel) pushState('', { reel: id });
 	};
-	async function save() {
-		busy = true;
-		try {
-			await api('PUT', '/api/admin/retro', { mediaIds: order });
-			await invalidate('app:retro');
-			editing = false;
-		} catch (e) {
-			alert((e as Error).message);
-		} finally {
-			busy = false;
-		}
+	async function remove(id: string) {
+		if (!confirm('Apagar esta foto/vídeo para todo mundo? Não dá para desfazer.')) return;
+		const r = await fetch(`/api/media/${id}`, { method: 'DELETE' });
+		if (!r.ok) return alert((await r.json().catch(() => null))?.message ?? 'Não foi possível apagar.');
+		if (data.items.length <= 1) history.back();
+		void invalidate('app:retro');
 	}
 </script>
 
@@ -46,79 +41,57 @@
 
 <main class="page narrow">
 	<div class="title-row"><span class="title-icon"><Icon name="sparkle" size={26} /></span><h1>Retrospectiva</h1></div>
+	<p class="muted intro">Os favoritos de todo mundo, na ordem em que aconteceram. Toque na <span class="star-ic"><Icon name="star" size={15} /></span> de uma foto ou vídeo no diário para pôr aqui.</p>
 
-	{#if !started}
-		<Countdown big />
-		<p class="muted">Depois do casamento, aqui aparecem os melhores momentos da viagem, escolhidos a dedo, um atrás do outro.</p>
-	{:else if data.items.length}
-		<button class="play card" onclick={() => (playing = true)}>
-			{#if data.items[0].image}<img src={data.items[0].image} alt="" />{/if}
+	{#if data.items.length}
+		<button class="play card" onclick={() => (playing = 0)}>
+			{#if cover?.image}<img src={cover.image} alt="" />{/if}
 			<span class="ov">
 				<span class="pl"><Icon name="play" size={34} /></span>
 				<strong>Ver a retrospectiva</strong>
-				<span class="small">{data.items.length} momentos</span>
+				<span class="small">{data.items.length} {data.items.length === 1 ? 'momento' : 'momentos'}</span>
 			</span>
 		</button>
-	{:else}
-		<div class="card empty"><Icon name="sparkle" size={40} /><p>A retrospectiva está sendo preparada. Volte daqui a pouco!</p></div>
-	{/if}
 
-	{#if data.me.isAdmin}
-		<section class="admin card">
-			<h2>Só para administradores</h2>
-			{#if !editing}
-				<p class="small muted">{data.items.length} {data.items.length === 1 ? 'item escolhido' : 'itens escolhidos'}. {started ? '' : 'Todo mundo vê depois que a contagem acaba.'}</p>
-				<div class="row">
-					<button class="btn sun" onclick={edit}><Icon name="sparkle" size={18} /> Escolher e ordenar</button>
-					{#if data.items.length}<button class="btn secondary" onclick={() => (playing = true)}><Icon name="play" size={18} /> Pré-visualizar</button>{/if}
-				</div>
-			{:else}
-				<ol class="order">
-					{#each order as id, i (id)}
-						{@const m = mediaById.get(id)}
-						<li>
-							<span class="n">{i + 1}</span>
-							{#if m?.thumb ?? m?.image}<img src={m?.thumb ?? m?.image} alt="" />{/if}
-							<span class="grow small">{m?.caption || (m?.kind === 'video' ? 'Vídeo' : 'Foto')} · {byId.get(m?.userId ?? '')?.name ?? ''}</span>
-							<button class="ib" onclick={() => move(i, -1)} disabled={i === 0} aria-label="Subir"><Icon name="up" size={18} /></button>
-							<button class="ib" onclick={() => move(i, 1)} disabled={i === order.length - 1} aria-label="Descer"><Icon name="down" size={18} /></button>
-							<button class="ib" onclick={() => (order = order.filter((x) => x !== id))} aria-label="Tirar"><Icon name="close" size={18} /></button>
-						</li>
-					{:else}
-						<li class="muted small">Nada escolhido ainda.</li>
-					{/each}
-				</ol>
-				<button class="btn secondary block" onclick={() => (picking = !picking)}><Icon name="grid" size={18} /> {picking ? 'Fechar fotos' : 'Escolher fotos e vídeos'}</button>
-				{#if picking}<p class="small muted">Toque para pôr ou tirar; a ordem é a dos toques.</p><MediaGrid media={data.all} selecting bind:selected={order} max={300} onopen={() => {}} />{/if}
-				<div class="row">
-					<button class="btn secondary" onclick={() => (editing = false)}>Cancelar</button>
-					<button class="btn sun" onclick={save} disabled={busy}>{busy ? 'Salvando…' : 'Salvar'}</button>
-				</div>
-			{/if}
-		</section>
+		{#each days as [d, list] (d)}
+			<section class="day">
+				<h2 class="day-title">{fmtLongDay(d)}</h2>
+				<MediaGrid media={list} onopen={openReel} />
+			</section>
+		{/each}
+	{:else}
+		<div class="card empty">
+			<Icon name="star" size={40} />
+			<p>Nenhum favorito ainda. No diário ou no modo tela cheia, toque na estrela das fotos e vídeos que merecem entrar aqui.</p>
+		</div>
 	{/if}
 </main>
 
-{#if playing}<Story items={data.items} persons={byId} onclose={() => (playing = false)} />{/if}
+{#if reel}
+	<ReelsViewer media={data.items} start={reel} persons={byId} meId={data.me.id} isAdmin={data.me.isAdmin} onclose={() => history.back()}
+		onshare={(id) => (framing = [id])} ondelete={remove} />
+{/if}
+{#if playing !== null}<Story items={data.items.slice(playing)} persons={byId} onclose={() => (playing = null)} />{/if}
+{#if framing}<FrameMaker ids={framing} onclose={() => (framing = null)} />{/if}
 
 <style>
-	.play { position: relative; display: block; width: 100%; aspect-ratio: 4 / 5; padding: 0; overflow: hidden; cursor: pointer; border-color: var(--sun); }
+	.intro { margin: 0 0 14px; }
+	.star-ic { display: inline-flex; vertical-align: -2px; color: var(--sun); }
+	.star-ic :global(svg) { fill: currentColor; }
+	.play { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; padding: 0; overflow: hidden; cursor: pointer; border-color: var(--sun); margin-bottom: 18px; }
 	.play img { width: 100%; height: 100%; object-fit: cover; display: block; filter: brightness(0.6); }
 	.ov { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; color: #fff; background: radial-gradient(circle, transparent, rgb(0 0 0 / 0.4)); }
 	.ov strong { font: 600 1.6rem var(--font-display); }
-	.pl { display: grid; place-items: center; width: 76px; height: 76px; border-radius: 50%; background: var(--sun); color: var(--on-sun); animation: bob 3s ease-in-out infinite; }
+	.pl { display: grid; place-items: center; width: 68px; height: 68px; border-radius: 50%; background: var(--sun); color: var(--on-sun); animation: bob 3s ease-in-out infinite; }
 	.pl :global(svg) { fill: currentColor; }
 	.empty { display: grid; justify-items: center; gap: 8px; text-align: center; color: var(--muted); }
-	.empty p { margin: 0; }
-	.admin { margin-top: 20px; display: grid; gap: 10px; }
-	.admin h2 { margin: 0; font-size: 1.1rem; }
-	.admin p { margin: 0; }
-	.row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-	.order { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 50vh; overflow-y: auto; }
-	.order li { display: flex; align-items: center; gap: 6px; }
-	.order img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; }
-	.n { width: 24px; text-align: center; font-weight: 800; color: var(--sun); flex: none; }
-	.grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.ib { flex: none; width: 40px; height: 40px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); display: grid; place-items: center; cursor: pointer; }
-	.ib:disabled { opacity: 0.35; }
+	.empty :global(svg) { color: var(--sun); }
+	.empty p { margin: 0; max-width: 34ch; }
+	.day { margin-bottom: 20px; }
+	.day-title { font-size: 1.05rem; margin: 0 0 8px; }
+	.day-title::first-letter { text-transform: uppercase; }
+	@media (max-width: 520px) {
+		/* edge-to-edge grid on phones, like "Todas as fotos" */
+		.day :global(.grid) { margin: 0 -16px; }
+	}
 </style>

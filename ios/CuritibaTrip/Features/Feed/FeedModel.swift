@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Pages through GET /api/feed (newest first, carousels already grouped by the server).
+/// Pages through GET /api/feed (newest first, one photo/video per post).
 @MainActor @Observable
 final class FeedModel {
 	var posts: [Post] = []

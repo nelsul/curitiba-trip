@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A photo/video post: swipeable carousel, double-tap to like, heart, liked-by, caption, comments.
+/// A photo/video post (one per post now; the carousel only shows for old grouped data): double-tap to like, heart, liked-by, caption, comments.
 struct MediaPostView: View {
 	let items: [FeedMedia]
 	let person: Person?
@@ -8,6 +8,7 @@ struct MediaPostView: View {
 	@Environment(\.openReel) private var openReel
 	@State private var index = 0
 	@State private var likers: [String: [String]] = [:]
+	@State private var favs: [String: [String]] = [:]
 	@State private var bigHeart = 0
 
 	private var current: FeedMedia { items[min(index, items.count - 1)] }
@@ -22,7 +23,7 @@ struct MediaPostView: View {
 			PostHeader(
 				person: person,
 				subtitle: subtitle,
-				trailing: items.count > 1 ? AnyView(Text("\(index + 1)/\(items.count)").font(.text(13, .extraBold)).foregroundStyle(Color.ink).padding(.horizontal, 8).background(Capsule().fill(Color.surface2)).overlay(Capsule().strokeBorder(Color.line, lineWidth: 2))) : nil
+				trailing: nil
 			)
 			TabView(selection: $index) {
 				ForEach(Array(items.enumerated()), id: \.element.id) { i, m in
@@ -33,6 +34,28 @@ struct MediaPostView: View {
 			.aspectRatio(ratio, contentMode: .fit)
 			.background(Color.black)
 			.overlay { BigHeart(trigger: bigHeart) }
+			// more photos: a counter on the picture and a "next" arrow, like Instagram
+			.overlay(alignment: .topTrailing) {
+				if items.count > 1 {
+					Label { Text("\(index + 1)/\(items.count)") } icon: { Icon(.stack, size: 13) }
+						.font(.text(12, .extraBold)).foregroundStyle(.white)
+						.padding(.horizontal, 9).padding(.vertical, 4)
+						.background(Capsule().fill(.black.opacity(0.6)))
+						.padding(10)
+						.accessibilityLabel("Foto \(index + 1) de \(items.count)")
+				}
+			}
+			.overlay(alignment: .trailing) {
+				if items.count > 1 && index < items.count - 1 {
+					Button { withAnimation { index += 1 } } label: {
+						Text("›").font(.system(size: 22, weight: .bold)).foregroundStyle(Color(white: 0.2))
+							.frame(width: 28, height: 28).background(Circle().fill(.white.opacity(0.75)))
+							.shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+					}
+					.buttonStyle(.plain).padding(8)
+					.accessibilityLabel("Próxima foto")
+				}
+			}
 			.onTapGesture(count: 2) {
 				guard !current.isVideo else { return }
 				bigHeart += 1
@@ -54,9 +77,12 @@ struct MediaPostView: View {
 					NavigationLink(value: Route.media(current.id)) { Icon(.expand, size: 24).foregroundStyle(Color.ink).frame(width: 44, height: 44) }
 						.accessibilityLabel("Abrir em tela cheia")
 				}
+				if current.status != "preview" { SaveOriginalButton(media: current) }
 				Spacer()
 				if items.count > 1 { Dots(count: items.count, index: index) }
-				Spacer().frame(width: 92)
+				if current.status == "ready" {
+					FavButton(on: favsOf(current).contains(app.me?.id ?? "")) { on in Task { await setFav(current, on) } }
+				}
 			}
 			.padding(.horizontal, 6)
 
@@ -83,6 +109,17 @@ struct MediaPostView: View {
 	}
 
 	private func likersOf(_ m: FeedMedia) -> [String] { likers[m.id] ?? m.likers }
+	private func favsOf(_ m: FeedMedia) -> [String] { favs[m.id] ?? m.favs ?? [] }
+
+	private func setFav(_ m: FeedMedia, _ on: Bool) async {
+		guard let me = app.me?.id else { return }
+		let before = favsOf(m)
+		favs[m.id] = on ? before + [me] : before.filter { $0 != me }
+		do { favs[m.id] = try await Favorites.set(m.id, on) } catch {
+			favs[m.id] = before
+			app.handle(error)
+		}
+	}
 
 	private func setLike(_ m: FeedMedia, _ liked: Bool) async {
 		guard let me = app.me?.id else { return }
@@ -116,8 +153,10 @@ private struct MediaSlide: View {
 			} else if media.status != "ready" {
 				Text(media.status == "failed" ? "Não foi possível processar" : media.isVideo ? "Preparando o vídeo…" : "Processando…")
 					.font(.text(15, .extraBold)).foregroundStyle(.white.opacity(0.85))
-			} else {
+			} else if media.isVideo {
 				RemoteImage(url: media.image)
+			} else {
+				RemoteImage(url: media.image).pinchToZoom()
 			}
 			if media.isVideo && media.status == "ready" {
 				Icon(.play, size: 34).foregroundStyle(.white).shadow(radius: 6)
@@ -207,6 +246,39 @@ struct CheckinPostView: View {
 	}
 }
 
+/// POST /api/favorites: star or unstar a photo/video for the Retrospectiva; returns who starred it now.
+enum Favorites {
+	static func set(_ mediaId: String, _ on: Bool) async throws -> [String] {
+		let r: FavResponse = try await API.shared.post("/api/favorites", FavBody(mediaId: mediaId, fav: on))
+		return r.favs
+	}
+}
+
+/// The star (web FavButton): starred photos/videos go to the Retrospectiva.
+struct FavButton: View {
+	let on: Bool
+	var size: CGFloat = 24
+	var tint: Color = .ink
+	let toggle: (Bool) -> Void
+	@State private var pop = 0
+
+	var body: some View {
+		Button {
+			if !on { pop += 1 }
+			toggle(!on)
+		} label: {
+			Image(systemName: on ? "star.fill" : "star")
+				.font(.system(size: size, weight: .semibold))
+				.foregroundStyle(on ? Color.sun : tint)
+				.symbolEffect(.bounce, value: pop)
+				.frame(width: 44, height: 44)
+		}
+		.buttonStyle(.plain)
+		.sensoryFeedback(.impact(weight: .light), trigger: pop)
+		.accessibilityLabel(on ? "Tirar dos favoritos" : "Favoritar para a retrospectiva")
+	}
+}
+
 /// The heart: fills pink, pops and throws little sparks when liked (web LikeButton).
 struct LikeButton: View {
 	let liked: Bool
@@ -283,11 +355,15 @@ struct Dots: View {
 	let index: Int
 
 	var body: some View {
+		// at most 5 dots, sliding with the photo (Instagram-style); the ones at the window's edges are smaller
+		let shown = min(5, count)
+		let start = max(0, min(index - 2, count - shown))
 		HStack(spacing: 5) {
-			ForEach(0..<count, id: \.self) { i in
+			ForEach(start..<(start + shown), id: \.self) { i in
+				let edge = count > shown && ((i == start && start > 0) || (i == start + shown - 1 && start + shown < count))
 				Circle().fill(i == index ? Color.sea : Color.line)
 					.frame(width: 7, height: 7)
-					.scaleEffect(i == index ? 1.25 : 1)
+					.scaleEffect(i == index ? 1.25 : edge ? 0.6 : 1)
 			}
 		}
 		.animation(.bounce, value: index)

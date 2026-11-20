@@ -11,7 +11,9 @@ struct FeedView: View {
 	@State private var selecting = false
 	@State private var selected: [String] = []
 	@State private var framing: FrameSelection?
-	@State private var toast: String?
+	/// "Baixar": originals of the picked photos/videos going into Photos, one after another
+	@State private var saving: (done: Int, total: Int)?
+	@State private var savedMessage: String?
 
 	private var media: [FeedMedia] { library.filtered(day: model.day, person: model.person) }
 
@@ -42,8 +44,8 @@ struct FeedView: View {
 		}
 		.overlay(alignment: .bottom) { selectionBar }
 		.overlay(alignment: .bottom) {
-			if let toast {
-				Text(toast).font(.text(14, .extraBold)).foregroundStyle(Color.onLeaf)
+			if let text = saving.map({ "Salvando \(min($0.done + 1, $0.total)) de \($0.total)…" }) ?? savedMessage {
+				Text(text).font(.text(14, .extraBold)).foregroundStyle(Color.onLeaf)
 					.padding(.horizontal, 16).padding(.vertical, 8).background(Capsule().fill(Color.leaf))
 					.padding(.bottom, 180).transition(.opacity)
 			}
@@ -77,7 +79,7 @@ struct FeedView: View {
 		}
 		.padding(.horizontal, 16)
 		if selecting {
-			Text("Escolha até \(Frames.max) fotos para juntar numa imagem com moldura.")
+			Text("Escolha fotos e vídeos para salvar os originais, ou até \(Frames.max) fotos para juntar numa imagem com moldura.")
 				.font(.text(14)).foregroundStyle(Color.muted).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
 		}
 		if let e = library.error, library.items.isEmpty {
@@ -85,8 +87,7 @@ struct FeedView: View {
 		} else if media.isEmpty && !library.loading {
 			EmptyState(text: "Nenhuma foto ou vídeo com esses filtros.")
 		}
-		MediaGrid(items: selecting && app.me?.isAdmin != true ? media.filter { !$0.isVideo } : media, selecting: selecting, selected: $selected,
-				  max: app.me?.isAdmin == true ? 300 : Frames.max) { m in reel = ReelStart(id: m.id) }
+		MediaGrid(items: media, selecting: selecting, selected: $selected, max: 100) { m in reel = ReelStart(id: m.id) }
 	}
 
 	@ViewBuilder private var selectionBar: some View {
@@ -110,11 +111,10 @@ struct FeedView: View {
 		HStack(spacing: 8) {
 			Text(count).font(.text(16, .extraBold)).foregroundStyle(Color.ink).lineLimit(1).fixedSize()
 			Spacer(minLength: 4)
-			if app.me?.isAdmin == true {
-				Button { Task { await addToRetro() } } label: { selectionLabel("Retrô", icon: .sparkle, words: words) }
-					.buttonStyle(.chunky(.secondary, small: true))
-					.accessibilityLabel("Retrospectiva")
-			}
+			Button { Task { await saveOriginals(picked) } } label: { selectionLabel("Baixar", icon: .download, words: words) }
+				.buttonStyle(.chunky(.secondary, small: true))
+				.accessibilityLabel("Baixar os originais")
+				.disabled(saving != nil)
 			Button { framing = FrameSelection(items: picked) } label: { selectionLabel("Moldura", icon: .frame, words: words) }
 				.buttonStyle(.chunky(.sun, small: true))
 				.accessibilityLabel("Moldura")
@@ -122,27 +122,33 @@ struct FeedView: View {
 		}
 	}
 
+	/// Saves the originals (full quality, as uploaded) of the picked photos/videos into Photos.
+	private func saveOriginals(_ items: [FeedMedia]) async {
+		saving = (0, items.count)
+		var failed = 0
+		for m in items {
+			do { try await OriginalSaver.save(m) } catch {
+				failed += 1
+				if let e = error as? OriginalSaver.Failure, e.message.hasPrefix("Sem permissão") { savedMessage = e.message; break }
+			}
+			saving = (min((saving?.done ?? 0) + 1, items.count), items.count)
+		}
+		let ok = items.count - failed
+		if savedMessage == nil {
+			savedMessage = failed == 0 ? "\(ok) \(ok == 1 ? "original salvo" : "originais salvos") nas Fotos." : "\(ok) salvos, \(failed) não deu."
+		}
+		saving = nil
+		selecting = false
+		selected = []
+		try? await Task.sleep(for: .seconds(3))
+		withAnimation { savedMessage = nil }
+	}
+
 	@ViewBuilder private func selectionLabel(_ title: String, icon: IconName, words: Bool) -> some View {
 		if words {
 			Label { Text(title) } icon: { Icon(icon, size: 16) }.lineLimit(1).fixedSize()
 		} else {
 			Icon(icon, size: 18)
-		}
-	}
-
-	private func addToRetro() async {
-		do {
-			let r: Retro = try await API.shared.get("/api/retro")
-			let ids = r.items.map(\.id) + selected.filter { id in !r.items.contains { $0.id == id } }
-			let _: OK = try await API.shared.put("/api/admin/retro", RetroBody(mediaIds: ids))
-			withAnimation { toast = "\(selected.count) na retrospectiva (\(ids.count) no total)." }
-			selecting = false
-			selected = []
-			try? await Task.sleep(for: .seconds(3))
-			withAnimation { toast = nil }
-		} catch {
-			app.handle(error)
-			withAnimation { toast = error.localizedDescription }
 		}
 	}
 

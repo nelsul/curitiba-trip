@@ -1,9 +1,9 @@
 import { error } from '@sveltejs/kit';
 import { asc, isNotNull, ne, or, sql } from 'drizzle-orm';
-import { checkins, comments, db, likes, media, users } from './db';
+import { checkins, comments, db, favorites, likes, media, users } from './db';
 import { mediaUrl } from './r2';
 import { dayKey } from '$lib/format';
-import { groupPosts, isOlderThan, postCursor, type Post } from '$lib/feed-group';
+import { groupPosts, isNewerThan, isOlderThan, postCursor, singlePosts, type Post } from '$lib/feed-group';
 import type { FeedCheckin, FeedItem, FeedMedia, Person, PreviewComment } from '$lib/types';
 
 export async function people(): Promise<Person[]> {
@@ -32,7 +32,7 @@ export async function feedUnsigned(): Promise<Unsigned> {
 		.groupBy(comments.mediaId, comments.checkinId)
 		.as('counts');
 
-	const [mRows, cRows, likeRows, firstRows] = await Promise.all([
+	const [mRows, cRows, likeRows, firstRows, favRows] = await Promise.all([
 		db()
 			.select({ m: media, n: counts.n })
 			.from(media)
@@ -50,8 +50,11 @@ export async function feedUnsigned(): Promise<Unsigned> {
 				select id, user_id, body, coalesce(media_id, checkin_id) as target,
 					row_number() over (partition by coalesce(media_id, checkin_id) order by created_at, id) as n
 				from comments
-			) c where n <= 2 order by target, n`)
+			) c where n <= 2 order by target, n`),
+		db().select({ userId: favorites.userId, mediaId: favorites.mediaId }).from(favorites).orderBy(asc(favorites.createdAt))
 	]);
+	const favs = new Map<string, string[]>();
+	for (const f of favRows) (favs.get(f.mediaId) ?? favs.set(f.mediaId, []).get(f.mediaId)!).push(f.userId);
 	const first = new Map<string, PreviewComment[]>();
 	for (const c of firstRows) (first.get(c.target) ?? first.set(c.target, []).get(c.target)!).push({ id: c.id, userId: c.user_id, body: c.body });
 	const likers = new Map<string, string[]>();
@@ -82,6 +85,7 @@ export async function feedUnsigned(): Promise<Unsigned> {
 			width: m.width,
 			height: m.height,
 			likers: likers.get(m.id) ?? [],
+			favs: favs.get(m.id) ?? [],
 			lat: m.lat,
 			lng: m.lng,
 			caption: m.caption,
@@ -125,7 +129,9 @@ export async function signItems<T extends FeedItem>(items: T[], keys: Unsigned['
 	);
 }
 
-export type FeedQuery = { limit: number; before?: string | null; day?: string | null; person?: string | null };
+/** posts: carousels, newest first · cronologica: every item on its own, oldest first */
+export type FeedOrder = 'posts' | 'cronologica';
+export type FeedQuery = { limit: number; before?: string | null; day?: string | null; person?: string | null; order?: FeedOrder };
 /** Query string of GET /api/feed and /api/feed/media (throws 400 on bad input). */
 export function feedQuery(url: URL) {
 	const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 20));
@@ -135,17 +141,20 @@ export function feedQuery(url: URL) {
 	if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) error(400, 'Dia inválido');
 	if (before && !/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\|[mc][0-9a-f-]{36}$/.test(before)) error(400, 'Cursor inválido');
 	if (person && !/^[0-9a-f-]{36}$/.test(person)) error(400, 'Pessoa inválida');
-	return { limit, before, day, person };
+	const order: FeedOrder = url.searchParams.get('ordem') === 'cronologica' ? 'cronologica' : 'posts';
+	return { limit, before, day, person, order };
 }
 
 export type FeedPage = { posts: Post[]; nextCursor: string | null; days: string[] };
 
-/** One page of newest-first posts (carousels grouped), only that page signed. GET /api/feed and the web Diário. */
-export async function feedPage({ limit, before, day, person }: FeedQuery): Promise<FeedPage> {
+/** One page of newest-first posts (one photo/video each), only that page signed. GET /api/feed and the web Diário. */
+export async function feedPage({ limit, before, day, person, order = 'posts' }: FeedQuery): Promise<FeedPage> {
 	const { items, keys } = await feedUnsigned();
 	const filtered = items.filter((i) => (!day || i.day === day) && (!person || i.userId === person));
-	const all = groupPosts(filtered);
-	const start = before ? all.filter((p) => isOlderThan(p, before)) : all;
+	const chrono = order === 'cronologica';
+	const all = chrono ? singlePosts(filtered) : groupPosts(filtered);
+	// `before` is "the page after this cursor" in either order
+	const start = before ? all.filter((p) => (chrono ? isNewerThan(p, before) : isOlderThan(p, before))) : all;
 	const page = start.slice(0, limit);
 	const posts: Post[] = await Promise.all(
 		page.map(async (p) =>

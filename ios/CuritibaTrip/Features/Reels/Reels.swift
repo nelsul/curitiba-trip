@@ -71,7 +71,7 @@ struct ReelsScreen: View {
 			.background(Color.black)
 			.overlay(alignment: .topLeading) {
 				Button { dismiss() } label: {
-					Icon(.close, size: 20).foregroundStyle(.white).frame(width: 44, height: 44).background(Circle().fill(.black.opacity(0.45)))
+					Icon(.close, size: 20).foregroundStyle(.white).frame(width: 44, height: 44).glassCircle()
 				}
 				.padding(12)
 				.accessibilityLabel("Voltar ao diário")
@@ -127,6 +127,7 @@ struct ReelView: View {
 	var safeBottom: CGFloat = 0
 	@Environment(AppState.self) private var app
 	@State private var likers: [String]?
+	@State private var favs: [String]?
 	@State private var bigHeart = 0
 	@State private var paused = false
 
@@ -143,7 +144,7 @@ struct ReelView: View {
 					Icon(.play, size: 56).foregroundStyle(.white.opacity(0.85)).shadow(radius: 8).allowsHitTesting(false)
 				}
 			} else {
-				RemoteImage(url: media.image, contentMode: .fit)
+				RemoteImage(url: media.image, contentMode: .fit).pinchToZoom()
 			}
 			BigHeartView(trigger: bigHeart)
 		}
@@ -155,62 +156,78 @@ struct ReelView: View {
 		.onTapGesture { if media.isVideo { paused.toggle() } }
 		.onChange(of: playing) { _, on in if on { paused = false } }
 		.overlay(alignment: .topTrailing) {
-			if media.isVideo {
-				Button { muted.toggle() } label: {
-					Icon(muted ? .mute : .sound, size: 20).foregroundStyle(.white)
-						.frame(width: 44, height: 44).background(Circle().fill(.black.opacity(0.45)))
+			// sound and delete up top, away from the actions (no deleting by accident)
+			HStack(spacing: 8) {
+				if media.isVideo {
+					Button { muted.toggle() } label: { Icon(muted ? .mute : .sound, size: 20).frame(width: 44, height: 44).glassCircle() }
+						.accessibilityLabel(muted ? "Ligar o som" : "Desligar o som")
 				}
-				.buttonStyle(.plain)
-				.padding(12)
-				.padding(.top, safeTop)
-				.accessibilityLabel(muted ? "Ligar o som" : "Desligar o som")
+				if let onDelete {
+					Button(action: onDelete) { Icon(.trash, size: 20).frame(width: 44, height: 44).glassCircle() }
+						.accessibilityLabel("Apagar")
+				}
 			}
+			.buttonStyle(.plain)
+			.foregroundStyle(.white)
+			.padding(12)
+			.padding(.top, safeTop)
 		}
-		.overlay(alignment: .bottomTrailing) { rail.padding(.trailing, 6).padding(.bottom, 30 + safeBottom) }
+		.overlay(alignment: .bottomTrailing) { rail.padding(.trailing, 10).padding(.bottom, 28 + safeBottom) }
 		.overlay(alignment: .bottomLeading) { info }
 		.clipped()
 		.accessibilityElement(children: .contain)
 		.accessibilityLabel("\(media.isVideo ? "Vídeo" : "Foto") de \(person?.name ?? "alguém")")
 	}
 
+	/// Frosted round buttons with a label under each (web Reel .glass): like, comment, star, frame, save.
 	private var rail: some View {
-		VStack(spacing: 4) {
-			LikeButton(liked: currentLikers.contains(app.me?.id ?? "")) { liked in Task { await setLike(liked) } }
-				.colorScheme(.dark)
-			if !currentLikers.isEmpty { count(currentLikers.count) }
-			NavigationLink(value: Route.media(media.id)) { Icon(.chat, size: 28).frame(width: 44, height: 44) }
-				.accessibilityLabel("Comentários")
-				.padding(.top, 6)
-			if media.comments > 0 { count(media.comments) }
+		VStack(spacing: 12) {
+			GlassAction(label: currentLikers.isEmpty ? "Curtir" : "\(currentLikers.count)", on: currentLikers.contains(app.me?.id ?? ""), onTint: .berry) {
+				LikeButton(liked: currentLikers.contains(app.me?.id ?? "")) { liked in Task { await setLike(liked) } }
+					.colorScheme(.dark)
+			}
+			GlassAction(label: media.comments > 0 ? "\(media.comments)" : "Comentar") {
+				NavigationLink(value: Route.media(media.id)) { Icon(.chat, size: 24).frame(width: 46, height: 46) }
+					.accessibilityLabel("Comentários")
+			}
+			GlassAction(label: currentFavs.count > 1 ? "\(currentFavs.count)" : "Favorito", on: currentFavs.contains(app.me?.id ?? ""), onTint: .sun) {
+				FavButton(on: currentFavs.contains(app.me?.id ?? ""), tint: .white) { on in Task { await setFav(on) } }
+			}
 			if let onShare {
-				Button(action: onShare) { Icon(.share, size: 26).frame(width: 44, height: 44) }
-					.accessibilityLabel("Compartilhar com moldura")
-					.padding(.top, 6)
+				GlassAction(label: "Moldura") {
+					Button(action: onShare) { Icon(.frame, size: 24).frame(width: 46, height: 46) }
+						.accessibilityLabel("Compartilhar com moldura")
+				}
 			}
-			NavigationLink(value: Route.media(media.id)) { Icon(.expand, size: 26).frame(width: 44, height: 44) }
-				.accessibilityLabel("Abrir detalhes")
-				.padding(.top, 6)
-			if let onDelete {
-				Button(action: onDelete) { Icon(.trash, size: 24).frame(width: 44, height: 44) }
-					.accessibilityLabel("Apagar")
-					.padding(.top, 6)
-			}
+			GlassAction(label: "Salvar") { SaveOriginalButton(media: media, color: .white, size: 24) }
 		}
 		.foregroundStyle(.white)
-		.shadow(color: .black.opacity(0.6), radius: 3)
 	}
 
-	private func count(_ n: Int) -> some View {
-		Text("\(n)").font(.text(13, .extraBold)).foregroundStyle(.white).padding(.top, -6)
+	private var currentFavs: [String] { favs ?? media.favs ?? [] }
+
+	private func setFav(_ on: Bool) async {
+		guard let me = app.me?.id else { return }
+		let before = currentFavs
+		favs = on ? before + [me] : before.filter { $0 != me }
+		do { favs = try await Favorites.set(media.id, on) } catch {
+			favs = before
+			app.handle(error)
+		}
 	}
 
 	private var info: some View {
 		VStack(alignment: .leading, spacing: 6) {
-			HStack(spacing: 8) {
-				AvatarView(name: person?.name ?? "?", color: person?.tint ?? .muted, photo: person?.photo, size: 36)
-				Text(person?.name ?? "Alguém").font(.display(17))
-				Text(TripTime.date(media.at).map(TripTime.short) ?? "").font(.text(13)).opacity(0.85)
+			// tapping who posted opens the details (the old "expand" button)
+			NavigationLink(value: Route.media(media.id)) {
+				HStack(spacing: 8) {
+					AvatarView(name: person?.name ?? "?", color: person?.tint ?? .muted, photo: person?.photo, size: 36)
+					Text(person?.name ?? "Alguém").font(.display(17))
+					Text(TripTime.date(media.at).map(TripTime.short) ?? "").font(.text(13)).opacity(0.85)
+				}
 			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Abrir detalhes")
 			if !media.caption.isEmpty {
 				Text(media.caption).font(.text(15)).lineLimit(3)
 			}
@@ -220,7 +237,7 @@ struct ReelView: View {
 		.padding(.horizontal, 14)
 		.padding(.top, 48)
 		.padding(.bottom, 18 + safeBottom)
-		.padding(.trailing, 64)
+		.padding(.trailing, 76)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.background(LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .top, endPoint: .bottom).allowsHitTesting(false))
 	}
@@ -237,6 +254,38 @@ struct ReelView: View {
 			likers = before
 			app.handle(error)
 		}
+	}
+}
+
+/// One reel action: a dark frosted circle with a thin light ring, and a label under it.
+private struct GlassAction<Content: View>: View {
+	let label: String
+	var on = false
+	var onTint: Color = .white
+	@ViewBuilder let content: Content
+
+	var body: some View {
+		VStack(spacing: 3) {
+			content
+				.frame(width: 48, height: 48)
+				.glassCircle(tint: on ? onTint : nil)
+			Text(label).font(.text(11, .extraBold)).foregroundStyle(.white).shadow(color: .black.opacity(0.8), radius: 2).lineLimit(1)
+		}
+	}
+}
+
+extension View {
+	/// Dark frosted circle with a light ring (reels buttons); `tint` colors it when the action is on.
+	func glassCircle(tint: Color? = nil) -> some View {
+		background {
+			ZStack {
+				Circle().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+				Circle().fill((tint ?? Color(red: 0.08, green: 0.09, blue: 0.14)).opacity(tint == nil ? 0.35 : 0.3))
+			}
+		}
+		.overlay(Circle().strokeBorder((tint ?? .white).opacity(tint == nil ? 0.22 : 0.55), lineWidth: 1.5))
+		.clipShape(Circle())
+		.shadow(color: .black.opacity(0.28), radius: 7, y: 4)
 	}
 }
 

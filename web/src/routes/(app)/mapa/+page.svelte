@@ -8,7 +8,8 @@
 	import Icon, { ICONS } from '$lib/components/Icon.svelte';
 	import { dayKey, fmtAgo, fmtDateTime } from '$lib/format';
 	import { currentPosition, loc, startSharing, stopSharing } from '$lib/location.svelte';
-	import { animateIn, personElement, pinElement, polaroidElement } from '$lib/map-markers';
+	import { animateIn, personElement, pinElement, polaroidElement, stackElement } from '$lib/map-markers';
+	import { cluster, CLUSTER_MAX_ZOOM, padBounds, type Cluster } from '$lib/map-cluster';
 	import { TRIP_DAYS } from '$lib/trip';
 
 	let { data } = $props();
@@ -16,7 +17,6 @@
 	type ML = typeof import('maplibre-gl');
 	let map = $state<MLMap | null>(null);
 	let ml: ML | null = null;
-	let markers: Marker[] = [];
 	const seen = new Set<string>();
 	let latest = $state<typeof data.latest>([]);
 	$effect(() => {
@@ -24,7 +24,7 @@
 	});
 
 	const today = dayKey(Date.now());
-	const initialDay = TRIP_DAYS.includes(today) ? today : 'all';
+	const initialDay = 'all';
 	let day = $state(initialDay);
 	let person = $state('all');
 	let showFilters = $state(false);
@@ -36,50 +36,96 @@
 	const days = $derived([...new Set([...TRIP_DAYS, ...data.items.map((i) => i.day)])].sort());
 	const visible = (d: string, u: string) => (day === 'all' || d === day) && (person === 'all' || u === person);
 
-	function render(fit: boolean) {
-		if (!map || !ml) return;
-		for (const m of markers) m.remove();
-		markers = [];
-		const bounds = new ml.LngLatBounds();
-		let stagger = 0;
-		const enter = (key: string, node: HTMLElement) => {
-			if (seen.has(key)) return;
-			seen.add(key);
-			animateIn(node, Math.min(stagger++, 12) * 60);
-		};
+	type Item = (typeof data.items)[number] & { lat: number; lng: number };
+	/** cluster key → marker; only what's on screen (plus a margin) is on the map */
+	const itemMarkers = new Map<string, Marker>();
+	let personMarkers: Marker[] = [];
+	let stagger = 0;
 
-		for (const it of data.items) {
-			if (!visible(it.day, it.userId)) continue;
-			const p = byId.get(it.userId);
-			const color = p?.color ?? '#888';
-			let node: HTMLElement;
-			let anchor: 'center' | 'bottom' = 'bottom';
-			if (it.type === 'media') {
-				node = polaroidElement({
+	const shownItems = () => data.items.filter((it): it is Item => it.lat != null && it.lng != null && visible(it.day, it.userId));
+
+	function itemNode(c: Cluster<Item>) {
+		const it = c.items.find((i) => i.type === 'media') ?? c.items[0];
+		const p = byId.get(it.userId);
+		const color = p?.color ?? '#888';
+		if (c.items.length > 1) {
+			const node = stackElement({
+				id: it.id,
+				thumb: it.type === 'media' ? it.thumb : null,
+				color,
+				video: it.type === 'media' && it.kind === 'video',
+				count: c.items.length,
+				label: `${c.items.length} fotos e check-ins aqui. Toque para aproximar.`
+			});
+			node.onclick = () => zoomInto(c);
+			return { node, anchor: 'center' as const };
+		}
+		if (it.type === 'media')
+			return {
+				node: polaroidElement({
 					id: it.id,
 					href: `/m/${it.id}`,
 					thumb: it.thumb,
 					color,
 					video: it.kind === 'video',
 					label: `${it.kind === 'video' ? 'Vídeo' : 'Foto'} de ${p?.name ?? ''}, ${fmtDateTime(it.at)}`
-				});
-				anchor = 'center';
-			} else {
-				node = pinElement(color, { href: `/c/${it.id}`, label: `Check-in de ${p?.name ?? ''}, ${fmtDateTime(it.at)}` });
+				}),
+				anchor: 'center' as const
+			};
+		return { node: pinElement(color, { href: `/c/${it.id}`, label: `Check-in de ${p?.name ?? ''}, ${fmtDateTime(it.at)}` }), anchor: 'bottom' as const };
+	}
+
+	/** A pile was tapped: zoom until its photos separate. */
+	function zoomInto(c: Cluster<Item>) {
+		if (!map || !ml) return;
+		const b = new ml.LngLatBounds();
+		for (const i of c.items) b.extend([i.lng, i.lat]);
+		const span = Math.max(b.getEast() - b.getWest(), b.getNorth() - b.getSouth());
+		if (span < 0.0004) map.flyTo({ center: b.getCenter(), zoom: CLUSTER_MAX_ZOOM, duration: 700 });
+		else map.fitBounds(b, { padding: 90, maxZoom: CLUSTER_MAX_ZOOM, duration: 700 });
+	}
+
+	/** Re-clusters for the current zoom and view; markers that stay the same aren't touched. */
+	function drawItems() {
+		if (!map || !ml) return;
+		const b = map.getBounds();
+		const clusters = cluster(shownItems(), map.getZoom(), padBounds({ west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() }));
+		const want = new Set(clusters.map((c) => c.key));
+		for (const [k, m] of itemMarkers)
+			if (!want.has(k)) {
+				m.remove();
+				itemMarkers.delete(k);
 			}
-			enter(it.id, node);
-			markers.push(new ml.Marker({ element: node, anchor }).setLngLat([it.lng!, it.lat!]).addTo(map));
-			bounds.extend([it.lng!, it.lat!]);
+		stagger = 0;
+		for (const c of clusters) {
+			if (itemMarkers.has(c.key)) continue;
+			const { node, anchor } = itemNode(c);
+			if (!seen.has(c.key)) {
+				seen.add(c.key);
+				animateIn(node, Math.min(stagger++, 10) * 40);
+			}
+			itemMarkers.set(c.key, new ml.Marker({ element: node, anchor }).setLngLat([c.lng, c.lat]).addTo(map));
 		}
+	}
+
+	function render(fit: boolean) {
+		if (!map || !ml) return;
+		for (const m of personMarkers) m.remove();
+		personMarkers = [];
+		for (const m of itemMarkers.values()) m.remove();
+		itemMarkers.clear();
+		const bounds = new ml.LngLatBounds();
+		for (const it of shownItems()) bounds.extend([it.lng, it.lat]);
 
 		for (const l of latest) {
 			if (person !== 'all' && l.userId !== person) continue;
 			const node = personElement({ name: l.name, color: l.color, photo: l.photo, ago: fmtAgo(l.at), fresh: Date.now() - Date.parse(l.at) < 15 * 60_000 });
-			markers.push(new ml.Marker({ element: node, anchor: 'bottom' }).setLngLat([l.lng, l.lat]).addTo(map));
+			personMarkers.push(new ml.Marker({ element: node, anchor: 'bottom' }).setLngLat([l.lng, l.lat]).addTo(map));
 			if (day === 'all' || day === today) bounds.extend([l.lng, l.lat]);
 		}
 
 		if (fit && !bounds.isEmpty()) map.fitBounds(bounds, { padding: 70, maxZoom: 15, duration: 800 });
+		drawItems();
 	}
 
 	// ---- where am I ----
@@ -135,6 +181,7 @@
 	function ready(m: MLMap, lib: ML) {
 		ml = lib;
 		m.addControl(new LocateControl(), 'top-right');
+		m.on('moveend', drawItems);
 		map = m;
 		render(!hasFoco);
 	}

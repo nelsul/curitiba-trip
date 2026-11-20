@@ -21,7 +21,7 @@ enum class IconName(val res: Int) {
 	User(R.drawable.ic_user), Calendar(R.drawable.ic_calendar), People(R.drawable.ic_people), Pin(R.drawable.ic_pin),
 	Camera(R.drawable.ic_camera), Plane(R.drawable.ic_plane), Car(R.drawable.ic_car), Island(R.drawable.ic_island),
 	Chat(R.drawable.ic_chat), Check(R.drawable.ic_check), Heart(R.drawable.ic_heart), Download(R.drawable.ic_download),
-	Play(R.drawable.ic_play), Leaf(R.drawable.ic_leaf), Expand(R.drawable.ic_expand), Gallery(R.drawable.ic_gallery),
+	Play(R.drawable.ic_play), Leaf(R.drawable.ic_leaf), Expand(R.drawable.ic_expand), Stack(R.drawable.ic_stack), Gallery(R.drawable.ic_gallery),
 	Search(R.drawable.ic_search), Locate(R.drawable.ic_locate), Sound(R.drawable.ic_sound), Mute(R.drawable.ic_mute), Home(R.drawable.ic_home),
 	Wallet(R.drawable.ic_wallet), Grid(R.drawable.ic_grid), Sun(R.drawable.ic_sun), Partly(R.drawable.ic_partly), Cloud(R.drawable.ic_cloud), Fog(R.drawable.ic_fog), Rain(R.drawable.ic_rain), Storm(R.drawable.ic_storm), Share(R.drawable.ic_share), Trash(R.drawable.ic_trash), Close(R.drawable.ic_close), Sparkle(R.drawable.ic_sparkle), Copy(R.drawable.ic_copy), Bell(R.drawable.ic_bell), Video(R.drawable.ic_video), Up(R.drawable.ic_up), Down(R.drawable.ic_down), Plus(R.drawable.ic_plus), Clock(R.drawable.ic_clock), Ring(R.drawable.ic_ring), External(R.drawable.ic_external), Frame(R.drawable.ic_frame),
 }
@@ -40,6 +40,19 @@ fun HeartShape(filled: Boolean, color: Color, modifier: Modifier = Modifier, siz
 		scale(this.size.width / 24f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
 			if (filled) drawPath(heartPath, color)
 			drawPath(heartPath, color, style = Stroke(width = 2.3f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+		}
+	}
+}
+
+private val starPath = PathParser().parsePathString("M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z").toPath()
+
+/** The star (favorites), outlined or filled. */
+@Composable
+fun StarShape(filled: Boolean, color: Color, modifier: Modifier = Modifier, size: Dp = 26.dp) {
+	Canvas(modifier.size(size)) {
+		scale(this.size.width / 24f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+			if (filled) drawPath(starPath, color)
+			drawPath(starPath, color, style = Stroke(width = 2.2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
 		}
 	}
 }

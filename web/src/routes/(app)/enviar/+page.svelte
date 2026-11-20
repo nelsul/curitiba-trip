@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { headerSend } from '$lib/header-send.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { readMeta, uploadFile, type FileMeta } from '$lib/uploader';
 	import { currentPosition } from '$lib/location.svelte';
@@ -15,7 +16,8 @@
 		meta: FileMeta | null;
 		preview: string | null;
 		caption: string;
-		useDevice: boolean;
+		/** where the post goes on the map: the photo's own GPS, where the phone is now, or nowhere */
+		loc: 'photo' | 'here' | 'none';
 		state: 'ready' | 'uploading' | 'done' | 'error';
 		sent: number;
 		status: string;
@@ -44,7 +46,7 @@
 			meta: null,
 			preview: previewable(file) ? URL.createObjectURL(file) : null,
 			caption: '',
-			useDevice: false,
+			loc: 'none' as 'photo' | 'here' | 'none',
 			state: 'ready' as const,
 			sent: 0,
 			status: '',
@@ -58,17 +60,45 @@
 			if (!it.meta.kind) it.error = 'Tipo de arquivo não suportado.';
 			// Use the phone's current position only for things captured recently (or with unknown time).
 			const fresh = it.meta.takenAtSource !== 'exif' || Date.now() - new Date(it.meta.takenAt!).getTime() < FRESH_MS;
-			if (it.meta.locationSource !== 'exif' && fresh) needDevice.push(it);
+			if (it.meta.locationSource === 'exif') {
+				it.loc = 'photo';
+				void placeName(it.meta.lat!, it.meta.lng!);
+			} else if (fresh) needDevice.push(it);
 		}
-		if (needDevice.length) {
+		if (needDevice.length) await locate(needDevice);
+	}
+
+	/** The phone's position now (asked once), for "Onde estou agora". */
+	async function locate(forItems: Item[] = []) {
+		if (!device) {
 			try {
 				const p = await currentPosition();
 				device = { lat: p.lat, lng: p.lng };
-				for (const it of needDevice) it.useDevice = true;
+				deviceError = '';
+				void placeName(device.lat, device.lng);
 			} catch (err) {
 				deviceError = (err as Error).message;
+				return;
 			}
 		}
+		for (const it of forItems) it.loc = 'here';
+	}
+
+	// names of places (from /api/places/here), so it's clear where a post will be pinned
+	let names = $state<Record<string, string>>({});
+	const nameKey = (lat: number, lng: number) => `${lat.toFixed(4)},${lng.toFixed(4)}`;
+	async function placeName(lat: number, lng: number) {
+		const k = nameKey(lat, lng);
+		if (k in names) return;
+		names[k] = '';
+		const r = await fetch(`/api/places/here?lat=${lat}&lng=${lng}`).catch(() => null);
+		names[k] = r?.ok ? (await r.json()).name : '';
+	}
+	const nameAt = (lat: number | null, lng: number | null) => (lat == null || lng == null ? '' : names[nameKey(lat, lng)] || '');
+	async function choose(it: Item, loc: Item['loc']) {
+		if (loc === 'here' && !device) await locate();
+		if (loc === 'here' && !device) return;
+		it.loc = loc;
 	}
 
 	function remove(it: Item) {
@@ -95,10 +125,10 @@
 			it.error = '';
 			it.sent = 0;
 			const meta: FileMeta = { ...it.meta };
-			if (meta.locationSource !== 'exif') {
-				if (it.useDevice && device) Object.assign(meta, { lat: device.lat, lng: device.lng, locationSource: 'device' });
-				else Object.assign(meta, { lat: null, lng: null, locationSource: null });
-			}
+			if (it.loc === 'here' && device) {
+				// over the photo's own GPS: "manual", so the server keeps this choice
+				Object.assign(meta, { lat: device.lat, lng: device.lng, locationSource: it.meta.locationSource === 'exif' ? 'manual' : 'device' });
+			} else if (it.loc !== 'photo') Object.assign(meta, { lat: null, lng: null, locationSource: null });
 			try {
 				it.mediaId = await uploadFile({
 					file: it.file,
@@ -126,7 +156,16 @@
 		controller?.abort();
 	}
 
+	// the header's "Enviar" sends what's picked here
+	$effect(() => {
+		const n = running || allDone ? 0 : pending.length;
+		headerSend.count = n;
+		headerSend.run = n ? () => void start() : null;
+	});
+
 	onDestroy(() => {
+		headerSend.count = 0;
+		headerSend.run = null;
 		controller?.abort();
 		for (const i of items) if (i.preview) URL.revokeObjectURL(i.preview);
 	});
@@ -190,17 +229,28 @@
 							{#if it.meta?.takenAtSource === 'exif'} · {fmtDateTime(it.meta.takenAt!)}{/if}
 						</p>
 						{#if it.meta}
-							<p class="small">
-								{#if it.meta.locationSource === 'exif'}
-									<span class="loc ok"><Icon name="pin" size={15} /> Local da foto</span>
-								{:else if device && it.state === 'ready' && !running}
-									<label class="check"><input type="checkbox" bind:checked={it.useDevice} /> Usar minha localização atual</label>
-								{:else if it.useDevice && device}
-									<span class="loc ok"><Icon name="pin" size={15} /> Sua localização atual</span>
-								{:else}
-									<span class="muted">Sem local{it.meta.kind === 'video' ? ' (o vídeo pode ter; vamos verificar)' : ' — dá para marcar depois'}</span>
-								{/if}
-							</p>
+							{@const old = it.meta.takenAtSource === 'exif' && Date.now() - new Date(it.meta.takenAt!).getTime() > FRESH_MS}
+							<div class="where">
+								<div class="opts" role="radiogroup" aria-label="Local de {it.file.name}">
+									{#if it.meta.locationSource === 'exif'}
+										<button role="radio" aria-checked={it.loc === 'photo'} disabled={it.state !== 'ready' || running} onclick={() => choose(it, 'photo')}><Icon name="camera" size={14} /> Onde a foto foi tirada</button>
+									{/if}
+									<button role="radio" aria-checked={it.loc === 'here'} disabled={it.state !== 'ready' || running} onclick={() => choose(it, 'here')}><Icon name="locate" size={14} /> Onde estou agora</button>
+									{#if it.meta.locationSource !== 'exif'}
+										<button role="radio" aria-checked={it.loc === 'none'} disabled={it.state !== 'ready' || running} onclick={() => choose(it, 'none')}>Sem local</button>
+									{/if}
+								</div>
+								<p class="small where-now">
+									{#if it.loc === 'photo'}
+										<Icon name="pin" size={14} /> <strong>{nameAt(it.meta.lat, it.meta.lng) || 'Local da foto'}</strong> · gravado na própria foto
+									{:else if it.loc === 'here' && device}
+										<Icon name="pin" size={14} /> <strong>{nameAt(device.lat, device.lng) || 'Sua localização'}</strong> · onde você está agora
+										{#if old}<span class="warn">A foto é de {fmtDateTime(it.meta.takenAt!)}: confira se foi tirada aqui.</span>{/if}
+									{:else}
+										<span class="muted">Sem local{it.meta.kind === 'video' ? ' (se o vídeo tiver, ele é usado)' : ' — dá para marcar depois, no mapa'}</span>
+									{/if}
+								</p>
+							</div>
 						{/if}
 						{#if it.state === 'ready' && it.meta?.kind}
 							<textarea bind:value={it.caption} placeholder="Comentário (opcional)" rows="2" disabled={running}></textarea>
@@ -265,11 +315,15 @@
 	.row { display: flex; gap: 8px; align-items: start; }
 	.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 	.x { border: 0; background: none; font-size: 1.5rem; line-height: 1; min-width: 36px; min-height: 36px; cursor: pointer; color: var(--muted); margin: -6px -6px 0 0; }
-	.check { display: inline-flex; gap: 6px; align-items: center; min-height: 32px; }
-	.check input { width: 18px; height: 18px; }
+	.where { display: grid; gap: 4px; margin: 4px 0; }
+	.opts { display: flex; flex-wrap: wrap; gap: 6px; }
+	.opts button { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 10px; border-radius: 999px; border: 2px solid var(--line); background: var(--surface-2); color: var(--ink); font-weight: 800; font-size: 0.8rem; cursor: pointer; }
+	.opts button[aria-checked='true'] { background: var(--leaf); border-color: var(--leaf); color: var(--on-leaf); }
+	.opts button:disabled { cursor: default; opacity: 0.7; }
+	.where-now { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+	.where-now strong { color: var(--leaf); }
+	.warn { flex-basis: 100%; color: var(--sun); font-weight: 700; }
 	textarea { min-height: 56px; margin-top: 4px; }
-	.loc { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; }
-	.loc.ok { color: var(--leaf); }
 	.actions { border: 2.5px solid var(--line); box-shadow: 0 4px 0 var(--shadow);
 		margin-top: 16px; padding: 12px; background: var(--surface); border-radius: var(--radius); display: grid; gap: 8px; }
 	.actions p { margin: 0; }

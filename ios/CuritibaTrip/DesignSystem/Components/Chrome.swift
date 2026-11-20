@@ -3,6 +3,8 @@ import SwiftUI
 /// Top bar: plane tile + "Curitiba" + the dates stamp, with the dashed bottom edge, and the yellow "Enviar" button on the right.
 struct TopBar: View {
 	var sending = false
+	/// photos/videos picked on Enviar: the button then sends them (and shows how many)
+	var ready = 0
 	var onSend: () -> Void = {}
 	var bellActive = false
 	var onBell: () -> Void = {}
@@ -26,7 +28,7 @@ struct TopBar: View {
 			}
 			Spacer(minLength: 4)
 			BellButton(active: bellActive, action: onBell)
-			SendButton(active: sending, action: onSend)
+			SendButton(active: sending, ready: ready, action: onSend)
 		}
 		.padding(.horizontal, 16)
 		.padding(.vertical, 10)
@@ -71,6 +73,7 @@ private struct BellButton: View {
 /// "Enviar": the raised yellow pill at the top right (web header).
 private struct SendButton: View {
 	let active: Bool
+	var ready = 0
 	let action: () -> Void
 
 	var body: some View {
@@ -78,6 +81,12 @@ private struct SendButton: View {
 			HStack(spacing: 6) {
 				Icon(.upload, size: 22)
 				Text("Enviar").font(.display(17)).lineLimit(1).fixedSize()
+				if ready > 0 {
+					Text("\(ready)").font(.text(13, .extraBold)).foregroundStyle(Color.sun)
+						.padding(.horizontal, 6).frame(minWidth: 22, minHeight: 22)
+						.background(Capsule().fill(Color.onSun))
+						.transition(.scale.combined(with: .opacity))
+				}
 			}
 			.foregroundStyle(Color.onSun)
 			.padding(.leading, 12).padding(.trailing, 16)
@@ -88,7 +97,9 @@ private struct SendButton: View {
 		}
 		.buttonStyle(PressScale())
 		.animation(.bounce, value: active)
-		.accessibilityLabel("Enviar fotos e vídeos")
+		.animation(.bounce, value: ready)
+		.phaseAnimator([false, true], trigger: ready) { v, up in v.scaleEffect(up && ready > 0 ? 1.08 : 1) }
+		.accessibilityLabel(ready > 0 ? "Enviar \(ready) \(ready == 1 ? "arquivo" : "arquivos")" : "Enviar fotos e vídeos")
 		.accessibilityAddTraits(active ? .isSelected : [])
 	}
 }

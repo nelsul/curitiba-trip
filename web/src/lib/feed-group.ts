@@ -1,7 +1,12 @@
 import type { FeedCheckin, FeedItem, FeedMedia } from './types';
 
-/** Photos/videos by the same person on the same day, at most 30 min apart, become one carousel post. */
+/** Photos/videos by the same person on the same day, at most 30 min apart, used to become one carousel post. */
 export const GROUP_GAP_MS = 30 * 60_000;
+/**
+ * Photos per post. 1: every photo/video is its own post (carousels were dropped). Posts keep `items: [one]`
+ * so installed apps that still draw carousels keep decoding the feed.
+ */
+export const GROUP_MAX = 1;
 
 export type MediaPost = { type: 'media'; key: string; userId: string; day: string; at: string; items: FeedMedia[] };
 export type CheckinPost = { type: 'checkin'; key: string; userId: string; day: string; at: string; item: FeedCheckin };
@@ -25,6 +30,7 @@ export function groupPosts(items: FeedItem[]): Post[] {
 			last?.type === 'media' &&
 			last.userId === it.userId &&
 			last.day === it.day &&
+			last.items.length < GROUP_MAX &&
 			Date.parse(it.at) - Date.parse(last.at) <= GROUP_GAP_MS
 		) {
 			last.items.push(it);
@@ -43,4 +49,21 @@ export const postCursor = (p: Post) => `${p.at}|${p.key}`;
 export function isOlderThan(p: Post, cursor: string) {
 	const [at, key] = cursor.split('|');
 	return p.at < at || (p.at === at && p.key < key);
+}
+
+/** "Cronológico": every photo, video and check-in on its own, oldest first. */
+export function singlePosts(items: FeedItem[]): Post[] {
+	return [...items]
+		.sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))
+		.map((it) =>
+			it.type === 'checkin'
+				? { type: 'checkin' as const, key: `c${it.id}`, userId: it.userId, day: it.day, at: it.at, item: it }
+				: { type: 'media' as const, key: `m${it.id}`, userId: it.userId, day: it.day, at: it.at, items: [it] }
+		);
+}
+
+/** True when `p` comes after (is newer than) the cursor in oldest-first order. */
+export function isNewerThan(p: Post, cursor: string) {
+	const [at, key] = cursor.split('|');
+	return p.at > at || (p.at === at && p.key > key);
 }

@@ -221,6 +221,7 @@ extension UIImage {
 
 /// Mais › "Avisos e localização": one switch per kind of notification, and the background location.
 private struct AlertsCard: View {
+	@AppStorage(OriginalSaver.saveAsNewKey) private var saveAsNew = true
 	private var location: LocationSharing { .shared }
 	@State private var activity = Notifier.shared.isOn(.activity)
 	@State private var itinerary = Notifier.shared.isOn(.itinerary)
@@ -247,6 +248,8 @@ private struct AlertsCard: View {
 			.disabled(!background)
 			.opacity(background ? 1 : 0.5)
 			if let e = location.error { Text(e).font(.text(13, .bold)).foregroundStyle(Color.danger) }
+			Rectangle().fill(Color.line).frame(height: 2)
+			row("Salvar originais como fotos novas", "Ligado: o que você salva do diário aparece no topo das Fotos, com a data de hoje. Desligado: vai para o dia em que foi tirado.", $saveAsNew) { _ in }
 		}
 		.card()
 	}

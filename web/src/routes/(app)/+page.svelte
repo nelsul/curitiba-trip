@@ -9,6 +9,7 @@
 	import MediaGrid from '$lib/components/MediaGrid.svelte';
 	import ReelsViewer from '$lib/components/ReelsViewer.svelte';
 	import FrameMaker from '$lib/components/FrameMaker.svelte';
+	import BackToTop from '$lib/components/BackToTop.svelte';
 	import { fmtLongDay } from '$lib/format';
 	import { FRAME_MAX } from '$lib/frames';
 	import { TRIP_DAYS } from '$lib/trip';
@@ -143,27 +144,34 @@
 
 	// ── reels (shallow route, so the phone's back button closes them) ──
 	const reel = $derived((page.state as { reel?: string }).reel ?? null);
-	const openReel = (id: string) => pushState('', { reel: id });
+	// a second tap while the first is still opening would stack two history entries (and the X would need two taps)
+	const openReel = (id: string) => {
+		if (!reel) pushState('', { reel: id });
+	};
 	const closeReel = () => history.back();
 
 	// ── grid selection → frame ──
 	let selecting = $state(false);
 	let selected = $state<string[]>([]);
 	let framing = $state<string[] | null>(null);
-	let retroMsg = $state('');
+	/** "Baixar": the originals of the picked photos/videos (one file, or one ZIP with all of them) */
+	let downloading = $state<number | null>(null);
+	const SELECT_MAX = 100;
 
-	async function addToRetro() {
-		const r = await fetch('/api/retro').then((r) => r.json());
-		const ids = [...r.items.map((i: FeedMedia) => i.id), ...selected.filter((id) => !r.items.some((i: FeedMedia) => i.id === id))];
-		const res = await fetch('/api/admin/retro', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mediaIds: ids }) });
-		retroMsg = res.ok ? `${selected.length} na retrospectiva (${ids.length} no total).` : 'Não foi possível salvar.';
-		setTimeout(() => (retroMsg = ''), 3000);
-		if (res.ok) {
-			selecting = false;
-			selected = [];
-		}
+	function downloadSelected() {
+		const ids = [...selected];
+		// one at a time would be blocked by the browser after the first; several go together in a ZIP
+		const a = document.createElement('a');
+		a.href = ids.length === 1 ? `/api/media/${ids[0]}/original` : `/api/media/originais?ids=${ids.join(',')}`;
+		a.download = '';
+		document.body.append(a);
+		a.click();
+		a.remove();
+		downloading = ids.length;
+		setTimeout(() => (downloading = null), 4000);
+		selecting = false;
+		selected = [];
 	}
-
 	async function remove(id: string) {
 		if (!confirm('Apagar esta foto/vídeo para todo mundo? Não dá para desfazer.')) return;
 		const r = await fetch(`/api/media/${id}`, { method: 'DELETE' });
@@ -222,6 +230,7 @@
 	</div>
 	<Filters {days} persons={data.persons} bind:day bind:person />
 
+
 	{#if mode === 'grade'}
 		{#if grid === null}<p class="small muted center">{gridError ? 'Não foi possível carregar as fotos.' : 'Carregando fotos…'}</p>{/if}
 		<div class="grid-bar">
@@ -230,13 +239,13 @@
 				{selecting ? 'Cancelar' : 'Selecionar'}
 			</button>
 		</div>
-		{#if selecting}<p class="small muted hint">Escolha até {FRAME_MAX} fotos para juntar numa imagem com moldura.</p>{/if}
-		<MediaGrid media={selecting ? media.filter((m) => m.kind === 'photo' || data.me.isAdmin) : media} {selecting} bind:selected max={data.me.isAdmin ? 300 : FRAME_MAX} onopen={openReel} />
-		{#if retroMsg}<p class="toast" role="status">{retroMsg}</p>{/if}
+		{#if selecting}<p class="small muted hint">Escolha fotos e vídeos para baixar os originais, ou até {FRAME_MAX} fotos para juntar numa imagem com moldura.</p>{/if}
+		<MediaGrid {media} {selecting} bind:selected max={SELECT_MAX} onopen={openReel} />
+		{#if downloading}<p class="toast" role="status">{downloading === 1 ? 'Baixando o original…' : `Baixando ${downloading} originais num .zip…`}</p>{/if}
 		{#if selecting && selected.length}
 			<div class="select-bar card">
 				<strong>{selected.length} {selected.length === 1 ? 'escolhida' : 'escolhidas'}</strong>
-				{#if data.me.isAdmin}<button class="btn small secondary" onclick={addToRetro}><Icon name="sparkle" size={16} /> Retrospectiva</button>{/if}
+				<button class="btn small secondary" onclick={downloadSelected}><Icon name="download" size={16} /> Baixar</button>
 				<button class="btn small sun" onclick={() => (framing = [...selected])}
 					disabled={selected.length > FRAME_MAX || selected.some((id) => media.find((m) => m.id === id)?.kind !== 'photo')}>
 					<Icon name="frame" size={16} /> Moldura
@@ -278,6 +287,7 @@
 	<ReelsViewer {media} start={reel} persons={byId} meId={data.me.id} isAdmin={data.me.isAdmin} onclose={closeReel}
 		onshare={(id) => (framing = [id])} ondelete={remove} />
 {/if}
+{#if !reel}<BackToTop raised={selecting && selected.length > 0} />{/if}
 {#if framing}<FrameMaker ids={framing} onclose={() => (framing = null)} />{/if}
 
 <style>
@@ -286,6 +296,7 @@
 	.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; padding: 4px; background: var(--surface); border: 2.5px solid var(--line); border-radius: 999px; }
 	.modes button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 999px; background: none; color: var(--muted); font: 600 1rem var(--font-display); cursor: pointer; }
 	.modes button[aria-selected='true'] { background: var(--sea); color: var(--on-sea); }
+	.toast { position: fixed; z-index: 26; left: 50%; translate: -50% 0; bottom: calc(var(--nav-h) + 84px); background: var(--leaf); color: var(--on-leaf); font-weight: 800; padding: 8px 16px; border-radius: 999px; white-space: nowrap; }
 	.grid-bar { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px; }
 	.hint { margin: 0 0 8px; }
 	.select-bar {
@@ -293,7 +304,6 @@
 		display: flex; align-items: center; gap: 8px; padding: 10px 12px; animation: pop-in 0.3s var(--bounce);
 	}
 	.select-bar strong { margin-right: auto; }
-	.toast { position: fixed; z-index: 26; left: 50%; translate: -50% 0; bottom: calc(var(--nav-h) + 84px); background: var(--leaf); color: var(--on-leaf); font-weight: 800; padding: 8px 16px; border-radius: 999px; }
 	.empty { display: grid; gap: 12px; justify-items: center; text-align: center; padding: 28px 16px; }
 	.empty p { margin: 0; max-width: 32ch; }
 	.empty-art { color: var(--sea); animation: bob 3s ease-in-out infinite; }

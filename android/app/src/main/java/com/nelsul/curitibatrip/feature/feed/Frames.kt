@@ -259,7 +259,7 @@ fun FrameMakerDialog(items: List<FeedMedia>, onClose: () -> Unit) {
 			val name = here?.let { (lat, lng) ->
 				runCatching { Api.get<PlaceHere>("/api/places/here", mapOf("lat" to lat.toString(), "lng" to lng.toString())).name }.getOrNull()
 			}
-			if (place.isEmpty()) place = name ?: "Curitiba"
+			if (place.isEmpty()) place = name?.takeIf { it.isNotEmpty() } ?: "Curitiba"
 			locating = false
 		}
 	}

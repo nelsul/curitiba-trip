@@ -24,7 +24,7 @@ struct MapaView: View {
 
 	static let tripDays = TripTime.tripDays
 	static var today: String { TripTime.dayKey(Date().formatted(.iso8601)) }
-	static var initialDay: String { tripDays.contains(today) ? today : "all" }
+	static var initialDay: String { "all" }
 
 	private func visible(_ d: String, _ u: String) -> Bool { (day == "all" || d == day) && (person == nil || u == person) }
 

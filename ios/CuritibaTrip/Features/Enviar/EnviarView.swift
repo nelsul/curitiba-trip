@@ -51,8 +51,9 @@ struct EnviarView: View {
 
 				if needsAccess {
 					VStack(alignment: .leading, spacing: 8) {
-						Text("Para enviar o original com o local, o app precisa ver todas as suas fotos.")
+						Text("O app não vê algumas dessas fotos na galeria (acesso limitado), então elas vão como cópia do arquivo, com o local quando o arquivo tiver.")
 							.font(.text(15, .bold)).foregroundStyle(Color.ink)
+						Text("Para enviar sempre direto da galeria, permita acesso a todas as fotos.").font(.text(14)).foregroundStyle(Color.muted)
 						Button("Abrir Ajustes") { openURL(URL(string: UIApplication.openSettingsURLString)!) }
 							.buttonStyle(.chunky(.sea, small: true))
 					}
@@ -61,7 +62,7 @@ struct EnviarView: View {
 				if let message { Text(message).font(.text(14, .bold)).foregroundStyle(Color.danger) }
 
 				ForEach(model.drafts) { d in
-					DraftRow(draft: binding(d), hereAvailable: here != nil) { drafts.removeAll { $0.id == d.id } }
+					DraftRow(draft: binding(d), here: here, locateHere: locateHere) { if let f = d.file { PickedFiles.remove(f) }; drafts.removeAll { $0.id == d.id } }
 						.popIn()
 				}
 				if !drafts.isEmpty {
@@ -107,24 +108,34 @@ struct EnviarView: View {
 		picked = []
 		message = nil
 		let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-		guard status == .authorized || status == .limited else { needsAccess = true; return }
 		let ids = items.compactMap(\.itemIdentifier)
-		let found = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
 		var assets: [PHAsset] = []
-		found.enumerateObjects { a, _, _ in assets.append(a) }
-		// keep the order they were picked in
-		assets.sort { (ids.firstIndex(of: $0.localIdentifier) ?? 0) < (ids.firstIndex(of: $1.localIdentifier) ?? 0) }
-		if assets.count < ids.count {
-			needsAccess = status == .limited
-			if status != .limited { message = "Alguns itens não puderam ser abertos." }
-		} else {
-			needsAccess = false
+		if status == .authorized || status == .limited {
+			PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil).enumerateObjects { a, _, _ in assets.append(a) }
 		}
-		var needHere = false
+		// what the app can't see in the library (limited or no access): a copy of the file itself, so it still goes
+		var files: [(Int, PickedFile)] = []
+		var failed = 0
+		for (i, item) in items.enumerated() where !assets.contains(where: { $0.localIdentifier == item.itemIdentifier }) {
+			if let f = await PickedFiles.load(item) { files.append((i, f)) } else { failed += 1 }
+		}
+		needsAccess = !files.isEmpty
+		if failed > 0 { message = failed == 1 ? "Um item não pôde ser aberto." : "\(failed) itens não puderam ser abertos." }
+		// keep the order they were picked in
+		let order = { (id: String?) in items.firstIndex { $0.itemIdentifier == id } ?? 0 }
+		var new: [(Int, Draft)] = []
 		for a in assets where !drafts.contains(where: { $0.id == a.localIdentifier }) {
 			let fresh = a.creationDate.map { Date().timeIntervalSince($0) < Self.freshWindow } ?? true
-			if a.location == nil && fresh { needHere = true }
-			drafts.append(Draft(asset: a, useHere: a.location == nil && fresh))
+			new.append((order(a.localIdentifier), Draft(asset: a, loc: a.location != nil ? .photo : fresh ? .here : .none)))
+		}
+		for (i, f) in files {
+			let fresh = f.takenAt.map { Date().timeIntervalSince($0) < Self.freshWindow } ?? true
+			new.append((i, Draft(file: f, loc: f.hasLocation ? .photo : fresh ? .here : .none)))
+		}
+		var needHere = false
+		for (_, d) in new.sorted(by: { $0.0 < $1.0 }) {
+			if d.coordinate == nil && d.loc == .here { needHere = true }
+			drafts.append(d)
 		}
 		if needHere && here == nil {
 			do {
@@ -132,8 +143,21 @@ struct EnviarView: View {
 				here = (l.coordinate.latitude, l.coordinate.longitude)
 			} catch {
 				message = error.localizedDescription
-				for i in drafts.indices { drafts[i].useHere = false }
+				for i in drafts.indices where drafts[i].loc == .here { drafts[i].loc = .none }
 			}
+		}
+	}
+
+	/// "Onde estou agora" on a row while the position isn't known yet: ask for it once.
+	private func locateHere() async -> Bool {
+		if here != nil { return true }
+		do {
+			let l = try await LocationOnce.current()
+			here = (l.coordinate.latitude, l.coordinate.longitude)
+			return true
+		} catch {
+			message = error.localizedDescription
+			return false
 		}
 	}
 
@@ -151,7 +175,7 @@ struct EnviarView: View {
 				return
 			}
 			if let l = location { here = (l.coordinate.latitude, l.coordinate.longitude) }
-			withAnimation { drafts.append(Draft(asset: asset, useHere: false)) }
+			withAnimation { drafts.append(Draft(asset: asset, loc: asset.location != nil ? .photo : .none)) }
 		} catch {
 			message = "Não foi possível salvar nas Fotos: \(error.localizedDescription)"
 		}
@@ -181,13 +205,7 @@ struct EnviarView: View {
 		)
 	}
 
-	private func send() {
-		for d in drafts {
-			uploader.add(assetId: d.id, caption: d.caption.trimmingCharacters(in: .whitespacesAndNewlines),
-						 deviceLocation: d.asset.location == nil && d.useHere ? here : nil, wifiOnly: UploadNetwork.shared.wifiOnly)
-		}
-		withAnimation { drafts = [] }
-	}
+	private func send() { model.send() }
 }
 
 @MainActor @Observable
@@ -196,18 +214,47 @@ final class EnviarModel {
 	var drafts: [Draft] = []
 	/// The phone's position, asked once when a picked item has no location of its own.
 	var here: (Double, Double)?
+
+	/// Queues every picked item (the button under the list, or the top bar's "Enviar" while on this screen).
+	func send() {
+		for d in drafts {
+			Uploader.shared.add(assetId: d.id, caption: d.caption.trimmingCharacters(in: .whitespacesAndNewlines),
+								deviceLocation: d.loc == .here ? here : nil, overPhoto: d.loc == .here && d.coordinate != nil, file: d.file,
+								wifiOnly: UploadNetwork.shared.wifiOnly)
+		}
+		withAnimation { drafts = [] }
+	}
 }
 
 /// A picked item before it's sent.
 struct Draft: Identifiable {
-	let asset: PHAsset
+	/// a library item, or (limited/no Photos access) a copy of the picked file
+	let asset: PHAsset?
+	let file: PickedFile?
 	var caption = ""
-	var useHere: Bool
-	var id: String { asset.localIdentifier }
+	/// where the post goes on the map: the photo's own GPS, where the phone is now, or nowhere
+	enum Loc { case photo, here, none }
+	var loc: Loc
+	var id: String { asset?.localIdentifier ?? file?.id ?? "" }
+	var isVideo: Bool { asset.map { $0.mediaType == .video } ?? file?.isVideo ?? false }
+	var creationDate: Date? { asset?.creationDate ?? file?.takenAt }
+	/// the photo's own GPS
+	var coordinate: (Double, Double)? {
+		if let l = asset?.location { return (l.coordinate.latitude, l.coordinate.longitude) }
+		if let f = file, let a = f.lat, let b = f.lng { return (a, b) }
+		return nil
+	}
 
-	init(asset: PHAsset, useHere: Bool) {
+	init(asset: PHAsset, loc: Loc) {
 		self.asset = asset
-		self.useHere = useHere
+		self.file = nil
+		self.loc = loc
+	}
+
+	init(file: PickedFile, loc: Loc) {
+		self.asset = nil
+		self.file = file
+		self.loc = loc
 	}
 }
 
@@ -235,17 +282,18 @@ private struct PickerTile: View {
 
 private struct DraftRow: View {
 	@Binding var draft: Draft
-	let hereAvailable: Bool
+	let here: (Double, Double)?
+	let locateHere: () async -> Bool
 	let remove: () -> Void
 	@FocusState private var focused: Bool
 
 	var body: some View {
 		HStack(alignment: .top, spacing: 12) {
-			AssetThumb(assetId: draft.id)
+			AssetThumb(assetId: draft.id, file: draft.file)
 			VStack(alignment: .leading, spacing: 6) {
 				HStack(alignment: .top) {
-					Text(draft.asset.mediaType == .video ? "Vídeo" : "Foto").font(.text(16, .bold)).foregroundStyle(Color.ink)
-					if let d = draft.asset.creationDate {
+					Text(draft.isVideo ? "Vídeo" : "Foto").font(.text(16, .bold)).foregroundStyle(Color.ink)
+					if let d = draft.creationDate {
 						Text(TripTime.short(d)).font(.text(13)).foregroundStyle(Color.muted).lineLimit(1)
 					}
 					Spacer()
@@ -253,15 +301,7 @@ private struct DraftRow: View {
 						.frame(width: 36, height: 36).offset(x: 6, y: -8)
 						.accessibilityLabel("Remover")
 				}
-				if draft.asset.location != nil {
-					Label { Text("Local da foto") } icon: { Icon(.pin, size: 15) }
-						.font(.text(14, .extraBold)).foregroundStyle(Color.leaf)
-				} else if hereAvailable {
-					Toggle(isOn: $draft.useHere) { Text("Usar minha localização atual").font(.text(14)).foregroundStyle(Color.ink) }
-						.tint(.leaf)
-				} else {
-					Text("Sem local — dá para marcar depois").font(.text(14)).foregroundStyle(Color.muted)
-				}
+				LocationChoice(draft: $draft, here: here, locateHere: locateHere)
 				TextField("Comentário (opcional)", text: $draft.caption, axis: .vertical)
 					.lineLimit(1...4)
 					.focused($focused)
@@ -286,7 +326,7 @@ private struct JobRow: View {
 
 	var body: some View {
 		HStack(alignment: .top, spacing: 12) {
-			AssetThumb(assetId: job.assetId)
+			AssetThumb(assetId: job.assetId, file: job.file)
 			VStack(alignment: .leading, spacing: 4) {
 				HStack(alignment: .top) {
 					Text(job.name.isEmpty ? "Preparando…" : job.name).font(.text(16, .bold)).foregroundStyle(Color.ink).lineLimit(1)
@@ -346,6 +386,8 @@ private struct JobRow: View {
 /// A small polaroid of a library item.
 struct AssetThumb: View {
 	let assetId: String
+	/// a copy of the picked file instead of a library item
+	var file: PickedFile? = nil
 	@State private var image: UIImage?
 	@State private var isVideo = false
 
@@ -368,6 +410,11 @@ struct AssetThumb: View {
 	}
 
 	private func load() async {
+		if let file {
+			isVideo = file.isVideo
+			image = await PickedFiles.thumbnail(file)
+			return
+		}
 		guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil).firstObject else { return }
 		isVideo = asset.mediaType == .video
 		let options = PHImageRequestOptions()
@@ -436,5 +483,97 @@ private struct WifiOnlyCard: View {
 		}
 		.tint(.leaf)
 		.card()
+	}
+}
+
+/// Where a post goes on the map, chosen before sending: "Onde a foto foi tirada" (its own GPS), "Onde estou agora"
+/// (the phone's position) or "Sem local", with the place's name, so a photo taken earlier isn't pinned by mistake.
+private struct LocationChoice: View {
+	@Binding var draft: Draft
+	let here: (Double, Double)?
+	let locateHere: () async -> Bool
+	@State private var names = PlaceNames.shared
+
+	private var photoCoord: (Double, Double)? { draft.coordinate }
+	private var old: Bool { draft.creationDate.map { Date().timeIntervalSince($0) > 2 * 3600 } ?? false }
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			ScrollView(.horizontal, showsIndicators: false) {
+				HStack(spacing: 6) {
+					if photoCoord != nil { option(.photo, .camera, "Onde a foto foi tirada") }
+					option(.here, .locate, "Onde estou agora")
+					if photoCoord == nil { option(.none, nil, "Sem local") }
+				}
+			}
+			Group {
+				switch draft.loc {
+				case .photo:
+					line(name(photoCoord) ?? "Local da foto", "gravado na própria foto")
+				case .here where here != nil:
+					line(name(here) ?? "Sua localização", "onde você está agora")
+					if old, let d = draft.creationDate {
+						Text("A foto é de \(TripTime.short(d)): confira se foi tirada aqui.")
+							.font(.text(13, .bold)).foregroundStyle(Color.sun).fixedSize(horizontal: false, vertical: true)
+					}
+				default:
+					Text(draft.isVideo ? "Sem local (se o vídeo tiver, ele é usado)" : "Sem local — dá para marcar depois, no mapa")
+						.font(.text(13)).foregroundStyle(Color.muted)
+				}
+			}
+		}
+		.task(id: "\(draft.loc)|\(here?.0 ?? 0)|\(here?.1 ?? 0)") {
+			if let c = draft.loc == .photo ? photoCoord : here { await names.load(c) }
+		}
+	}
+
+	private func name(_ c: (Double, Double)?) -> String? { c.flatMap { names.name($0) } }
+
+	private func line(_ place: String, _ how: String) -> some View {
+		HStack(spacing: 4) {
+			Icon(.pin, size: 14).foregroundStyle(Color.leaf)
+			(Text(place).font(.text(14, .extraBold)).foregroundStyle(Color.leaf) + Text(" · \(how)").font(.text(13)).foregroundStyle(Color.muted))
+		}
+	}
+
+	private func option(_ value: Draft.Loc, _ icon: IconName?, _ label: String) -> some View {
+		let on = draft.loc == value
+		return Button {
+			Task {
+				if value == .here, !(await locateHere()) { return }
+				draft.loc = value
+			}
+		} label: {
+			HStack(spacing: 5) {
+				if let icon { Icon(icon, size: 14) }
+				Text(label)
+			}
+			.font(.text(13, .extraBold))
+			.foregroundStyle(on ? Color.onLeaf : Color.ink)
+			.padding(.horizontal, 10).frame(minHeight: 32)
+			.background(Capsule().fill(on ? Color.leaf : Color.surface2))
+			.overlay(Capsule().strokeBorder(on ? Color.leaf : Color.line, lineWidth: 2))
+		}
+		.buttonStyle(.plain)
+		.accessibilityAddTraits(on ? .isSelected : [])
+	}
+}
+
+/// Names for coordinates (GET /api/places/here), cached for the session.
+@MainActor @Observable
+final class PlaceNames {
+	static let shared = PlaceNames()
+	private var cache: [String: String] = [:]
+	private var asked: Set<String> = []
+	private struct Here: Decodable { let name: String }
+	private func key(_ c: (Double, Double)) -> String { String(format: "%.4f,%.4f", c.0, c.1) }
+
+	func name(_ c: (Double, Double)) -> String? { cache[key(c)] }
+
+	func load(_ c: (Double, Double)) async {
+		let k = key(c)
+		guard !asked.contains(k) else { return }
+		asked.insert(k)
+		if let h: Here = try? await API.shared.get("/api/places/here", query: ["lat": String(c.0), "lng": String(c.1)]), !h.name.isEmpty { cache[k] = h.name }
 	}
 }

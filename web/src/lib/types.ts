@@ -18,6 +18,8 @@ export type FeedMedia = {
 	width: number | null;
 	height: number | null;
 	likers: string[];
+	/** who starred it (oldest first); starred photos/videos make up the Retrospectiva */
+	favs: string[];
 	lat: number | null;
 	lng: number | null;
 	caption: string;

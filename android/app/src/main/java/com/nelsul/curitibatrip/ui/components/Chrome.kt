@@ -2,6 +2,9 @@ package com.nelsul.curitibatrip.ui.components
 
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.layout.requiredSizeIn
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -67,7 +70,7 @@ private fun Modifier.tile(fill: Color, edge: Color, radius: Float, depth: Float)
 
 /** Top bar: plane tile + "Curitiba" + the dates stamp, with the dashed bottom edge, and the yellow "Enviar" button on the right. */
 @Composable
-fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}, bellActive: Boolean = false, unread: Int = 0, onBell: () -> Unit = {}) {
+fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}, bellActive: Boolean = false, unread: Int = 0, onBell: () -> Unit = {}, ready: Int = 0) {
 	Row(
 		Modifier
 			.fillMaxWidth()
@@ -91,27 +94,34 @@ fun TopBar(sending: Boolean = false, onSend: () -> Unit = {}, bellActive: Boolea
 			}
 			Text("Curitiba", style = display(24), color = Palette.ink, maxLines = 1)
 			// the dates stamp gives way on narrow phones (the bell and "Enviar" always fit)
-			if (LocalConfiguration.current.screenWidthDp >= 400) Stamp("11–18/11", size = 12)
+			// (and while "Enviar" shows a count, which makes it wider)
+			if (ready == 0 && LocalConfiguration.current.screenWidthDp >= 400) Stamp("11–18/11", size = 12)
 		}
 		Spacer(Modifier.weight(1f))
 		BellButton(bellActive, unread, onBell)
-		SendButton(sending, onSend)
+		SendButton(sending, onSend, ready)
 	}
 }
 
-/** The bell left of "Enviar": opens the notifications, with a red count of unread ones. */
+/**
+ * The bell left of "Enviar": opens the notifications, with a red count of unread ones. The count is a sibling
+ * drawn above the bell, and the whole thing sits above "Enviar" (zIndex), which used to cover the count.
+ */
 @Composable
 private fun BellButton(active: Boolean, unread: Int, onClick: () -> Unit) {
-	Box(
-		Modifier.size(44.dp).background(Palette.shadow, CircleShape).padding(bottom = 3.dp)
-			.background(Palette.surface, CircleShape).border(2.5.dp, if (active) Palette.sea else Palette.line, CircleShape)
-			.pressable(onClick).semantics { contentDescription = if (unread > 0) "Notificações, $unread novas" else "Notificações"; selected = active },
-		contentAlignment = Alignment.Center,
-	) {
-		Icon(IconName.Bell, if (active) Palette.sea else Palette.ink, size = 22.dp)
+	Box(Modifier.zIndex(1f)) {
+		Box(
+			Modifier.size(44.dp).background(Palette.shadow, CircleShape).padding(bottom = 3.dp)
+				.background(Palette.surface, CircleShape).border(2.5.dp, if (active) Palette.sea else Palette.line, CircleShape)
+				.pressable(onClick).semantics { contentDescription = if (unread > 0) "Notificações, $unread novas" else "Notificações"; selected = active },
+			contentAlignment = Alignment.Center,
+		) {
+			Icon(IconName.Bell, if (active) Palette.sea else Palette.ink, size = 22.dp)
+		}
 		if (unread > 0) Box(
-			Modifier.align(Alignment.TopEnd).offset(x = 6.dp, y = (-6).dp).sizeIn(minWidth = 20.dp, minHeight = 20.dp)
-				.background(Palette.coral, CircleShape).border(2.dp, Palette.bg, CircleShape).padding(horizontal = 4.dp),
+			Modifier.align(Alignment.TopEnd).offset(x = 5.dp, y = (-5).dp).zIndex(2f).sizeIn(minWidth = 20.dp, minHeight = 20.dp)
+				.background(Palette.coral, CircleShape).border(2.dp, Palette.bg, CircleShape).padding(horizontal = 4.dp)
+				.clearAndSetSemantics {},
 			contentAlignment = Alignment.Center,
 		) { Text(if (unread > 99) "99+" else "$unread", style = body(11, FontWeight.ExtraBold), color = Color.White) }
 	}
@@ -119,7 +129,7 @@ private fun BellButton(active: Boolean, unread: Int, onClick: () -> Unit) {
 
 /** "Enviar": the raised yellow pill at the top right (web header). */
 @Composable
-private fun SendButton(active: Boolean, onClick: () -> Unit) {
+private fun SendButton(active: Boolean, onClick: () -> Unit, ready: Int = 0) {
 	val tilt by animateFloatAsState(if (active) -3f else 0f, snappy(), label = "send")
 	Row(
 		Modifier
@@ -133,12 +143,20 @@ private fun SendButton(active: Boolean, onClick: () -> Unit) {
 				drawRoundRect(Palette.sun, size = Size(size.width, size.height - 3.dp.toPx()), cornerRadius = r)
 			}
 			.padding(start = 12.dp, end = 16.dp)
-			.semantics(mergeDescendants = true) { contentDescription = "Enviar fotos e vídeos"; selected = active },
+			.semantics(mergeDescendants = true) {
+				contentDescription = if (ready > 0) "Enviar $ready ${if (ready == 1) "arquivo" else "arquivos"}" else "Enviar fotos e vídeos"
+				selected = active
+			},
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(6.dp),
 	) {
 		Icon(IconName.Upload, Palette.onSun, size = 22.dp)
 		Text("Enviar", style = display(17), color = Palette.onSun)
+		// photos picked on Enviar: the button sends them
+		if (ready > 0) Box(
+			Modifier.requiredSizeIn(minWidth = 24.dp, minHeight = 22.dp).background(Palette.onSun, CircleShape).padding(horizontal = 7.dp),
+			contentAlignment = Alignment.Center,
+		) { Text("$ready", style = body(13, FontWeight.ExtraBold), color = Palette.sun, maxLines = 1, softWrap = false) }
 	}
 }
 

@@ -35,7 +35,7 @@
 		<span class="ring"><Icon name="sparkle" size={big ? 40 : 28} /></span>
 		<div class="txt">
 			<strong class="t">Retrospectiva da viagem</strong>
-			<span class="small">Os melhores momentos, escolhidos a dedo. Toque para ver.</span>
+			<span class="small">Os favoritos de todo mundo. Toque para ver.</span>
 		</div>
 	</a>
 {/if}

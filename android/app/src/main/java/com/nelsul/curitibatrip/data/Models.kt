@@ -27,6 +27,8 @@ data class FeedMedia(
 	val width: Int? = null,
 	val height: Int? = null,
 	val likers: List<String> = emptyList(),
+	/** who starred it for the Retrospectiva (oldest first) */
+	val favs: List<String> = emptyList(),
 	val lat: Double? = null,
 	val lng: Double? = null,
 	val caption: String = "",
@@ -195,7 +197,8 @@ object Money {
 // ── Retrospectiva, the couple's likes, weather ──
 
 @Serializable data class Retro(val weddingAt: String, val items: List<FeedMedia> = emptyList())
-@Serializable data class RetroBody(val mediaIds: List<String>)
+@Serializable data class FavBody(val mediaId: String, val fav: Boolean)
+@Serializable data class FavResponse(val favs: List<String>)
 
 @Serializable
 data class CoupleLike(val id: Long, val likerId: String, val role: String, val mediaId: String? = null, val checkinId: String? = null, val image: String? = null)

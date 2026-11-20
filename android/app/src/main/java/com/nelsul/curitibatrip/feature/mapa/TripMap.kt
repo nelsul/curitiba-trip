@@ -1,5 +1,7 @@
 package com.nelsul.curitibatrip.feature.mapa
 
+import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.runtime.key
 import android.graphics.PointF
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
@@ -152,6 +154,7 @@ fun TripMap(
 	val lifecycle = LocalLifecycleOwner.current.lifecycle
 	var style by remember { mutableStateOf<Style?>(null) }
 	var tick by remember { mutableIntStateOf(0) } // bumps as the camera moves, so markers follow
+	var idle by remember { mutableIntStateOf(0) } // bumps when the camera stops: photos are re-piled then
 	val mapView = remember {
 		MapView(context).apply {
 			controller.view = this
@@ -163,7 +166,7 @@ fun TripMap(
 				m.uiSettings.setAttributionMargins(0, 0, 24, 24)
 				m.moveCamera(CameraUpdateFactory.newLatLngZoom(initial, initialZoom))
 				m.addOnCameraMoveListener { tick++ }
-				m.addOnCameraIdleListener { tick++; onCameraIdle(m.cameraPosition.target ?: initial) }
+				m.addOnCameraIdleListener { tick++; idle++; onCameraIdle(m.cameraPosition.target ?: initial) }
 				m.setStyle(Style.Builder().fromJson(styleJson)) { s ->
 					style = s
 					tick++
@@ -204,18 +207,125 @@ fun TripMap(
 				val pt = at(p.lat, p.lng)
 				Anchored(pt, 150.dp, 74.dp, bottom = true, density) { PersonMarker(p) }
 			}
-			items.forEach { it ->
-				val lat = it.lat ?: return@forEach
-				val lng = it.lng ?: return@forEach
-				val pt = at(lat, lng)
-				if (it.type == "checkin") Anchored(pt, 56.dp, 64.dp, bottom = true, density) {
-					PinMarker(colorFor(it.userId), Modifier.pressable({ onOpenItem(it) }).semantics { contentDescription = "Check-in" })
-				} else Anchored(pt, 64.dp, 72.dp, bottom = false, density) {
-					PolaroidMarker(it, colorFor(it.userId), Modifier.pressable({ onOpenItem(it) }).semantics { contentDescription = if (it.isVideo) "Vídeo" else "Foto" })
+			// photos close together on screen become one pile, and only what's in view (plus a margin) is drawn;
+			// re-piled when the camera stops, so moving the map only slides a few dozen markers
+			val groups = remember(items, idle, style) {
+				MapCluster.groups(items, map.cameraPosition.zoom, map.projection.visibleRegion.latLngBounds)
+			}
+			groups.forEach { g ->
+				key(g.key) {
+					val pt = at(g.lat, g.lng)
+					val it = g.items.firstOrNull { x -> x.type != "checkin" } ?: g.items[0]
+					if (g.items.size > 1) Anchored(pt, 72.dp, 80.dp, bottom = false, density) {
+						ClusterMarker(g.items, colorFor(it.userId), Modifier.pressable({ zoomInto(map, g.items) })
+							.semantics { contentDescription = "${g.items.size} fotos e check-ins aqui. Toque para aproximar." })
+					} else if (it.type == "checkin") Anchored(pt, 56.dp, 64.dp, bottom = true, density) {
+						PinMarker(colorFor(it.userId), Modifier.pressable({ onOpenItem(it) }).semantics { contentDescription = "Check-in" })
+					} else Anchored(pt, 64.dp, 72.dp, bottom = false, density) {
+						PolaroidMarker(it, colorFor(it.userId), Modifier.pressable({ onOpenItem(it) }).semantics { contentDescription = if (it.isVideo) "Vídeo" else "Foto" })
+					}
 				}
 			}
 			me?.let { Anchored(at(it.latitude, it.longitude), 48.dp, 48.dp, bottom = false, density) { MeDot() } }
 		}
+	}
+}
+
+/** A pile was tapped: zoom until its photos separate. */
+private fun zoomInto(map: MapLibreMap, items: List<MapItem>) {
+	val pts = items.mapNotNull { i -> if (i.lat != null && i.lng != null) LatLng(i.lat, i.lng) else null }
+	if (pts.isEmpty()) return
+	val lats = pts.map { it.latitude }
+	val lngs = pts.map { it.longitude }
+	if (maxOf(lats.max() - lats.min(), lngs.max() - lngs.min()) < 0.0004) {
+		return map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng((lats.max() + lats.min()) / 2, (lngs.max() + lngs.min()) / 2), MapCluster.MAX_ZOOM), 700)
+	}
+	map.animateCamera(CameraUpdateFactory.newLatLngBounds(LatLngBounds.Builder().includes(pts).build(), 180), 700, object : MapLibreMap.CancelableCallback {
+		override fun onCancel() {}
+		override fun onFinish() { if (map.cameraPosition.zoom > MapCluster.MAX_ZOOM) map.animateCamera(CameraUpdateFactory.zoomTo(MapCluster.MAX_ZOOM)) }
+	})
+}
+
+/**
+ * Groups map points that would overlap on screen (web $lib/map-cluster.ts and iOS MapCluster, same rules): newest
+ * first, each one joins the first pile whose seed is within RADIUS (dp at this zoom), otherwise it starts a new pile.
+ */
+object MapCluster {
+	const val RADIUS = 64.0
+	/** From this zoom on, every point gets its own marker. */
+	const val MAX_ZOOM = 18.0
+
+	data class Group(val key: String, val lat: Double, val lng: Double, val items: List<MapItem>)
+
+	/** Web-Mercator world units at `zoom` (512-unit tiles, like MapLibre). */
+	private fun project(lat: Double, lng: Double, zoom: Double): Pair<Double, Double> {
+		val scale = 512 * Math.pow(2.0, zoom)
+		val s = Math.sin(lat.coerceIn(-85.0, 85.0) * Math.PI / 180)
+		return (lng + 180) / 360 * scale to (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * scale
+	}
+
+	fun groups(items: List<MapItem>, zoom: Double, view: LatLngBounds?): List<Group> {
+		val z = Math.floor(zoom)
+		val located = items.filter { it.lat != null && it.lng != null }
+		val inView = if (view == null) located else {
+			// a quarter of the view as margin, so markers just off-screen are ready when the map pans
+			val h = (view.latitudeNorth - view.latitudeSouth) * 0.25
+			val w = (view.longitudeEast - view.longitudeWest) * 0.25
+			located.filter { it.lat!! in (view.latitudeSouth - h)..(view.latitudeNorth + h) && it.lng!! in (view.longitudeWest - w)..(view.longitudeEast + w) }
+		}
+		val sorted = inView.sortedWith(compareByDescending<MapItem> { it.at }.thenByDescending { it.id })
+		if (z >= MAX_ZOOM) return sorted.map { Group(it.id, it.lat!!, it.lng!!, listOf(it)) }
+
+		class Pile(val seed: MapItem, val x: Double, val y: Double) { val items = mutableListOf(seed) }
+		val piles = mutableListOf<Pile>()
+		val grid = HashMap<Long, MutableList<Int>>()
+		fun cell(cx: Long, cy: Long) = cx * 1_000_003L + cy
+		for (p in sorted) {
+			val (x, y) = project(p.lat!!, p.lng!!, z)
+			val cx = Math.floor(x / RADIUS).toLong()
+			val cy = Math.floor(y / RADIUS).toLong()
+			var found = -1
+			search@ for (dx in -1..1) for (dy in -1..1) for (i in grid[cell(cx + dx, cy + dy)] ?: emptyList()) {
+				if (Math.hypot(piles[i].x - x, piles[i].y - y) <= RADIUS) { found = i; break@search }
+			}
+			if (found >= 0) piles[found].items.add(p)
+			else {
+				grid.getOrPut(cell(cx, cy)) { mutableListOf() }.add(piles.size)
+				piles.add(Pile(p, x, y))
+			}
+		}
+		return piles.map { pile ->
+			val key = if (pile.items.size > 1) "${pile.seed.id}+${pile.items.size}" else pile.seed.id
+			Group(key, pile.seed.lat!!, pile.seed.lng!!, pile.items.toList())
+		}
+	}
+}
+
+/** Several photos/check-ins close together: the newest photo on a little pile, with how many (web .mk-stack). */
+@Composable
+private fun ClusterMarker(items: List<MapItem>, color: Color, modifier: Modifier) {
+	val top = items.firstOrNull { it.type != "checkin" }
+	val pop = remember { Animatable(0f) }
+	LaunchedEffect(Unit) { pop.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = 260f)) }
+	Box(modifier.size(72.dp, 80.dp).graphicsLayer { scaleX = 0.3f + 0.7f * pop.value; scaleY = 0.3f + 0.7f * pop.value; alpha = pop.value.coerceIn(0f, 1f) },
+		contentAlignment = Alignment.Center) {
+		Box(Modifier.size(48.dp, 56.dp).offset((-3).dp, 2.dp).rotate(-9f).shadow(3.dp, RoundedCornerShape(5.dp)).background(Color(0xFFF4ECD2), RoundedCornerShape(5.dp)))
+		Box(Modifier.size(48.dp, 56.dp).offset(4.dp, 1.dp).rotate(8f).shadow(3.dp, RoundedCornerShape(5.dp)).background(Color(0xFFEBE2C4), RoundedCornerShape(5.dp)))
+		Box(
+			Modifier.rotate(tiltFor(top?.id ?: items[0].id)).shadow(4.dp, RoundedCornerShape(5.dp)).background(Palette.polaroid, RoundedCornerShape(5.dp))
+				.padding(start = 4.dp, top = 4.dp, end = 4.dp, bottom = 9.dp),
+		) {
+			Box(Modifier.size(40.dp, 38.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFE9E0BF)), contentAlignment = Alignment.Center) {
+				if (top?.thumb != null) AsyncImage(top.thumb, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+				if (top?.isVideo == true) Icon(IconName.Play, Color.White, size = 14.dp)
+			}
+			Box(Modifier.align(Alignment.BottomCenter).offset(y = 9.dp).fillMaxWidth().height(5.dp).background(color))
+		}
+		Box(
+			Modifier.align(Alignment.TopEnd).offset((-2).dp, 4.dp).sizeIn(minWidth = 26.dp, minHeight = 26.dp).shadow(3.dp, CircleShape)
+				.background(Color(0xFFF2B84B), CircleShape).border(2.5.dp, Color.White, CircleShape).padding(horizontal = 6.dp),
+			contentAlignment = Alignment.Center,
+		) { Text(if (items.size > 999) "999+" else "${items.size}", style = body(13, FontWeight.ExtraBold), color = Color(0xFF3D2A08)) }
 	}
 }
 

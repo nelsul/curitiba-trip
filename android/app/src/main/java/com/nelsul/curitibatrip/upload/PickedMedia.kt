@@ -1,5 +1,6 @@
 package com.nelsul.curitibatrip.upload
 
+import android.content.Intent
 import android.content.ContentUris
 import android.content.Context
 import android.media.MediaMetadataRetriever
@@ -47,6 +48,8 @@ object MediaReader {
 			full.takeIf { runCatching { resolver.openInputStream(it)?.close(); true }.getOrDefault(false) }
 		}
 		val source = original ?: picked
+		// the picker's copy: keep the right to read it until it's sent (Wi‑Fi-only uploads can wait hours, after the app is closed)
+		if (original == null) runCatching { resolver.takePersistableUriPermission(picked, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
 
 		var name = "arquivo"
 		var size = 0L

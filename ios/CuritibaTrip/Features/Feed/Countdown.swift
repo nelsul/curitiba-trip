@@ -27,7 +27,7 @@ struct CountdownCard: View {
 				} else {
 					VStack(alignment: .leading, spacing: 2) {
 						Text("Retrospectiva da viagem").font(.display(19)).foregroundStyle(Color.ink)
-						Text("Os melhores momentos, escolhidos a dedo. Toque para ver.").font(.text(14)).foregroundStyle(Color.ink)
+						Text("Os favoritos de todo mundo. Toque para ver.").font(.text(14)).foregroundStyle(Color.ink)
 					}
 				}
 				if left <= 0 { Spacer(minLength: 0) }

@@ -1,5 +1,8 @@
 package com.nelsul.curitibatrip.feature.galeria
 
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import android.media.MediaPlayer
 import android.widget.VideoView
 import androidx.compose.foundation.background
@@ -48,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import coil3.compose.AsyncImage
+import com.nelsul.curitibatrip.feature.feed.pinchToZoom
 import com.nelsul.curitibatrip.AppState
 import com.nelsul.curitibatrip.LocalApp
 import com.nelsul.curitibatrip.data.Api
@@ -135,7 +139,7 @@ fun ReelsOverlay(items: List<FeedMedia>, start: String, onClose: () -> Unit, ope
 					onDelete = if (m.userId == app.me?.id || app.me?.isAdmin == true) ({ deleting = m }) else null)
 			}
 			Box(
-				Modifier.systemBarsPadding().padding(12.dp).size(44.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape)
+				Modifier.systemBarsPadding().padding(12.dp).size(44.dp).glassCircle()
 					.pressable(onClose).semantics { contentDescription = "Voltar ao diário" },
 				contentAlignment = Alignment.Center,
 			) { Icon(IconName.Close, Color.White, size = 20.dp) }
@@ -171,6 +175,17 @@ private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boo
 	val scope = rememberCoroutineScope()
 	val likers = remember { mutableStateMapOf<String, List<String>>() }
 	val current = likers[media.id] ?: media.likers
+	val favs = remember { mutableStateMapOf<String, List<String>>() }
+	val favNow = favs[media.id] ?: media.favs
+	fun setFav(on: Boolean) = scope.launch {
+		val me = app.me?.id ?: return@launch
+		val before = favNow
+		favs[media.id] = if (on) before + me else before - me
+		try { favs[media.id] = com.nelsul.curitibatrip.feature.feed.Favorites.set(media.id, on) } catch (e: Exception) {
+			favs[media.id] = before
+			app.handle(e)
+		}
+	}
 	var bigHeart by remember { mutableIntStateOf(0) }
 	var paused by remember { mutableStateOf(false) }
 	LaunchedEffect(playing) { if (playing) paused = false }
@@ -204,13 +219,8 @@ private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boo
 		if (media.isVideo && media.video != null) {
 			ReelVideo(media.video, media.image, playing && !paused, muted, Modifier.fillMaxWidth().aspectRatio(ratio, matchHeightConstraintsFirst = ratio < 1f))
 			if (!playing || paused) Icon(IconName.Play, Color.White.copy(alpha = 0.85f), size = 56.dp)
-			Box(
-				Modifier.align(Alignment.TopEnd).padding(12.dp).size(44.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape)
-					.pressable(onMute).semantics { contentDescription = if (muted) "Ligar o som" else "Desligar o som" },
-				contentAlignment = Alignment.Center,
-			) { Icon(if (muted) IconName.Mute else IconName.Sound, Color.White, size = 20.dp) }
 		} else {
-			AsyncImage(media.image, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+			AsyncImage(media.image, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().pinchToZoom())
 		}
 		BigHeart(bigHeart)
 
@@ -220,10 +230,12 @@ private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boo
 				.align(Alignment.BottomStart)
 				.fillMaxWidth()
 				.background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))))
-				.padding(start = 14.dp, end = 72.dp, top = 48.dp, bottom = 18.dp),
+				.padding(start = 14.dp, end = 80.dp, top = 48.dp, bottom = 18.dp),
 			verticalArrangement = Arrangement.spacedBy(6.dp),
 		) {
-			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			// tapping who posted opens the details (the old "expand" button)
+			Row(Modifier.pressable({ open(Route.Media(media.id)) }).semantics { contentDescription = "Abrir detalhes" },
+				verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 				Avatar(person?.name ?: "?", colorOf(person?.color), person?.photo, size = 36.dp)
 				Text(person?.name ?: "Alguém", style = display(17), color = Color.White)
 				Text(TripTime.instant(media.at)?.let { dateTime.format(it) } ?: "", style = body(13), color = Color.White.copy(alpha = 0.85f))
@@ -231,21 +243,62 @@ private fun Reel(media: FeedMedia, person: Person?, playing: Boolean, muted: Boo
 			if (media.caption.isNotEmpty()) Text(media.caption, style = body(15), color = Color.White, maxLines = 3, overflow = TextOverflow.Ellipsis)
 		}
 
-		// like, comments, details
+		// sound and delete up top, away from the actions (no deleting by accident)
+		Row(Modifier.align(Alignment.TopEnd).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			if (media.isVideo && media.video != null) Box(
+				Modifier.size(44.dp).glassCircle().pressable(onMute).semantics { contentDescription = if (muted) "Ligar o som" else "Desligar o som" },
+				contentAlignment = Alignment.Center,
+			) { Icon(if (muted) IconName.Mute else IconName.Sound, Color.White, size = 20.dp) }
+			if (onDelete != null) Box(
+				Modifier.size(44.dp).glassCircle().pressable(onDelete).semantics { contentDescription = "Apagar" },
+				contentAlignment = Alignment.Center,
+			) { Icon(IconName.Trash, Color.White, size = 20.dp) }
+		}
+
+		// frosted round buttons with a label under each (web Reel .glass): like, comment, star, frame, save
+		val me = app.me?.id
 		Column(
-			Modifier.align(Alignment.BottomEnd).padding(end = 6.dp, bottom = 28.dp),
+			Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 28.dp),
 			horizontalAlignment = Alignment.CenterHorizontally,
+			verticalArrangement = Arrangement.spacedBy(12.dp),
 		) {
-			LikeButton(current.contains(app.me?.id)) { setLike(it) }
-			if (current.isNotEmpty()) Count(current.size)
-			Icon(IconName.Chat, Color.White, Modifier.padding(top = 6.dp).pressable({ open(Route.Media(media.id)) }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 28.dp)
-			if (media.comments > 0) Count(media.comments)
-			if (onShare != null) Icon(IconName.Share, Color.White, Modifier.padding(top = 6.dp).pressable(onShare).padding(9.dp).semantics { contentDescription = "Compartilhar com moldura" }, size = 26.dp)
-			Icon(IconName.Expand, Color.White, Modifier.padding(top = 6.dp).pressable({ open(Route.Media(media.id)) }).padding(10.dp).semantics { contentDescription = "Abrir detalhes" }, size = 26.dp)
-			if (onDelete != null) Icon(IconName.Trash, Color.White, Modifier.padding(top = 6.dp).pressable(onDelete).padding(10.dp).semantics { contentDescription = "Apagar" }, size = 24.dp)
+			GlassAction(if (current.isEmpty()) "Curtir" else "${current.size}", on = current.contains(me), onTint = Palette.berry) {
+				LikeButton(current.contains(me)) { setLike(it) }
+			}
+			GlassAction(if (media.comments > 0) "${media.comments}" else "Comentar") {
+				Box(Modifier.fillMaxSize().pressable({ open(Route.Media(media.id)) }).semantics { contentDescription = "Comentários" }, contentAlignment = Alignment.Center) {
+					Icon(IconName.Chat, Color.White, size = 24.dp)
+				}
+			}
+			GlassAction(if (favNow.size > 1) "${favNow.size}" else "Favorito", on = favNow.contains(me), onTint = Palette.sun) {
+				com.nelsul.curitibatrip.feature.feed.FavButton(favNow.contains(me), Color.White, 25.dp) { setFav(it) }
+			}
+			if (onShare != null) GlassAction("Moldura") {
+				Box(Modifier.fillMaxSize().pressable(onShare).semantics { contentDescription = "Compartilhar com moldura" }, contentAlignment = Alignment.Center) {
+					Icon(IconName.Frame, Color.White, size = 24.dp)
+				}
+			}
+			GlassAction("Salvar") { com.nelsul.curitibatrip.feature.feed.SaveOriginalButton(media, Color.White, 24.dp) }
 		}
 	}
 }
+
+/** One reel action: a dark see-through circle with a thin light ring, and a label under it. */
+@Composable
+private fun GlassAction(label: String, on: Boolean = false, onTint: Color = Color.White, content: @Composable () -> Unit) {
+	Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+		Box(Modifier.size(48.dp).glassCircle(if (on) onTint else null), contentAlignment = Alignment.Center) { content() }
+		Text(label, style = body(11, FontWeight.ExtraBold).copy(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.8f), blurRadius = 4f)),
+			color = Color.White, maxLines = 1)
+	}
+}
+
+/** Reels buttons: dark see-through circle with a light ring; `tint` colors it when the action is on. */
+private fun Modifier.glassCircle(tint: Color? = null): Modifier =
+	shadow(7.dp, CircleShape, clip = false, ambientColor = Color.Black.copy(alpha = 0.3f), spotColor = Color.Black.copy(alpha = 0.3f))
+		.background(tint?.copy(alpha = 0.3f) ?: Color(0xFF141824).copy(alpha = 0.55f), CircleShape)
+		.border(1.5.dp, (tint ?: Color.White).copy(alpha = if (tint == null) 0.22f else 0.55f), CircleShape)
+		.clip(CircleShape)
 
 @Composable
 private fun Count(n: Int) = Text("$n", style = body(13, FontWeight.ExtraBold), color = Color.White, modifier = Modifier.padding(bottom = 2.dp))

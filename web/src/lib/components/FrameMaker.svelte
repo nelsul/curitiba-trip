@@ -30,7 +30,7 @@
 			navigator.geolocation.getCurrentPosition(
 				async (p) => {
 					const r = await fetch(`/api/places/here?lat=${p.coords.latitude}&lng=${p.coords.longitude}`).catch(() => null);
-					ok(r?.ok ? (await r.json()).name : 'Curitiba');
+					ok((r?.ok ? (await r.json()).name : '') || 'Curitiba');
 				},
 				() => ok('Curitiba'),
 				{ timeout: 10_000, maximumAge: 120_000 }

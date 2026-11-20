@@ -346,7 +346,23 @@ export const splitShares = pgTable(
 	(t) => [uniqueIndex('split_shares_pk').on(t.splitId, t.userId), index('split_shares_user_idx').on(t.userId)]
 );
 
-// ── Retrospectiva: photos/videos the admin picked, in their order, shown after the wedding ──
+// ── Favoritos: anyone can star a photo/video; the Retrospectiva shows every starred one, oldest first ──
+
+export const favorites = pgTable(
+	'favorites',
+	{
+		userId: uuid('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		mediaId: uuid('media_id')
+			.notNull()
+			.references(() => media.id, { onDelete: 'cascade' }),
+		createdAt: createdAt()
+	},
+	(t) => [uniqueIndex('favorites_pk').on(t.userId, t.mediaId), index('favorites_media_idx').on(t.mediaId)]
+);
+
+// ── Retrospectiva (old): photos/videos the admin picked. No longer used; favorites replaced it ──
 
 export const retroItems = pgTable('retro_items', {
 	mediaId: uuid('media_id')

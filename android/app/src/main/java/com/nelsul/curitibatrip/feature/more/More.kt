@@ -218,6 +218,11 @@ private fun AlertsCard() {
 		SwitchRow("Avisar quando chegar", "Ao chegar num lugar do roteiro: \"Chegou? Fazer check-in\".", arrival, enabled = background) {
 			arrival = it; Notifier.set(context, Notifier.Kind.Arrival, it)
 		}
+		Box(Modifier.fillMaxWidth().height(2.dp).background(Palette.line))
+		var asNew by remember { mutableStateOf(com.nelsul.curitibatrip.feature.feed.SaveOptions.asNew(context)) }
+		SwitchRow("Salvar originais como fotos novas", "Ligado: o que você salva do diário aparece no topo da galeria, com a data de hoje. Desligado: vai para o dia em que foi tirado.", asNew) {
+			asNew = it; com.nelsul.curitibatrip.feature.feed.SaveOptions.setAsNew(context, it)
+		}
 		note?.let {
 			Text(it, style = body(13, FontWeight.Bold), color = Palette.danger)
 			ChunkyButton("Abrir configurações", {

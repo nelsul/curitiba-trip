@@ -16,6 +16,8 @@ struct UploadJob: Codable, Identifiable, Sendable {
 	/// Only used when the photo itself has no location (the person chose "use my current location").
 	var deviceLat: Double?
 	var deviceLng: Double?
+	/// the person chose "Onde estou agora" over the photo's own GPS (sent as "manual", so the server keeps it)
+	var deviceOverPhoto: Bool?
 
 	var state: State = .waiting
 	var name = ""
@@ -33,6 +35,8 @@ struct UploadJob: Codable, Identifiable, Sendable {
 	/// Send the original only on Wi-Fi (a low-res preview goes to the diary first). Optional: older saved jobs lack it.
 	var wifiOnly: Bool?
 	var previewSent: Bool?
+	/// a copy of the picked file (limited/no Photos access) instead of a library item
+	var file: PickedFile?
 	var waitsForWifi: Bool { wifiOnly == true }
 }
 
@@ -124,12 +128,14 @@ final class Uploader {
 		Task { await reconcile() }
 	}
 
-	func add(assetId: String, caption: String, deviceLocation: (Double, Double)?, wifiOnly: Bool = false) {
+	func add(assetId: String, caption: String, deviceLocation: (Double, Double)?, overPhoto: Bool = false, file: PickedFile? = nil, wifiOnly: Bool = false) {
 		// the same photo already queued or sent from this phone: the server would also refuse a copy
 		if jobs.contains(where: { $0.assetId == assetId && $0.state != .failed }) { return }
 		jobs.removeAll { $0.assetId == assetId }
 		var job = UploadJob(id: UUID(), assetId: assetId, caption: caption, deviceLat: deviceLocation?.0, deviceLng: deviceLocation?.1)
 		job.wifiOnly = wifiOnly ? true : nil
+		job.deviceOverPhoto = overPhoto && deviceLocation != nil ? true : nil
+		job.file = file
 		jobs.append(job)
 		save()
 		pump()
@@ -172,6 +178,7 @@ final class Uploader {
 			for t in tasks where t.taskDescription?.hasPrefix(id.uuidString) == true { t.cancel() }
 		}
 		try? FileManager.default.removeItem(at: folder(job))
+		if let f = job.file, job.state != .done { PickedFiles.remove(f) }
 		if let mediaId = job.mediaId, job.state != .done {
 			Task { try? await API.shared.delete("/api/uploads/\(mediaId)") }
 		}
@@ -226,6 +233,8 @@ final class Uploader {
 		let j = jobs[i]
 		jobs[i] = UploadJob(id: j.id, assetId: j.assetId, caption: j.caption, deviceLat: j.deviceLat, deviceLng: j.deviceLng)
 		jobs[i].wifiOnly = j.wifiOnly
+		jobs[i].deviceOverPhoto = j.deviceOverPhoto
+		jobs[i].file = j.file
 		save()
 	}
 
@@ -233,6 +242,7 @@ final class Uploader {
 	private func prepare(_ id: UUID) async {
 		update(id) { $0.state = .preparing; $0.error = nil }
 		guard let job = jobs.first(where: { $0.id == id }) else { return }
+		if let file = job.file { return await prepareFile(id, job, file) }
 		guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [job.assetId], options: nil).firstObject else {
 			return fail(id, "A foto não está mais na sua galeria.")
 		}
@@ -256,7 +266,7 @@ final class Uploader {
 		guard size > 0 else { return fail(id, "Arquivo vazio.") }
 
 		let type = UTType(resource.uniformTypeIdentifier)?.preferredMIMEType ?? (isVideo ? "video/quicktime" : "image/heic")
-		let loc = asset.location?.coordinate
+		let loc = job.deviceOverPhoto == true ? nil : asset.location?.coordinate
 		let body = CreateUpload(
 			name: resource.originalFilename,
 			size: size,
@@ -265,7 +275,7 @@ final class Uploader {
 			takenAtSource: asset.creationDate == nil ? nil : "exif",
 			lat: loc?.latitude ?? job.deviceLat,
 			lng: loc?.longitude ?? job.deviceLng,
-			locationSource: loc != nil ? "device-library" : (job.deviceLat != nil ? "device" : nil),
+			locationSource: loc != nil ? "device-library" : job.deviceLat == nil ? nil : job.deviceOverPhoto == true ? "manual" : "device",
 			caption: job.caption,
 			clientAssetId: job.assetId
 		)
@@ -300,6 +310,62 @@ final class Uploader {
 		do {
 			try await Self.split(original, partSize: partSize, partCount: partCount, into: dir)
 		} catch {
+			return fail(id, "Sem espaço no iPhone para preparar o envio.")
+		}
+		update(id) { $0.partSize = partSize; $0.partCount = partCount; $0.state = .uploading }
+		await resumeParts(id)
+	}
+
+	/// Same as `prepare`, for a copy of a picked file (the app couldn't open it in the library).
+	private func prepareFile(_ id: UUID, _ job: UploadJob, _ file: PickedFile) async {
+		let dir = folder(job)
+		try? FileManager.default.removeItem(at: dir)
+		try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+		let original = dir.appending(path: "original")
+		do { try FileManager.default.copyItem(at: file.url, to: original) } catch {
+			return fail(id, "O arquivo escolhido não está mais disponível. Escolha de novo.")
+		}
+		let size = (try? FileManager.default.attributesOfItem(atPath: original.path)[.size] as? Int64) ?? 0
+		guard size > 0 else { return fail(id, "Arquivo vazio.") }
+		let own = job.deviceOverPhoto == true ? nil : file.lat.flatMap { a in file.lng.map { (a, $0) } }
+		let body = CreateUpload(
+			name: file.name,
+			size: size,
+			type: file.mime,
+			takenAt: file.takenAt.map { $0.formatted(.iso8601) },
+			takenAtSource: file.takenAt == nil ? nil : "exif",
+			lat: own?.0 ?? job.deviceLat,
+			lng: own?.1 ?? job.deviceLng,
+			locationSource: own != nil ? "exif" : job.deviceLat == nil ? nil : job.deviceOverPhoto == true ? "manual" : "device",
+			caption: job.caption,
+			clientAssetId: job.assetId
+		)
+		let created: UploadStart
+		do { created = try await API.shared.post("/api/uploads", body) } catch { return fail(id, error.localizedDescription) }
+		update(id) {
+			$0.name = file.name
+			$0.kind = file.isVideo ? "video" : "photo"
+			$0.size = size
+			$0.mediaId = created.id
+			$0.hasLocation = body.lat != nil
+		}
+		if created.duplicate == true {
+			try? FileManager.default.removeItem(at: dir)
+			PickedFiles.remove(file)
+			update(id) { $0.state = .done; $0.duplicate = true }
+			return
+		}
+		guard let partSize = created.partSize, let partCount = created.partCount, partCount > 0 else {
+			return fail(id, "Resposta inesperada do servidor.")
+		}
+		if jobs.first(where: { $0.id == id })?.waitsForWifi == true, created.preview != true, !UploadNetwork.shared.onWifi {
+			if let jpeg = await PickedFiles.thumbnail(file, side: 720)?.jpegData(compressionQuality: 0.7),
+			   let _: OK = try? await API.shared.put("/api/uploads/\(created.id)/preview", data: jpeg, contentType: "image/jpeg") {
+				update(id) { $0.previewSent = true }
+				arrivals += 1
+			}
+		}
+		do { try await Self.split(original, partSize: partSize, partCount: partCount, into: dir) } catch {
 			return fail(id, "Sem espaço no iPhone para preparar o envio.")
 		}
 		update(id) { $0.partSize = partSize; $0.partCount = partCount; $0.state = .uploading }
@@ -481,6 +547,7 @@ final class Uploader {
 		if !failed, (200..<300).contains(status) || status == 409 {
 			try? FileManager.default.removeItem(at: folder(job))
 			update(job.id) { $0.state = .done; $0.urls = [:]; $0.attempts = [:] }
+			if let f = job.file { PickedFiles.remove(f) }
 			inflight[job.id] = nil
 			arrivals += 1
 			pump()

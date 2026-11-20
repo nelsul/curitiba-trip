@@ -99,7 +99,7 @@ fun MapaScreen(contentPadding: PaddingValues, open: (Route) -> Unit, checkinRequ
 	var data by remember { mutableStateOf<MapData?>(null) }
 	var error by remember { mutableStateOf<String?>(null) }
 	val today = TripTime.dayKey(Instant.now().toString())
-	var day by remember { mutableStateOf(if (today in TripTime.tripDays) today else null) }
+	var day by remember { mutableStateOf<String?>(null) } // every day, like the web and iOS
 	var person by remember { mutableStateOf<String?>(null) }
 	var showFilters by remember { mutableStateOf(false) }
 	var checkingIn by remember { mutableStateOf(false) }

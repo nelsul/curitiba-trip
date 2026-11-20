@@ -1,5 +1,8 @@
 package com.nelsul.curitibatrip.feature.feed
 
+import com.nelsul.curitibatrip.ui.components.StarShape
+import com.nelsul.curitibatrip.data.FavResponse
+import com.nelsul.curitibatrip.data.FavBody
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -111,8 +114,19 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 	val scope = rememberCoroutineScope()
 	val pager = rememberPagerState { items.size }
 	val likers = remember { mutableStateMapOf<String, List<String>>() }
+	val favs = remember { mutableStateMapOf<String, List<String>>() }
 	var bigHeart by remember { mutableIntStateOf(0) }
 	val current = items[pager.currentPage.coerceIn(0, items.size - 1)]
+	fun favsOf(m: FeedMedia) = favs[m.id] ?: m.favs
+	fun setFav(m: FeedMedia, on: Boolean) = scope.launch {
+		val me = app.me?.id ?: return@launch
+		val before = favsOf(m)
+		favs[m.id] = if (on) before + me else before - me
+		try { favs[m.id] = Favorites.set(m.id, on) } catch (e: Exception) {
+			favs[m.id] = before
+			app.handle(e)
+		}
+	}
 	// same frame as the web: between 4:5 portrait and 1.91:1 landscape, from the first item
 	val ratio = items.first().let { m -> if (m.width != null && m.height != null && m.height > 0) (m.width.toFloat() / m.height).coerceIn(0.8f, 1.91f) else 1f }
 	fun likersOf(m: FeedMedia) = likers[m.id] ?: m.likers
@@ -132,10 +146,7 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 	val last = TripTime.time(items.last().at)
 
 	Column(Modifier.popIn().postFrame()) {
-		PostHeader(person, if (items.size > 1 && first != last) "$first–$last" else first) {
-			if (items.size > 1) Text("${pager.currentPage + 1}/${items.size}", style = body(13, FontWeight.ExtraBold), color = Palette.ink,
-				modifier = Modifier.background(Palette.surface2, CircleShape).border(2.dp, Palette.line, CircleShape).padding(horizontal = 8.dp))
-		}
+		PostHeader(person, if (items.size > 1 && first != last) "$first–$last" else first) {}
 		Box(Modifier.fillMaxWidth().aspectRatio(ratio).background(Color.Black)) {
 			HorizontalPager(pager, Modifier.fillMaxSize()) { i ->
 				MediaSlide(items[i], Modifier.pointerInput(items[i].id) {
@@ -146,14 +157,31 @@ fun MediaPost(items: List<FeedMedia>, person: Person?, open: Opener) {
 				})
 			}
 			BigHeart(bigHeart)
+			// more photos: a counter on the picture and a "next" arrow, like Instagram
+			if (items.size > 1) {
+				Row(
+					Modifier.align(Alignment.TopEnd).padding(10.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape).padding(horizontal = 9.dp, vertical = 4.dp)
+						.semantics(mergeDescendants = true) { contentDescription = "Foto ${pager.currentPage + 1} de ${items.size}" },
+					verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp),
+				) {
+					Icon(IconName.Stack, Color.White, size = 13.dp)
+					Text("${pager.currentPage + 1}/${items.size}", style = body(12, FontWeight.ExtraBold), color = Color.White)
+				}
+				if (pager.currentPage < items.size - 1) Box(
+					Modifier.align(Alignment.CenterEnd).padding(8.dp).size(28.dp).background(Color.White.copy(alpha = 0.75f), CircleShape)
+						.pressable({ scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } }).semantics { contentDescription = "Próxima foto" },
+					contentAlignment = Alignment.Center,
+				) { Text("›", style = body(20, FontWeight.Bold), color = Color(0xFF333333)) }
+			}
 		}
 		Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
 			LikeButton(likersOf(current).contains(app.me?.id)) { setLike(current, it) }
 			Icon(IconName.Chat, Palette.ink, Modifier.pressable({ open(Route.Media(current.id)) }).padding(9.dp).semantics { contentDescription = "Comentários" }, size = 26.dp)
 			Icon(IconName.Expand, Palette.ink, Modifier.pressable({ if (current.status == "ready" && openReel != null) openReel(current.id) else open(Route.Media(current.id)) }).padding(10.dp).semantics { contentDescription = "Abrir em tela cheia" }, size = 24.dp)
+			if (current.status != "preview") SaveOriginalButton(current)
 			Spacer(Modifier.weight(1f))
 			if (items.size > 1) Dots(items.size, pager.currentPage)
-			Spacer(Modifier.width(92.dp))
+			if (current.status == "ready") FavButton(favsOf(current).contains(app.me?.id)) { setFav(current, it) }
 		}
 		Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 			LikedBy(likersOf(current))
@@ -192,7 +220,8 @@ private fun MediaSlide(media: FeedMedia, modifier: Modifier) {
 				style = body(15, FontWeight.ExtraBold), color = Color.White.copy(alpha = 0.85f),
 			)
 		} else {
-			AsyncImage(media.image, contentDescription = if (media.isVideo) "Vídeo" else media.caption.ifEmpty { "Foto" }, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+			AsyncImage(media.image, contentDescription = if (media.isVideo) "Vídeo" else media.caption.ifEmpty { "Foto" }, contentScale = ContentScale.Crop,
+				modifier = if (media.isVideo) Modifier.fillMaxSize() else Modifier.fillMaxSize().pinchToZoom())
 		}
 		if (media.isVideo && media.status == "ready") {
 			Icon(IconName.Play, Color.White, size = 34.dp)
@@ -249,6 +278,35 @@ fun CheckinPost(checkin: FeedCheckin, person: Person?, open: Opener) {
 }
 
 /** The heart: fills pink, pops and throws little sparks when liked (web LikeButton). */
+/** POST /api/favorites: star or unstar a photo/video for the Retrospectiva; returns who starred it now. */
+object Favorites {
+	suspend fun set(mediaId: String, on: Boolean): List<String> =
+		Api.post<FavBody, FavResponse>("/api/favorites", FavBody(mediaId = mediaId, fav = on)).favs
+}
+
+/** The star (web FavButton): starred photos/videos go to the Retrospectiva. */
+@Composable
+fun FavButton(on: Boolean, tint: Color = Palette.ink, size: androidx.compose.ui.unit.Dp = 26.dp, toggle: (Boolean) -> Unit) {
+	val haptics = LocalHapticFeedback.current
+	val pop = remember { Animatable(1f) }
+	val scope = rememberCoroutineScope()
+	Box(
+		Modifier
+			.size(44.dp)
+			.pressable({
+				if (!on) {
+					haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+					scope.launch { pop.snapTo(0.5f); pop.animateTo(1f, bounce()) }
+				}
+				toggle(!on)
+			})
+			.semantics { contentDescription = if (on) "Tirar dos favoritos" else "Favoritar para a retrospectiva" },
+		contentAlignment = Alignment.Center,
+	) {
+		StarShape(on, if (on) Palette.sun else tint, Modifier.scale(pop.value), size = size)
+	}
+}
+
 @Composable
 fun LikeButton(liked: Boolean, toggle: (Boolean) -> Unit) {
 	val haptics = LocalHapticFeedback.current
@@ -314,9 +372,13 @@ internal fun BigHeart(trigger: Int) {
 
 @Composable
 fun Dots(count: Int, index: Int) {
+	// at most 5 dots, sliding with the photo (Instagram-style); the ones at the window's edges are smaller
+	val shown = minOf(5, count)
+	val start = (index - 2).coerceIn(0, count - shown)
 	Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-		repeat(count) { i ->
-			val s by animateFloatAsState(if (i == index) 1.25f else 1f, bounce(), label = "dot")
+		for (i in start until start + shown) {
+			val edge = count > shown && ((i == start && start > 0) || (i == start + shown - 1 && start + shown < count))
+			val s by animateFloatAsState(if (i == index) 1.25f else if (edge) 0.6f else 1f, bounce(), label = "dot")
 			Box(Modifier.scale(s).size(7.dp).background(if (i == index) Palette.sea else Palette.line, CircleShape))
 		}
 	}
