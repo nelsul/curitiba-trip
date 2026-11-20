@@ -1,21 +1,40 @@
 <script lang="ts">
-	import Avatar from '$lib/components/Avatar.svelte';
+	import { invalidate, pushState } from '$app/navigation';
+	import { page } from '$app/state';
 	import Icon from '$lib/components/Icon.svelte';
 	import Story from '$lib/components/Story.svelte';
-	import { fmtLongDay, fmtTime } from '$lib/format';
+	import MediaGrid from '$lib/components/MediaGrid.svelte';
+	import ReelsViewer from '$lib/components/ReelsViewer.svelte';
+	import FrameMaker from '$lib/components/FrameMaker.svelte';
+	import { fmtLongDay } from '$lib/format';
 	import type { FeedMedia } from '$lib/types';
 
 	let { data } = $props();
 	const byId = $derived(new Map(data.persons.map((p) => [p.id, p])));
 	let playing = $state<number | null>(null);
+	let framing = $state<string[] | null>(null);
 
 	/** Day → starred photos/videos, oldest first (the server already sends them in that order). */
 	const days = $derived.by(() => {
-		const out = new Map<string, { m: FeedMedia; i: number }[]>();
-		data.items.forEach((m, i) => (out.get(m.day) ?? out.set(m.day, []).get(m.day)!).push({ m, i }));
+		const out = new Map<string, FeedMedia[]>();
+		for (const m of data.items) (out.get(m.day) ?? out.set(m.day, []).get(m.day)!).push(m);
 		return [...out.entries()];
 	});
-	const names = (ids: string[]) => ids.map((id) => byId.get(id)?.name ?? '?').join(', ');
+	/** the cover: the most starred moment (the oldest of them on a tie) */
+	const cover = $derived(data.items.reduce<FeedMedia | null>((best, m) => (!best || m.favs.length > best.favs.length ? m : best), null));
+
+	// tapping a photo opens the reels (a shallow route, so the phone's back button closes them)
+	const reel = $derived((page.state as { reel?: string }).reel ?? null);
+	const openReel = (id: string) => {
+		if (!reel) pushState('', { reel: id });
+	};
+	async function remove(id: string) {
+		if (!confirm('Apagar esta foto/vídeo para todo mundo? Não dá para desfazer.')) return;
+		const r = await fetch(`/api/media/${id}`, { method: 'DELETE' });
+		if (!r.ok) return alert((await r.json().catch(() => null))?.message ?? 'Não foi possível apagar.');
+		if (data.items.length <= 1) history.back();
+		void invalidate('app:retro');
+	}
 </script>
 
 <svelte:head><title>Retrospectiva · Viagem a Curitiba</title></svelte:head>
@@ -26,7 +45,7 @@
 
 	{#if data.items.length}
 		<button class="play card" onclick={() => (playing = 0)}>
-			{#if data.items[0].image}<img src={data.items[0].image} alt="" />{/if}
+			{#if cover?.image}<img src={cover.image} alt="" />{/if}
 			<span class="ov">
 				<span class="pl"><Icon name="play" size={34} /></span>
 				<strong>Ver a retrospectiva</strong>
@@ -37,26 +56,7 @@
 		{#each days as [d, list] (d)}
 			<section class="day">
 				<h2 class="day-title">{fmtLongDay(d)}</h2>
-				<ul class="favs">
-					{#each list as { m, i } (m.id)}
-						{@const author = byId.get(m.userId)}
-						<li>
-							<a class="thumb" href="/m/{m.id}">
-								{#if m.thumb ?? m.image}<img src={m.thumb ?? m.image} alt={m.caption || `Foto de ${author?.name ?? ''}`} loading="lazy" />{/if}
-								{#if m.kind === 'video'}<span class="vid"><Icon name="play" size={14} /></span>{/if}
-							</a>
-							<div class="meta">
-								<span class="small"><strong>{author?.name ?? 'Alguém'}</strong> · {fmtTime(m.at)}</span>
-								{#if m.caption}<span class="small cap">{m.caption}</span>{/if}
-								<span class="by">
-									<span class="faces">{#each m.favs as id (id)}{@const p = byId.get(id)}<Avatar name={p?.name ?? '?'} color={p?.color ?? '#888'} photo={p?.photo} size={22} />{/each}</span>
-									<span class="small"><Icon name="star" size={12} /> {names(m.favs)}</span>
-								</span>
-							</div>
-							<button class="ib" onclick={() => (playing = i)} aria-label="Ver na retrospectiva"><Icon name="play" size={16} /></button>
-						</li>
-					{/each}
-				</ul>
+				<MediaGrid media={list} onopen={openReel} />
 			</section>
 		{/each}
 	{:else}
@@ -67,7 +67,12 @@
 	{/if}
 </main>
 
+{#if reel}
+	<ReelsViewer media={data.items} start={reel} persons={byId} meId={data.me.id} isAdmin={data.me.isAdmin} onclose={() => history.back()}
+		onshare={(id) => (framing = [id])} ondelete={remove} />
+{/if}
 {#if playing !== null}<Story items={data.items.slice(playing)} persons={byId} onclose={() => (playing = null)} />{/if}
+{#if framing}<FrameMaker ids={framing} onclose={() => (framing = null)} />{/if}
 
 <style>
 	.intro { margin: 0 0 14px; }
@@ -85,19 +90,8 @@
 	.day { margin-bottom: 20px; }
 	.day-title { font-size: 1.05rem; margin: 0 0 8px; }
 	.day-title::first-letter { text-transform: uppercase; }
-	.favs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-	.favs li { display: flex; align-items: center; gap: 10px; padding: 8px; background: var(--surface); border: 2px solid var(--line); border-radius: 16px; }
-	.thumb { position: relative; flex: none; width: 72px; height: 72px; border-radius: 12px; overflow: hidden; background: #111; }
-	.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-	.vid { position: absolute; right: 4px; bottom: 4px; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: rgb(0 0 0 / 0.6); color: #fff; }
-	.vid :global(svg) { fill: currentColor; }
-	.meta { flex: 1; min-width: 0; display: grid; gap: 3px; }
-	.cap { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.by { display: flex; align-items: center; gap: 6px; min-width: 0; }
-	.by .small { display: inline-flex; align-items: center; gap: 3px; color: var(--sun); font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.by :global(svg) { fill: currentColor; flex: none; }
-	.faces { display: flex; flex: none; }
-	.faces > :global(*) + :global(*) { margin-left: -7px; }
-	.ib { flex: none; width: 40px; height: 40px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); display: grid; place-items: center; cursor: pointer; }
-	.ib :global(svg) { fill: currentColor; }
+	@media (max-width: 520px) {
+		/* edge-to-edge grid on phones, like "Todas as fotos" */
+		.day :global(.grid) { margin: 0 -16px; }
+	}
 </style>

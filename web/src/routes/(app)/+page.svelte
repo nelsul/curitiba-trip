@@ -9,6 +9,7 @@
 	import MediaGrid from '$lib/components/MediaGrid.svelte';
 	import ReelsViewer from '$lib/components/ReelsViewer.svelte';
 	import FrameMaker from '$lib/components/FrameMaker.svelte';
+	import BackToTop from '$lib/components/BackToTop.svelte';
 	import { fmtLongDay } from '$lib/format';
 	import { FRAME_MAX } from '$lib/frames';
 	import { TRIP_DAYS } from '$lib/trip';
@@ -143,7 +144,10 @@
 
 	// ── reels (shallow route, so the phone's back button closes them) ──
 	const reel = $derived((page.state as { reel?: string }).reel ?? null);
-	const openReel = (id: string) => pushState('', { reel: id });
+	// a second tap while the first is still opening would stack two history entries (and the X would need two taps)
+	const openReel = (id: string) => {
+		if (!reel) pushState('', { reel: id });
+	};
 	const closeReel = () => history.back();
 
 	// ── grid selection → frame ──
@@ -283,6 +287,7 @@
 	<ReelsViewer {media} start={reel} persons={byId} meId={data.me.id} isAdmin={data.me.isAdmin} onclose={closeReel}
 		onshare={(id) => (framing = [id])} ondelete={remove} />
 {/if}
+{#if !reel}<BackToTop raised={selecting && selected.length > 0} />{/if}
 {#if framing}<FrameMaker ids={framing} onclose={() => (framing = null)} />{/if}
 
 <style>

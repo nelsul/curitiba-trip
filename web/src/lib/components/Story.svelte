@@ -103,6 +103,9 @@
 						<span class="small day">{fmtLongDay(cur.day)}</span>
 						{#if cur.favs?.length}<span class="small favby"><Icon name="star" size={13} /> favorito de {cur.favs.map((id) => persons.get(id)?.name ?? '?').join(', ')}</span>{/if}
 						{#if cur.caption}<p>{cur.caption}</p>{/if}
+						<a class="details" href="/m/{cur.id}" onpointerdown={(e) => e.stopPropagation()} onpointerup={(e) => e.stopPropagation()}>
+							<Icon name="info" size={16} /> Ver detalhes
+						</a>
 					</div>
 				</div>
 			{:else}
@@ -123,11 +126,16 @@
 	.bars i { display: block; height: 100%; background: #fff; }
 	.close { position: absolute; z-index: 4; top: calc(22px + env(safe-area-inset-top)); right: 10px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgb(0 0 0 / 0.35); color: #fff; display: grid; place-items: center; cursor: pointer; }
 	.stage { position: absolute; inset: 0; max-width: 600px; margin: 0 auto; touch-action: none; }
-	.media { position: absolute; inset: 0; display: grid; place-items: center; animation: zoom 6s ease-out both; }
+	.media { position: absolute; inset: 0; display: grid; place-items: center; animation: fade 0.35s ease-out both; }
 	.media img, .media video { width: 100%; height: 100%; object-fit: contain; }
-	@keyframes zoom { from { transform: scale(1.06); opacity: 0; } 8% { opacity: 1; } to { transform: scale(1); } }
+	@keyframes fade { from { opacity: 0; } }
 	.cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 60px 18px calc(24px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgb(0 0 0 / 0.7)); display: grid; gap: 4px; }
 	.cap p { margin: 0; }
+	.details {
+		justify-self: start; display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 8px 14px; border-radius: 999px;
+		background: rgb(255 255 255 / 0.16); border: 1.5px solid rgb(255 255 255 / 0.3); color: #fff; font-weight: 800; text-decoration: none;
+		-webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+	}
 	.who { display: flex; align-items: center; gap: 8px; }
 	.who strong { font: 600 1.1rem var(--font-display); }
 	.favby { display: inline-flex; align-items: center; gap: 4px; color: #ffd166; font-weight: 800; }

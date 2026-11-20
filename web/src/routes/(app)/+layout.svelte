@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { afterNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { restoreSharing, loc } from '$lib/location.svelte';
 	import { ICONS } from '$lib/components/Icon.svelte';
@@ -16,6 +17,45 @@
 		{ href: '/mais', label: 'Mais', short: 'Mais', color: 'var(--plum)', icon: 'M12 8a4 4 0 1 0 0 .01M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6' }
 	];
 	const active = (href: string) => (href === '/' ? page.url.pathname === '/' : page.url.pathname.startsWith(href));
+
+	/** Diário in the menu while already on it: back to the top (like tapping a tab twice in an app). */
+	function tab(e: MouseEvent, href: string) {
+		if (href !== '/' || page.url.pathname !== '/' || e.metaKey || e.ctrlKey) return;
+		e.preventDefault();
+		window.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+
+	// Installed on the iPhone's home screen, iOS can leave the page shorter than the screen (after the keyboard
+	// closes, mostly): the menu floats above an empty band. Hiding and showing the page makes it measure again.
+	let healViewport = () => {};
+	afterNavigate(() => setTimeout(() => healViewport(), 50));
+	onMount(() => {
+		const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone;
+		if (!standalone) return;
+		const tallest = new Map<number, number>(); // per width, so turning the phone doesn't count
+		const seen = () => tallest.set(innerWidth, Math.max(tallest.get(innerWidth) ?? 0, innerHeight));
+		healViewport = () => {
+			seen();
+			const a = document.activeElement as HTMLElement | null;
+			if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable)) return; // keyboard up
+			if ((tallest.get(innerWidth) ?? 0) - innerHeight <= 4) return;
+			const y = scrollY;
+			document.body.style.display = 'none';
+			void document.body.offsetHeight;
+			document.body.style.display = '';
+			scrollTo(0, y);
+		};
+		seen();
+		const later = () => setTimeout(healViewport, 150);
+		addEventListener('resize', seen);
+		addEventListener('focusout', later);
+		document.addEventListener('visibilitychange', later);
+		return () => {
+			removeEventListener('resize', seen);
+			removeEventListener('focusout', later);
+			document.removeEventListener('visibilitychange', later);
+		};
+	});
 
 	onMount(() => {
 		restoreSharing();
@@ -62,7 +102,7 @@
 
 <nav class="dock" aria-label="Principal">
 	{#each items as it}
-		<a href={it.href} aria-current={active(it.href) ? 'page' : undefined} style:--c={it.color}>
+		<a href={it.href} aria-current={active(it.href) ? 'page' : undefined} style:--c={it.color} onclick={(e) => tab(e, it.href)}>
 			<span class="tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={it.icon} /></svg></span>
 			<span class="label">{it.short}</span>
 		</a>
@@ -73,7 +113,8 @@
 	.top {
 		position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 10px;
 		padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
-		background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
+		/* solid: a see-through blurred bar looked out of focus over the photos */
+		background: var(--bg);
 		border-bottom: 2.5px dashed var(--line);
 	}
 	.brand { margin-right: auto; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); }

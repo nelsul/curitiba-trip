@@ -48,7 +48,8 @@
 		clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
 		ring: 'M12 21a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM9 4.5 10.5 2h3L15 4.5 12 8z',
 		external: 'M10 14 20 4m0 0h-6m6 0v6M19 13v7H4V5h7',
-		frame: 'M3 3h18v18H3zM6.5 6.5h11v8h-11zM6.5 18h6'
+		frame: 'M3 3h18v18H3zM6.5 6.5h11v8h-11zM6.5 18h6',
+		info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 8v5m0-8v.01'
 	} as const;
 	export type IconName = keyof typeof ICONS;
 </script>
