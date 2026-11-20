@@ -235,9 +235,11 @@
 		{#if grid === null}<p class="small muted center">{gridError ? 'Não foi possível carregar as fotos.' : 'Carregando fotos…'}</p>{/if}
 		<div class="grid-bar">
 			<span class="small muted">{media.length} {media.length === 1 ? 'item' : 'itens'}</span>
-			<button class="btn small" class:secondary={selecting} onclick={() => { selecting = !selecting; selected = []; }}>
-				{selecting ? 'Cancelar' : 'Selecionar'}
-			</button>
+			{#if !data.guest}
+				<button class="btn small" class:secondary={selecting} onclick={() => { selecting = !selecting; selected = []; }}>
+					{selecting ? 'Cancelar' : 'Selecionar'}
+				</button>
+			{/if}
 		</div>
 		{#if selecting}<p class="small muted hint">Escolha fotos e vídeos para baixar os originais, ou até {FRAME_MAX} fotos para juntar numa imagem com moldura.</p>{/if}
 		<MediaGrid {media} {selecting} bind:selected max={SELECT_MAX} onopen={openReel} />

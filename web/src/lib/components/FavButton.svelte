@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isGuest } from '$lib/guest';
+	const guest = isGuest();
 	import Icon from './Icon.svelte';
 
 	let {
@@ -35,10 +37,10 @@
 	}
 </script>
 
-<button type="button" class="fav" class:on onclick={toggle} aria-pressed={on}
+{#if !guest}<button type="button" class="fav" class:on onclick={toggle} aria-pressed={on}
 	aria-label={on ? 'Tirar dos favoritos' : 'Favoritar para a retrospectiva'} title={on ? 'Tirar dos favoritos' : 'Favoritar (vai para a retrospectiva)'}>
 	{#key burst}<span class="star" class:pop={burst > 0 && on}><Icon name="star" {size} stroke={2.2} /></span>{/key}
-</button>
+</button>{/if}
 
 <style>
 	.fav { display: grid; place-items: center; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }

@@ -1,5 +1,8 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
+	import { isGuest } from '$lib/guest';
+	/** visitors only look */
+	const guest = isGuest();
 
 	let {
 		target,
@@ -21,6 +24,7 @@
 
 	/** Toggle (or force) the like. Optimistic: the heart reacts instantly, the server catches up. */
 	export function set(next: boolean) {
+		if (guest) return;
 		if (next === liked) {
 			if (next) burst++; // double-tap on an already-liked photo still celebrates
 			return;
@@ -44,14 +48,14 @@
 	}
 </script>
 
-<button type="button" class="like" class:liked onclick={() => set(!liked)} aria-pressed={liked} aria-label={liked ? 'Descurtir' : 'Curtir'}>
+{#if !guest}<button type="button" class="like" class:liked onclick={() => set(!liked)} aria-pressed={liked} aria-label={liked ? 'Descurtir' : 'Curtir'}>
 	{#key burst}
 		<span class="heart" class:pop={burst > 0 && liked}><Icon name="heart" {size} stroke={2.2} /></span>
 		{#if burst > 0 && liked}
 			<span class="sparks" aria-hidden="true">{#each Array(6) as _, i}<i style:--a="{i * 60}deg"></i>{/each}</span>
 		{/if}
 	{/key}
-</button>
+</button>{/if}
 
 <style>
 	.like { position: relative; display: grid; place-items: center; min-width: 44px; min-height: 44px; padding: 0; border: 0; background: none; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }

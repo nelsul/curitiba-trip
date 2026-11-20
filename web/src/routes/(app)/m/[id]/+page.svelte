@@ -82,6 +82,7 @@
 		{#if mine}<button class="link" onclick={() => { caption = it.caption; editCaption = true; }}>{it.caption ? 'Editar texto' : 'Adicionar texto'}</button>{/if}
 	{/if}
 
+	{#if !data.guest}
 	<section class="place">
 		<h2>Onde</h2>
 		{#if editLoc}
@@ -102,6 +103,7 @@
 			{#if mine}<button class="btn small secondary" onclick={() => { lat = null; lng = null; editLoc = true; }}>Marcar no mapa</button>{/if}
 		{/if}
 	</section>
+	{/if}
 
 	<section class="file small muted">
 		<p>

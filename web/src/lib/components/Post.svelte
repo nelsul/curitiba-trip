@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isGuest } from '$lib/guest';
+	const guest = isGuest();
 	import CommentPreview from './CommentPreview.svelte';
 	import Avatar from './Avatar.svelte';
 	import Icon from './Icon.svelte';
@@ -35,7 +37,7 @@
 		return Math.min(1.91, Math.max(0.8, r));
 	});
 
-	let likeBtn: LikeButton;
+	let likeBtn = $state<LikeButton>();
 	let bigHeart = $state(0);
 	let lastTap = 0;
 	let single: ReturnType<typeof setTimeout> | undefined;
@@ -45,8 +47,10 @@
 		const now = e.timeStamp;
 		if (now - lastTap < 320) {
 			clearTimeout(single);
-			likeBtn.set(true);
-			bigHeart++;
+			if (likeBtn) {
+				likeBtn.set(true);
+				bigHeart++;
+			}
 			lastTap = 0;
 		} else {
 			lastTap = now;
@@ -100,7 +104,7 @@
 			<a class="act" href="/m/{cur.id}" aria-label="Abrir em tela cheia"><Icon name="expand" size={24} /></a>
 		{/if}
 		{#if cur.status !== 'preview'}
-			<a class="act" href="/api/media/{cur.id}/original" download aria-label="Salvar original" title="Salvar original"><Icon name="download" size={24} /></a>
+			{#if !guest}<a class="act" href="/api/media/{cur.id}/original" download aria-label="Salvar original" title="Salvar original"><Icon name="download" size={24} /></a>{/if}
 		{/if}
 		{#if cur.status === 'ready'}<span class="end"><FavButton mediaId={cur.id} {favs} {meId} onchange={(f) => (favs = f)} /></span>{/if}
 	</div>

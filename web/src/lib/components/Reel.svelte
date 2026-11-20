@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isGuest } from '$lib/guest';
+	const guest = isGuest();
 	import { justZoomed, pinchZoom } from '$lib/zoom';
 	import Avatar from './Avatar.svelte';
 	import Icon from './Icon.svelte';
@@ -35,7 +37,7 @@
 
 	let video = $state<HTMLVideoElement>();
 	let paused = $state(true);
-	let likeBtn: LikeButton;
+	let likeBtn = $state<LikeButton>();
 	let bigHeart = $state(0);
 	let lastTap = 0;
 	let single: ReturnType<typeof setTimeout> | undefined;
@@ -45,8 +47,10 @@
 		if ((e.target as HTMLElement).closest('a, button') || justZoomed()) return;
 		if (e.timeStamp - lastTap < 300) {
 			clearTimeout(single);
-			likeBtn.set(true);
-			bigHeart++;
+			if (likeBtn) {
+				likeBtn.set(true);
+				bigHeart++;
+			}
 			lastTap = 0;
 			return;
 		}
@@ -90,28 +94,30 @@
 
 	<!-- actions: frosted round buttons with a label, like the stories apps -->
 	<div class="rail">
-		<div class="act">
+		{#if !guest}<div class="act">
 			<span class="glass like" class:on={likers.includes(meId)}><LikeButton bind:this={likeBtn} target={{ mediaId: m.id }} {likers} {meId} size={26} onchange={(l) => (likers = l)} /></span>
 			<span class="lbl">{likers.length || 'Curtir'}</span>
-		</div>
+		</div>{/if}
 		<div class="act">
 			<a class="glass" href="/m/{m.id}#comentarios" aria-label="Comentários"><Icon name="chat" size={24} /></a>
-			<span class="lbl">{m.comments || 'Comentar'}</span>
+			<span class="lbl">{m.comments || (guest ? 'Comentários' : 'Comentar')}</span>
 		</div>
-		<div class="act">
+		{#if !guest}<div class="act">
 			<span class="glass fav" class:on={favs.includes(meId)}><FavButton mediaId={m.id} {favs} {meId} size={25} onchange={(f) => (favs = f)} /></span>
 			<span class="lbl">{favs.length > 1 ? favs.length : 'Favorito'}</span>
-		</div>
+		</div>{/if}
 		{#if onshare}
 			<div class="act">
 				<button class="glass" onclick={onshare} aria-label="Compartilhar com moldura"><Icon name="frame" size={24} /></button>
 				<span class="lbl">Moldura</span>
 			</div>
 		{/if}
+		{#if !guest}
 		<div class="act">
 			<a class="glass" href="/api/media/{m.id}/original" download aria-label="Salvar original"><Icon name="download" size={24} /></a>
 			<span class="lbl">Salvar</span>
 		</div>
+		{/if}
 	</div>
 
 	<div class="info">
