@@ -192,12 +192,15 @@ enum Tab: String, CaseIterable, Identifiable {
 /// The floating dock with colored icon tiles (same as the web).
 struct Dock: View {
 	@Binding var selection: Tab
+	@Environment(AppState.self) private var app
 
 	var body: some View {
 		HStack(spacing: 0) {
 			ForEach(Tab.dock) { tab in
 				let active = selection == tab
 				Button {
+					// Diário again while on it: back to the top (like tapping a tab twice in any app)
+					if selection == tab && tab == .diario { app.diarioToTop += 1 }
 					selection = tab
 				} label: {
 					VStack(spacing: 2) {
@@ -241,5 +244,27 @@ struct Dock: View {
 			.shadow(color: .black.opacity(0.12), radius: 12, y: 6)
 		}
 		.padding(.horizontal, 10)
+	}
+}
+
+/// "Topo": a round button that brings a long list back to its start (Diário and Todas as fotos).
+struct BackToTopButton: View {
+	let action: () -> Void
+	var body: some View {
+		Button(action: action) {
+			HStack(spacing: 4) {
+				Icon(.up, size: 18)
+				Text("Topo").font(.display(16))
+			}
+			.foregroundStyle(Color.onSea)
+			.padding(.leading, 12).padding(.trailing, 16)
+			.frame(minHeight: 44)
+			.background(Capsule().fill(Color.sea))
+			.background(Capsule().fill(Color.seaDark).offset(y: 3))
+			.shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+		}
+		.buttonStyle(.plain)
+		.accessibilityLabel("Voltar ao topo")
+		.transition(.scale.combined(with: .opacity))
 	}
 }

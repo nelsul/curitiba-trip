@@ -1,23 +1,26 @@
 import AVKit
 import SwiftUI
 
-/// Retrospectiva: every photo/video someone starred, oldest first, with who starred it (web /retro).
-/// Plays like stories (a year-in-review) from the start or from any item.
+/// Retrospectiva: every photo/video someone starred, oldest first, in a grid by day like "Todas as fotos" (web /retro).
+/// Tapping one opens the reels; the cover plays it all like stories (a year-in-review).
 struct RetroView: View {
 	@Environment(AppState.self) private var app
 	@State private var retro: Retro?
 	@State private var error: String?
-	@State private var playFrom: PlayFrom?
+	@State private var playing = false
+	@State private var reel: ReelStart?
 
-	struct PlayFrom: Identifiable { let id: Int }
-
-	/// day → starred items with their index in the whole list
-	private var days: [(day: String, items: [(i: Int, m: FeedMedia)])] {
-		var out: [(day: String, items: [(i: Int, m: FeedMedia)])] = []
-		for (i, m) in (retro?.items ?? []).enumerated() {
-			if out.last?.day == m.day { out[out.count - 1].items.append((i, m)) } else { out.append((m.day, [(i, m)])) }
+	/// day → starred items, oldest first
+	private var days: [(day: String, items: [FeedMedia])] {
+		var out: [(day: String, items: [FeedMedia])] = []
+		for m in retro?.items ?? [] {
+			if out.last?.day == m.day { out[out.count - 1].items.append(m) } else { out.append((m.day, [m])) }
 		}
 		return out
+	}
+	/// the cover: the most starred moment (the oldest of them on a tie)
+	private var cover: FeedMedia? {
+		(retro?.items ?? []).reduce(nil) { best, m in (m.favs?.count ?? 0) > (best?.favs?.count ?? -1) ? m : best }
 	}
 
 	var body: some View {
@@ -28,8 +31,8 @@ struct RetroView: View {
 				(Text("Os favoritos de todo mundo, na ordem em que aconteceram. Toque na ") + Text(Image(systemName: "star.fill")).foregroundColor(.sun) + Text(" de uma foto ou vídeo no diário para pôr aqui."))
 					.font(.text(15)).foregroundStyle(Color.muted)
 				if let items = retro?.items, !items.isEmpty {
-					Button { playFrom = PlayFrom(id: 0) } label: {
-						RemoteImage(url: items[0].image)
+					Button { playing = true } label: {
+						RemoteImage(url: cover?.image)
 							.aspectRatio(16 / 10, contentMode: .fit)
 							.brightness(-0.25)
 							.overlay {
@@ -46,7 +49,9 @@ struct RetroView: View {
 					ForEach(days, id: \.day) { d in
 						VStack(alignment: .leading, spacing: 8) {
 							Text(TripTime.longDay(d.day)).font(.display(18)).foregroundStyle(Color.ink)
-							ForEach(d.items, id: \.m.id) { entry in row(entry.i, entry.m) }
+							// edge to edge, like "Todas as fotos"
+							MediaGrid(items: d.items, selected: .constant([])) { m in reel = ReelStart(id: m.id) }
+								.padding(.horizontal, -16)
 						}
 					}
 				} else if retro != nil {
@@ -64,47 +69,9 @@ struct RetroView: View {
 		.background(DottedBackground())
 		.task { await load() }
 		.refreshable { await load() }
-		.fullScreenCover(item: $playFrom) { p in StoryView(items: Array((retro?.items ?? []).dropFirst(p.id))) }
-	}
-
-	private func row(_ i: Int, _ m: FeedMedia) -> some View {
-		let favs = m.favs ?? []
-		return HStack(spacing: 10) {
-			NavigationLink(value: Route.media(m.id)) {
-				RemoteImage(url: m.thumb ?? m.image)
-					.frame(width: 72, height: 72)
-					.clipShape(RoundedRectangle(cornerRadius: 12))
-					.overlay(alignment: .bottomTrailing) {
-						if m.isVideo { Icon(.play, size: 12).foregroundStyle(.white).frame(width: 22, height: 22).background(Circle().fill(.black.opacity(0.6))).padding(4) }
-					}
-			}
-			VStack(alignment: .leading, spacing: 3) {
-				(Text(app.person(m.userId)?.name ?? "Alguém").font(.text(14, .extraBold)) + Text(" · \(TripTime.time(m.at))").font(.text(14)))
-					.foregroundStyle(Color.ink)
-				if !m.caption.isEmpty { Text(m.caption).font(.text(13)).foregroundStyle(Color.muted).lineLimit(1) }
-				HStack(spacing: 6) {
-					HStack(spacing: -7) {
-						ForEach(favs, id: \.self) { id in
-							let p = app.person(id)
-							AvatarView(name: p?.name ?? "?", color: p?.tint ?? .muted, photo: p?.photo, size: 22)
-						}
-					}
-					Label { Text(favs.compactMap { app.person($0)?.name }.joined(separator: ", ")).lineLimit(1) } icon: { Image(systemName: "star.fill").font(.system(size: 11)) }
-						.font(.text(13, .extraBold)).foregroundStyle(Color.sun)
-				}
-			}
-			.frame(maxWidth: .infinity, alignment: .leading)
-			Button { playFrom = PlayFrom(id: i) } label: {
-				Icon(.play, size: 16).foregroundStyle(Color.ink).frame(width: 40, height: 40)
-					.background(RoundedRectangle(cornerRadius: 12).fill(Color.surface2))
-					.overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.line, lineWidth: 2))
-			}
-			.buttonStyle(.plain)
-			.accessibilityLabel("Ver na retrospectiva")
-		}
-		.padding(8)
-		.background(RoundedRectangle(cornerRadius: 16).fill(Color.surface))
-		.overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.line, lineWidth: 2))
+		.onChange(of: app.feedVersion) { Task { await load() } }
+		.fullScreenCover(isPresented: $playing) { StoryView(items: retro?.items ?? []) }
+		.fullScreenCover(item: $reel) { r in ReelsScreen(items: retro?.items ?? [], start: r.id) }
 	}
 
 	private func load() async {
@@ -130,6 +97,9 @@ struct StoryView: View {
 	@State private var progress: Double = 0
 	@State private var paused = false
 	@State private var player: AVPlayer?
+	/// "Ver detalhes": the item's page over the stories, which wait meanwhile
+	@State private var details: DetailsOf?
+	struct DetailsOf: Identifiable { let id: String }
 	private let tick = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
 
 	private var total: Int { items.count + 2 }
@@ -178,7 +148,7 @@ struct StoryView: View {
 				}
 		)
 		.onReceive(tick) { _ in
-			guard !paused else { return }
+			guard !paused, details == nil else { return }
 			if let m = current, m.isVideo, let p = player, let d = p.currentItem?.duration.seconds, d.isFinite, d > 0 {
 				progress = p.currentTime().seconds / d
 				if progress >= 0.999 { go(index + 1) }
@@ -188,6 +158,28 @@ struct StoryView: View {
 			}
 		}
 		.statusBarHidden()
+		.sheet(item: $details) { d in
+			NavigationStack {
+				MediaDetailView(id: d.id)
+					.navigationDestination(for: Route.self) { route in
+						switch route {
+						case .media(let id): MediaDetailView(id: id)
+						case .checkin(let id): CheckinDetailView(id: id)
+						}
+					}
+			}
+			// back to the stories
+			.overlay(alignment: .topTrailing) {
+				Button { details = nil } label: {
+					Icon(.close, size: 18).foregroundStyle(Color.ink).frame(width: 40, height: 40)
+						.background(Circle().fill(Color.surface)).overlay(Circle().strokeBorder(Color.line, lineWidth: 2))
+				}
+				.padding(12)
+				.accessibilityLabel("Voltar à retrospectiva")
+			}
+			.presentationDragIndicator(.visible)
+		}
+		.onChange(of: details == nil) { _, closed in if closed { player?.play() } else { player?.pause() } }
 		.onChange(of: index, initial: true) { _, _ in setUpPlayer() }
 		.onDisappear { player?.pause() }
 	}
@@ -248,6 +240,16 @@ struct StoryView: View {
 						.font(.text(13, .extraBold)).foregroundStyle(Color.sun)
 				}
 				if !m.caption.isEmpty { Text(m.caption).font(.text(16)) }
+				// a high-priority tap: the stories' own tap (next/previous) must not also fire
+				Label("Ver detalhes", systemImage: "info.circle")
+					.font(.text(15, .extraBold)).foregroundStyle(.white)
+					.padding(.horizontal, 14).padding(.vertical, 8)
+					.background(Capsule().fill(.white.opacity(0.16)))
+					.overlay(Capsule().strokeBorder(.white.opacity(0.3), lineWidth: 1.5))
+					.contentShape(Capsule())
+					.highPriorityGesture(TapGesture().onEnded { details = DetailsOf(id: m.id) })
+					.accessibilityAddTraits(.isButton)
+					.padding(.top, 6)
 			}
 			.foregroundStyle(.white)
 			.padding(18)

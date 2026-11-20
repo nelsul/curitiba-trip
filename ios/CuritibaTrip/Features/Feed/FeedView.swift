@@ -14,15 +14,19 @@ struct FeedView: View {
 	/// "Baixar": originals of the picked photos/videos going into Photos, one after another
 	@State private var saving: (done: Int, total: Int)?
 	@State private var savedMessage: String?
+	/// scrolled far enough down to offer "Topo"
+	@State private var farDown = false
 
 	private var media: [FeedMedia] { library.filtered(day: model.day, person: model.person) }
 
 	var body: some View {
+		ScrollViewReader { reader in
 		ScrollView {
 			LazyVStack(spacing: 22) {
 				TitleRow(icon: .journal, title: "Diário da viagem")
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.padding(.horizontal, 16)
+					.id("top")
 				NavigationLink { RetroView() } label: { CountdownCard() }
 					.buttonStyle(.plain)
 					.padding(.horizontal, 16)
@@ -35,12 +39,25 @@ struct FeedView: View {
 			.padding(.bottom, selecting ? 120 : 24)
 			.frame(maxWidth: 600)
 			.frame(maxWidth: .infinity)
+			// the whole list's top edge (always measured, unlike a row the lazy stack may drop)
+			.onGeometryChange(for: Bool.self) { $0.frame(in: .scrollView).minY < -1200 } action: { far in
+				withAnimation(.easeOut(duration: 0.2)) { farDown = far }
+			}
 		}
 		.environment(\.openReel) { id in
 			Task {
 				if !library.items.contains(where: { $0.id == id }) { await library.refresh(app: app) }
 				reel = ReelStart(id: id)
 			}
+		}
+		.overlay(alignment: .bottomTrailing) {
+			if farDown && reel == nil {
+				BackToTopButton { withAnimation { reader.scrollTo("top", anchor: .top) } }
+					.padding(.trailing, 14)
+					.padding(.bottom, selecting && !selected.isEmpty ? 184 : 112)
+			}
+		}
+		.onChange(of: app.diarioToTop) { withAnimation { reader.scrollTo("top", anchor: .top) } }
 		}
 		.overlay(alignment: .bottom) { selectionBar }
 		.overlay(alignment: .bottom) {
