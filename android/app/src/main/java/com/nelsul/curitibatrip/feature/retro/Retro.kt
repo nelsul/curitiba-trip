@@ -56,7 +56,11 @@ import com.nelsul.curitibatrip.data.Api
 import com.nelsul.curitibatrip.data.FeedMedia
 import com.nelsul.curitibatrip.data.Retro
 import com.nelsul.curitibatrip.data.TripTime
+import com.nelsul.curitibatrip.data.Route
 import com.nelsul.curitibatrip.feature.feed.EmptyState
+import com.nelsul.curitibatrip.feature.feed.FrameMakerDialog
+import com.nelsul.curitibatrip.feature.feed.MediaGridRow
+import com.nelsul.curitibatrip.feature.galeria.ReelsOverlay
 import com.nelsul.curitibatrip.ui.components.Avatar
 import com.nelsul.curitibatrip.ui.components.BackButton
 import com.nelsul.curitibatrip.ui.components.Icon
@@ -69,29 +73,37 @@ import com.nelsul.curitibatrip.ui.theme.Palette
 import com.nelsul.curitibatrip.ui.theme.body
 import com.nelsul.curitibatrip.ui.theme.display
 
-/** Retrospectiva: every photo/video someone starred, oldest first, with who starred it (web /retro). */
+/**
+ * Retrospectiva: every photo/video someone starred, oldest first, in a grid by day like "Todas as fotos" (web /retro).
+ * Tapping one opens the reels; the cover plays it all as stories, starting with the most starred moment as its picture.
+ */
 @Composable
-fun RetroScreen(contentPadding: PaddingValues, back: () -> Unit) {
+fun RetroScreen(contentPadding: PaddingValues, back: () -> Unit, open: com.nelsul.curitibatrip.feature.feed.Opener) {
 	val app = LocalApp.current
 	var retro by remember { mutableStateOf<Retro?>(null) }
 	var error by remember { mutableStateOf<String?>(null) }
-	var playFrom by remember { mutableStateOf<Int?>(null) }
+	var playing by remember { mutableStateOf(false) }
+	var reel by remember { mutableStateOf<String?>(null) }
+	var framing by remember { mutableStateOf<List<FeedMedia>?>(null) }
 	suspend fun load() { try { retro = Api.get("/api/retro"); error = null } catch (e: Exception) { app.handle(e); error = e.message } }
-	LaunchedEffect(Unit) { load() }
+	LaunchedEffect(app.feedVersion) { load() }
 	val items = retro?.items ?: emptyList()
+	// the most starred moment (the oldest of them on a tie)
+	val cover = items.maxByOrNull { it.favs.size }
 
-	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding).padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
 		Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-			BackButton(back)
-			TitleRow(IconName.Sparkle, "Retrospectiva")
-			Text("Os favoritos de todo mundo, na ordem em que aconteceram. Toque na ★ de uma foto ou vídeo no diário para pôr aqui.", style = body(15), color = Palette.muted)
+			val pad = Modifier.padding(horizontal = 16.dp)
+			Box(pad) { BackButton(back) }
+			TitleRow(IconName.Sparkle, "Retrospectiva", pad)
+			Text("Os favoritos de todo mundo, na ordem em que aconteceram. Toque na ★ de uma foto ou vídeo no diário para pôr aqui.", style = body(15), color = Palette.muted, modifier = pad)
 			if (items.isNotEmpty()) {
 				Box(
-					Modifier.fillMaxWidth().aspectRatio(16f / 10f).clip(RoundedCornerShape(22.dp)).border(2.5.dp, Palette.sun, RoundedCornerShape(22.dp))
-						.pressable({ playFrom = 0 }).semantics { contentDescription = "Ver a retrospectiva" },
+					pad.fillMaxWidth().aspectRatio(16f / 10f).clip(RoundedCornerShape(22.dp)).border(2.5.dp, Palette.sun, RoundedCornerShape(22.dp))
+						.pressable({ playing = true }).semantics { contentDescription = "Ver a retrospectiva" },
 					contentAlignment = Alignment.Center,
 				) {
-					AsyncImage(items[0].image, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+					AsyncImage(cover?.image, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
 					Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
 					Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
 						Box(Modifier.size(66.dp).background(Palette.sun, CircleShape), contentAlignment = Alignment.Center) { Icon(IconName.Play, Palette.onSun, size = 30.dp) }
@@ -99,57 +111,25 @@ fun RetroScreen(contentPadding: PaddingValues, back: () -> Unit) {
 						Text("${items.size} ${if (items.size == 1) "momento" else "momentos"}", style = body(15), color = Color.White)
 					}
 				}
-				var lastDay: String? = null
-				items.forEachIndexed { i, m ->
-					if (m.day != lastDay) {
-						lastDay = m.day
-						Text(TripTime.longDay(m.day), style = display(18), color = Palette.ink)
+				// by day, edge to edge, like "Todas as fotos"
+				items.groupBy { it.day }.forEach { (day, list) ->
+					Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+						Text(TripTime.longDay(day), style = display(18), color = Palette.ink, modifier = pad.padding(bottom = 5.dp))
+						list.chunked(3).forEach { row -> MediaGridRow(row, false, emptyList()) { reel = it.id } }
 					}
-					FavRow(m) { playFrom = i }
 				}
 			} else if (retro != null) EmptyState("Nenhum favorito ainda. No diário ou na tela cheia, toque na estrela das fotos e vídeos que merecem entrar aqui.")
-			error?.let { Text(it, style = body(14, FontWeight.Bold), color = Palette.danger) }
+			error?.let { Text(it, style = body(14, FontWeight.Bold), color = Palette.danger, modifier = pad) }
 		}
 	}
-	playFrom?.let { from -> StoryDialog(items.drop(from)) { playFrom = null } }
-}
-
-/** One starred photo/video: thumbnail, who posted it and when, and who starred it. */
-@Composable
-private fun FavRow(m: FeedMedia, onPlay: () -> Unit) {
-	val app = LocalApp.current
-	Row(
-		Modifier.fillMaxWidth().background(Palette.surface, RoundedCornerShape(16.dp)).border(2.dp, Palette.line, RoundedCornerShape(16.dp)).padding(8.dp),
-		verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
-	) {
-		Box(Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black).pressable({ onPlay() })) {
-			AsyncImage(m.thumb ?: m.image, m.caption.ifEmpty { null }, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-			if (m.isVideo) Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).size(22.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape), contentAlignment = Alignment.Center) {
-				Icon(IconName.Play, Color.White, size = 12.dp)
-			}
-		}
-		Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-			Text("${app.person(m.userId)?.name ?: "Alguém"} · ${TripTime.time(m.at)}", style = body(14, FontWeight.ExtraBold), color = Palette.ink, maxLines = 1)
-			if (m.caption.isNotEmpty()) Text(m.caption, style = body(13), color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-				Row(horizontalArrangement = Arrangement.spacedBy((-7).dp)) {
-					m.favs.forEach { id -> val p = app.person(id); Avatar(p?.name ?: "?", colorOf(p?.color), p?.photo, 22.dp) }
-				}
-				Text("★ " + m.favs.mapNotNull { app.person(it)?.name }.joinToString(", "), style = body(13, FontWeight.ExtraBold), color = Palette.sun,
-					maxLines = 1, overflow = TextOverflow.Ellipsis)
-			}
-		}
-		Box(
-			Modifier.size(40.dp).background(Palette.surface2, RoundedCornerShape(12.dp)).border(2.dp, Palette.line, RoundedCornerShape(12.dp))
-				.pressable(onPlay).semantics { contentDescription = "Ver na retrospectiva" },
-			contentAlignment = Alignment.Center,
-		) { Icon(IconName.Play, Palette.ink, size = 16.dp) }
-	}
+	if (playing) StoryDialog(items, onClose = { playing = false }, onDetails = { id -> playing = false; open(Route.Media(id)) })
+	reel?.let { start -> ReelsOverlay(items, start, onClose = { reel = null }, open = open, onShare = { framing = listOf(it) }) }
+	framing?.let { FrameMakerDialog(it) { framing = null } }
 }
 
 /** The Retrospectiva as stories: an opening card, the picks in order, a closing card. Tap right/left, hold to pause. */
 @Composable
-fun StoryDialog(items: List<FeedMedia>, onClose: () -> Unit) {
+fun StoryDialog(items: List<FeedMedia>, onClose: () -> Unit, onDetails: ((String) -> Unit)? = null) {
 	val app = LocalApp.current
 	val total = items.size + 2
 	var index by remember { mutableIntStateOf(0) }
@@ -185,7 +165,8 @@ fun StoryDialog(items: List<FeedMedia>, onClose: () -> Unit) {
 					val up = waitForUpOrCancellation()
 					paused = false
 					videoView?.start()
-					if (up != null && up.uptimeMillis - down.uptimeMillis < 300) go(if (up.position.x < size.width / 3f) index - 1 else index + 1)
+					// a tap a button already took (Fechar, Ver detalhes) doesn't also move
+					if (up != null && !up.isConsumed && up.uptimeMillis - down.uptimeMillis < 300) go(if (up.position.x < size.width / 3f) index - 1 else index + 1)
 				}
 			},
 		) {
@@ -218,6 +199,16 @@ fun StoryDialog(items: List<FeedMedia>, onClose: () -> Unit) {
 						if (current.favs.isNotEmpty()) Text("★ favorito de " + current.favs.mapNotNull { app.person(it)?.name }.joinToString(", "),
 							style = body(13, FontWeight.ExtraBold), color = Palette.sun)
 						if (current.caption.isNotEmpty()) Text(current.caption, style = body(16), color = Color.White)
+						if (onDetails != null) Row(
+							Modifier.padding(top = 6.dp).background(Color.White.copy(alpha = 0.16f), CircleShape).border(1.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+								.pressable({ onDetails(current.id) }).padding(horizontal = 14.dp, vertical = 8.dp),
+							verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+						) {
+							Box(Modifier.size(18.dp).border(1.8.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
+								Text("i", style = body(12, FontWeight.ExtraBold), color = Color.White)
+							}
+							Text("Ver detalhes", style = body(15, FontWeight.ExtraBold), color = Color.White)
+						}
 					}
 				}
 				else -> Slide(Brush.radialGradient(listOf(Palette.sunDark, Palette.bg))) {

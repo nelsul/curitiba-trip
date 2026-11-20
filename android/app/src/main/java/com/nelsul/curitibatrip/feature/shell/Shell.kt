@@ -175,7 +175,7 @@ fun Shell() {
 						when (route) {
 							is Route.Media -> MediaDetailScreen(route.id, DockSpace, back)
 							is Route.Checkin -> CheckinDetailScreen(route.id, DockSpace, back)
-							is Route.Retro -> RetroScreen(DockSpace, back)
+							is Route.Retro -> RetroScreen(DockSpace, back, open)
 							is Route.Place -> PlaceDetailScreen(route.id, DockSpace, back)
 						}
 					}
@@ -187,7 +187,10 @@ fun Shell() {
 			Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 8.dp),
 			enter = slideInVertically { it } + fadeIn(),
 			exit = slideOutVertically { it } + fadeOut(),
-		) { Dock(tab, { if (it == tab) stack.clear() else tab = it }, badges = mapOf(Tab.Cotinha to CotinhaBadge.owing)) }
+		) { Dock(tab, {
+			// the tab again: back to its main screen, and the Diário back to the top
+			if (it == tab) { if (stack.isEmpty() && tab == Tab.Diario) app.diarioToTop++; stack.clear() } else tab = it
+		}, badges = mapOf(Tab.Cotinha to CotinhaBadge.owing)) }
 	}
 	if (coupleLikes.isNotEmpty()) CoupleLoveDialog(coupleLikes) { route ->
 		val upTo = coupleLikes.maxOf { it.id }

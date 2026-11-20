@@ -37,6 +37,8 @@ class AppState(context: Context) {
 	private val prefs = context.getSharedPreferences("app", Context.MODE_PRIVATE)
 
 	fun feedChanged() { feedVersion++ }
+	/** Bumped when Diário is tapped in the dock while already on it: the feed scrolls back to the top. */
+	var diarioToTop by mutableIntStateOf(0)
 	fun person(id: String) = people.firstOrNull { it.id == id }
 
 	suspend fun restore() {

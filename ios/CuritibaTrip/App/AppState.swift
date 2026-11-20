@@ -12,6 +12,8 @@ final class AppState {
 	var feedVersion = 0
 
 	func feedChanged() { feedVersion += 1 }
+	/// Bumped when Diário is tapped in the dock while already on it: the feed scrolls back to the top.
+	var diarioToTop = 0
 
 	func reloadMe() async {
 		if let me: Me = try? await API.shared.get("/api/me") { accept(me, minVersion: me.minAppVersion) }

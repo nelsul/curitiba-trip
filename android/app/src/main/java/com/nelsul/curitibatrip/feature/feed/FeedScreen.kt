@@ -170,6 +170,9 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 	LaunchedEffect(grid) { selecting = false; selected.clear() }
 	val openReel: (String) -> Unit = { id -> scope.launch { if (library.items.none { it.id == id }) library.refresh(app); reel = id } }
 	// load the next page when the last post comes into view
+	// "Topo" once a few screens down (grid rows are short, so it takes more of them); the dock's Diário does the same
+	val farDown by remember { derivedStateOf { list.firstVisibleItemIndex > (if (grid) 8 else 3) } }
+	LaunchedEffect(app.diarioToTop) { if (app.diarioToTop > 0) list.animateScrollToItem(0) }
 	val nearEnd by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= list.layoutInfo.totalItemsCount - 2 } ?: false } }
 	LaunchedEffect(Unit) { snapshotFlow { nearEnd }.collect { if (it && model.posts.isNotEmpty()) model.loadMore(app) } }
 
@@ -266,6 +269,12 @@ fun FeedScreen(contentPadding: PaddingValues, open: Opener) {
 				enabled = picked.size <= Frames.MAX && picked.none { it.isVideo })
 		}
 	}
+	androidx.compose.animation.AnimatedVisibility(
+		farDown && reel == null,
+		Modifier.align(Alignment.BottomEnd).padding(contentPadding).padding(end = 14.dp, bottom = if (selecting && selected.isNotEmpty()) 78.dp else 8.dp),
+		enter = androidx.compose.animation.scaleIn() + androidx.compose.animation.fadeIn(),
+		exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut(),
+	) { com.nelsul.curitibatrip.ui.components.BackToTopButton({ scope.launch { list.animateScrollToItem(0) } }) }
 	(saving?.let { (done, total) -> "Salvando ${minOf(done + 1, total)} de $total…" } ?: savedMessage)?.let {
 		Text(it, style = body(14, FontWeight.ExtraBold), color = Palette.onLeaf,
 			modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 190.dp).background(Palette.leaf, CircleShape).padding(horizontal = 16.dp, vertical = 8.dp))
